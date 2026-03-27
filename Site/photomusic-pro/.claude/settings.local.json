@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"E:/PhotoMusic Produções/Blog/ChatBot/ChatPhotoMusic/Site/photomusic-pro\" diff --stat HEAD includes/core/class-photomusic-admin-menu.php)",
+      "Bash(git -C \"E:/PhotoMusic Produções/Blog/ChatBot/ChatPhotoMusic/Site/photomusic-pro\" status includes/core/class-photomusic-admin-menu.php)",
+      "Bash(php -l \"E:\\\\PhotoMusic Produções\\\\Blog\\\\ChatBot\\\\ChatPhotoMusic\\\\Site\\\\photomusic-pro\\\\includes\\\\contratos\\\\class-photomusic-contratos-actions.php\")",
+      "Read(//c/Users/nazea/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/6901b309-d226-4ac3-8aee-f5621b79920f/fa72565f-279f-48cc-8026-3b6f4fd51f23/skills/docx/**)",
+      "Bash(pandoc \"H:\\\\PhotoMusic Produções\\\\Contratos\\\\2026\\\\03 - Mar\\\\Contrato 964 28MAR2026 - Baile do Especialista - Santa Cruz.docx\" -o output.md)",
+      "Bash(where pandoc:*)",
+      "Bash(where 7z)",
+      "Bash(where unzip:*)",
+      "Bash(where powershell:*)",
+      "Bash(powershell -Command \"Expand-Archive -Path ''''H:\\\\PhotoMusic Produções\\\\Contratos\\\\2026\\\\03 - Mar\\\\Contrato 964 28MAR2026 - Baile do Especialista - Santa Cruz.docx'''' -DestinationPath ''''C:\\\\Temp\\\\contrato964_docx'''' -Force\")",
+      "Bash(powershell -Command \"Get-Content ''''C:\\\\Temp\\\\contrato964_docx\\\\word\\\\document.xml''''\")",
+      "Bash(powershell -Command \"Copy-Item ''''H:\\\\PhotoMusic Produções\\\\Contratos\\\\2026\\\\03 - Mar\\\\Contrato 964 28MAR2026 - Baile do Especialista - Santa Cruz.docx'''' ''''C:\\\\Temp\\\\contrato964.zip''''\")",
+      "Bash(powershell -Command \"Expand-Archive -Path ''''C:\\\\Temp\\\\contrato964.zip'''' -DestinationPath ''''C:\\\\Temp\\\\contrato964_docx'''' -Force\")",
+      "Bash(powershell -Command \"\\(Get-Content ''''C:\\\\Temp\\\\contrato964_docx\\\\word\\\\document.xml''''\\) -replace ''''<[^>]+>'''',''''''''\")",
+      "Bash(Select-String -Pattern '\\\\S')",
+      "Bash(Select-Object -First 100)",
+      "Bash(php -l \"E:\\\\PhotoMusic Produções\\\\Blog\\\\ChatBot\\\\ChatPhotoMusic\\\\Site\\\\photomusic-pro\\\\includes\\\\empresa\\\\class-photomusic-representantes.php\")",
+      "Bash(php -l \"E:\\\\PhotoMusic Produções\\\\Blog\\\\ChatBot\\\\ChatPhotoMusic\\\\Site\\\\photomusic-pro\\\\includes\\\\empresa\\\\class-photomusic-empresa.php\")",
+      "Bash(php -l \"E:\\\\PhotoMusic Produções\\\\Blog\\\\ChatBot\\\\ChatPhotoMusic\\\\Site\\\\photomusic-pro\\\\includes\\\\core\\\\class-photomusic-admin-menu.php\")",
+      "Bash(php -l \"E:\\\\PhotoMusic Produções\\\\Blog\\\\ChatBot\\\\ChatPhotoMusic\\\\Site\\\\photomusic-pro\\\\includes\\\\contratos\\\\class-photomusic-clausulas.php\")",
+      "Bash(php -l \"E:\\\\PhotoMusic Produções\\\\Blog\\\\ChatBot\\\\ChatPhotoMusic\\\\Site\\\\photomusic-pro\\\\includes\\\\contratos\\\\class-photomusic-contratos-pdf.php\")",
+      "Bash(php.exe -l \"E:\\\\PhotoMusic Produções\\\\Blog\\\\ChatBot\\\\ChatPhotoMusic\\\\Site\\\\photomusic-pro\\\\includes\\\\empresa\\\\class-photomusic-empresa.php\")",
+      "Bash(find 'E:/PhotoMusic Produções/Blog/ChatBot/ChatPhotoMusic' -type f \\\\\\(-name *.js -o -name *.ts -o -name *.jsx -o -name *.tsx \\\\\\))",
+      "Bash(find 'E:/PhotoMusic Produções/Blog/ChatBot/ChatPhotoMusic' -type f \\\\\\(-name *.js -o -name *.ts \\\\\\) -not -path */node_modules/*)",
+      "Bash(node --check eventos.js)",
+      "Bash(node --check config.js)"
+    ]
+  }
+}

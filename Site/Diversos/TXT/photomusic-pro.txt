@@ -1,0 +1,113 @@
+<?php
+/**
+ * Plugin Name: PhotoMusic Pro
+ * Description: Sistema profissional de eventos, contratos, convites, aceites, galeria protegida e relatórios.
+ * Version: 1.0.0
+ * Author: PhotoMusic Produções
+ */
+
+if (!defined('ABSPATH')) exit;
+
+define('PHOTOMUSIC_PRO_PATH', plugin_dir_path(__FILE__));
+define('PHOTOMUSIC_PRO_URL', plugin_dir_url(__FILE__));
+define('PHOTOMUSIC_PRO_VERSION', '1.0.0');
+
+/* ============================================================
+   AUTOLOAD DOS MÓDULOS
+   ============================================================ */
+
+// Núcleo
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-installer.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-users.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-events.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-logs.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-admin-menu.php';
+
+// Contratante / Termos
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-termo-contratante.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-contratante.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-painel-contratante.php';
+
+// Convites / Aceites
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-convites.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-aceites.php';
+
+// Galeria protegida
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-galeria.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-gallery-endpoint.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-file-endpoint.php';
+
+// Serviços / Itens / Pagamentos
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-services.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-itens.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-pagamentos.php';
+
+// Estatísticas
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-stats.php';
+
+// WhatsApp
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-whatsapp.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-whatsapp-settings.php';
+
+// Segurança / Tokens
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-access-rules.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-token-generator.php';
+
+// Contratos (NOVO MÓDULO)
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-contratos.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-contratos-route.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-contratos-shortcode.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-contratos-pdf.php';
+require_once PHOTOMUSIC_PRO_PATH . 'includes/class-photomusic-clausulas.php';
+
+/* ============================================================
+   INSTALAÇÃO
+   ============================================================ */
+register_activation_hook(__FILE__, ['PhotoMusic_Installer', 'activate']);
+
+/* ============================================================
+   INICIALIZAÇÃO DOS MÓDULOS
+   ============================================================ */
+add_action('plugins_loaded', function () {
+
+    // Núcleo
+    PhotoMusic_Users::init();
+    PhotoMusic_Events::init();
+    PhotoMusic_Logs::init();
+    PhotoMusic_Admin_Menu::init();
+
+    // Contratante
+    PhotoMusic_Termo_Contratante::init();
+    PhotoMusic_Contratante::init();
+    PhotoMusic_Painel_Contratante::init();
+
+    // Convites / Aceites
+    PhotoMusic_Convites::init();
+    PhotoMusic_Aceites::init();
+
+    // Galeria
+    PhotoMusic_Galeria::init();
+    PhotoMusic_Gallery_Endpoint::init();
+    PhotoMusic_File_Endpoint::init();
+
+    // Serviços / Itens / Pagamentos
+    PhotoMusic_Services::init();
+    PhotoMusic_Itens::init();
+    PhotoMusic_Pagamentos::init();
+
+    // Estatísticas
+    PhotoMusic_Stats::init();
+
+    // WhatsApp
+    PhotoMusic_Whatsapp::init();
+    PhotoMusic_Whatsapp_Settings::init();
+
+    // Segurança
+    PhotoMusic_Access_Rules::init();
+
+    // Contratos (NOVO)
+    PhotoMusic_Contratos::init();
+    PhotoMusic_Contratos_Route::init();
+    PhotoMusic_Contratos_Shortcode::init();
+    // PDF não precisa de init
+});

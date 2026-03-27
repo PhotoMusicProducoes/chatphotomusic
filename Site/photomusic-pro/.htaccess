@@ -1,0 +1,36 @@
+# ============================================================
+# PROTEÇÃO TOTAL DO PLUGIN PHOTOMUSIC PRO
+# ============================================================
+
+# Bloqueia acesso direto a qualquer arquivo
+<Files "*">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# Permite apenas arquivos públicos
+<FilesMatch "\.(jpg|jpeg|png|gif|svg|css|js)$">
+    Allow from all
+</FilesMatch>
+
+# Impede execução de scripts PHP
+<FilesMatch "\.(php|php5|php7|phtml)$">
+    Deny from all
+</FilesMatch>
+
+# Impede listagem de diretórios
+Options -Indexes
+
+# Bloqueio de bots maliciosos
+BrowserMatchNoCase "AhrefsBot" bad_bot
+BrowserMatchNoCase "SemrushBot" bad_bot
+BrowserMatchNoCase "MJ12bot" bad_bot
+BrowserMatchNoCase "DotBot" bad_bot
+BrowserMatchNoCase "BLEXBot" bad_bot
+BrowserMatchNoCase "crawler" bad_bot
+BrowserMatchNoCase "spider" bad_bot
+BrowserMatchNoCase "scan" bad_bot
+
+Order Allow,Deny
+Allow from all
+Deny from env=bad_bot

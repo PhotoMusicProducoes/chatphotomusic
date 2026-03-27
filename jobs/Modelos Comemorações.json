@@ -1,0 +1,114 @@
+[
+{
+    "categoria": "aniversario_proprio",
+    "telefone": "21 99752-1088",
+    "nomeCelebrado": "Vanessa",
+    "generoCelebrado": "feminino",
+    "tipo": "aniversario_pessoal",
+    "destinatario": "celebrado",
+    "dia": 17,
+    "mes": 9
+  },
+  {
+    "categoria": "aniversario_familiar",
+    "telefone": "21 99752-1088",
+    "nomeResponsavel": "Vanessa",
+    "nomeCelebrado": "Alice",
+    "generoCelebrado": "feminino",
+    "relacao": "filha",
+    "tipo": "aniversario_pessoal",
+    "destinatario": "responsavel",
+    "dia": 8,
+    "mes": 3
+  },
+  {
+    "categoria": "aniversario_casamento_casal",
+    "telefone": "21 99752-1088",
+    "nomeNoivo": "João",
+    "nomeNoiva": "Ana",
+    "tipo": "aniversario_casamento",
+    "destinatario": "casal",
+    "dia": 30,
+    "mes": 2
+  },
+  {
+    "categoria": "aniversario_casamento_responsavel",
+    "telefone": "21 99752-1088",
+    "nomeResponsavel": "Sr. Carlos",
+    "nomeNoivo": "João",
+    "nomeNoiva": "Ana",
+    "tipo": "aniversario_casamento",
+    "dia": 30,
+    "mes": 2
+  },  
+  {
+    "categoria": "dia_casamento_casal",
+    "telefone": "21 98219-2443",
+    "nomeNoivo": "Mario",
+    "nomeNoiva": "Adriana",
+    "tipo": "dia_casamento",
+    "destinatario": "casal",
+    "ano": 2026,
+    "dia": 6,
+    "mes": 4
+  },
+  {
+    "categoria": "dia_casamento_responsavel",
+    "telefone": "21 98219-2443",
+    "nomeResponsavel": "Adriana",
+    "nomeNoivo": "Mario",
+    "nomeNoiva": "Adriana",
+    "tipo": "dia_casamento",
+    "destinatario": "responsavel",
+    "ano": 2026,
+    "dia": 6,
+    "mes": 4
+  },
+  {
+    "categoria": "quinze_anos_debutante",
+    "telefone": "21 99752-1088",
+    "nomeCelebrado": "Alice",
+    "tipo": "quinze_anos",
+    "destinatario": "debutante",
+    "ano": 2026,
+    "dia": 8,
+    "mes": 3
+  },
+  {
+    "categoria": "quinze_anos_pais",
+    "telefone": "21 99752-1088",
+    "nomeResponsavel": "Vanessa",
+    "nomeCelebrado": "Alice",
+    "tipo": "quinze_anos",
+    "destinatario": "pais",
+    "ano": 2026,
+    "dia": 8,
+    "mes": 3
+  },
+  {
+    "categoria": "bodas_casal",
+    "telefone": "21 98219-2443",
+    "nomeNoivo": "Mario",
+    "nomeNoiva": "Adriana",
+    "tipo": "bodas",
+    "nome_bodas": "Bodas de Ouro",
+    "destinatario": "casal",
+    "ano": 2026,
+    "dia": 6,
+    "mes": 4
+  },
+  {
+    "categoria": "bodas_responsavel",
+    "telefone": "21 98219-2443",
+    "nomeResponsavel": "Adriana",
+    "nomeNoivo": "Mario",
+    "nomeNoiva": "Adriana",
+    "tipo": "bodas",
+    "nome_bodas": "Bodas de Ouro",
+    "destinatario": "responsavel",
+    "ano": 2026,
+    "dia": 6,
+    "mes": 4
+  }
+]
+

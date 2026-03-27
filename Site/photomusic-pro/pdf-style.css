@@ -1,0 +1,69 @@
+body {
+    font-family: DejaVu Sans, sans-serif;
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 40px;
+    color: #000;
+}
+
+h1, h2, h3 {
+    text-align: center;
+    margin: 0 0 15px 0;
+    font-weight: bold;
+}
+
+h1 { font-size: 22px; }
+h2 { font-size: 18px; }
+h3 { font-size: 15px; }
+
+.header {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.header img {
+    max-width: 180px;
+    margin-bottom: 10px;
+}
+
+.conteudo {
+    margin-top: 20px;
+    text-align: justify;
+}
+
+.assinaturas {
+    margin-top: 50px;
+}
+
+.assinatura-bloco {
+    margin-bottom: 40px;
+    border-top: 1px solid #000;
+    padding-top: 10px;
+    font-size: 12px;
+}
+
+.qr-code {
+    text-align: center;
+    margin-top: 40px;
+}
+
+.qr-code img {
+    margin-bottom: 10px;
+}
+
+.hash {
+    margin-top: 40px;
+    font-size: 10px;
+    color: #555;
+    text-align: center;
+}
+
+.footer {
+    position: fixed;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 10px;
+    color: #555;
+}

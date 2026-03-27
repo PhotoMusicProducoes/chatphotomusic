@@ -1,0 +1,17 @@
+# ============================================================
+# PROTEÇÃO DE PDFs DE CONTRATOS
+# ============================================================
+
+# Bloqueia execução de scripts
+<FilesMatch "\.(php|php5|php7|phtml)$">
+    Deny from all
+</FilesMatch>
+
+# Bloqueia acesso direto a PDFs
+<FilesMatch "\.(pdf)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Impede listagem
+Options -Indexes

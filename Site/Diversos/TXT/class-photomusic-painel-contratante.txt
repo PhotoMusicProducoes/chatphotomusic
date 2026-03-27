@@ -1,0 +1,407 @@
+<?php
+// /includes/class-photomusic-painel-contratante.php
+
+if (!defined('ABSPATH')) exit;
+
+class PhotoMusic_Painel_Contratante {
+
+    public static function init() {
+        add_shortcode('painel_contratante', [__CLASS__, 'render_painel']);
+        add_action('init', [__CLASS__, 'processar_envio_whatsapp']);
+        add_action('init', [__CLASS__, 'processar_envio_whatsapp_servico']);
+    }
+
+    /**
+     * Renderiza o painel do contratante
+     */
+    public static function render_painel() {
+
+        if (empty($_GET['evento'])) {
+            return "<p>Evento não informado.</p>";
+        }
+
+        $id_evento = intval($_GET['evento']);
+        $evento = PhotoMusic_Events::get_event($id_evento);
+
+        if (!$evento) {
+            return "<p>Evento não encontrado.</p>";
+        }
+
+        // Protege o painel: só entra se estiver logado como contratante
+        if (!PhotoMusic_Contratante::is_logged_in($id_evento)) {
+            return "<p>Acesso não autorizado.</p>";
+        }
+
+        // Serviços do evento
+        $servicos = PhotoMusic_Services::get_services_by_event($id_evento);
+
+        // Status do termo do contratante
+        $termo_aceito = PhotoMusic_Termos::contratante_aceitou_termo($id_evento);
+
+        // Estatísticas de acessos (contratante + convidados)
+        $stats = PhotoMusic_Stats::get_event_stats($id_evento);
+
+        $ok_msg   = !empty($_GET['ok'])   ? '<div class="notice notice-success"><p>Mensagem enviada com sucesso.</p></div>' : '';
+        $erro_msg = !empty($_GET['erro']) ? '<div class="notice notice-error"><p>' . esc_html($_GET['erro']) . '</p></div>' : '';
+
+        ob_start();
+        ?>
+
+        <style>
+            .pm-painel-wrap {
+                max-width: 960px;
+                margin: 20px auto;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            }
+            .pm-painel-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 20px;
+            }
+            .pm-painel-card {
+                background: #fff;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                padding: 15px 20px;
+                margin-bottom: 20px;
+            }
+            .pm-painel-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 15px;
+            }
+            .pm-tag {
+                display: inline-block;
+                padding: 2px 8px;
+                border-radius: 999px;
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: .05em;
+            }
+            .pm-tag-ok {
+                background: #e6f6e9;
+                color: #1b7f3b;
+            }
+            .pm-tag-pendente {
+                background: #fff4e5;
+                color: #a66300;
+            }
+            .pm-stat-label {
+                font-size: 12px;
+                color: #666;
+            }
+            .pm-stat-value {
+                font-size: 18px;
+                font-weight: 600;
+            }
+            .pm-servico-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .pm-servico-nome {
+                font-weight: 600;
+            }
+            .pm-servico-tipo {
+                font-size: 12px;
+                color: #666;
+            }
+            .pm-servico-acoes {
+                margin-top: 10px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .pm-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 4px 10px;
+                border-radius: 4px;
+                border: 1px solid #ccc;
+                background: #f7f7f7;
+                font-size: 12px;
+                cursor: pointer;
+                text-decoration: none;
+                color: #222;
+            }
+            .pm-btn-primary {
+                background: #2271b1;
+                border-color: #2271b1;
+                color: #fff;
+            }
+            .pm-btn-outline {
+                background: #fff;
+            }
+            .pm-btn-small {
+                font-size: 11px;
+                padding: 3px 8px;
+            }
+        </style>
+
+        <div class="pm-painel-wrap">
+
+            <?php echo $ok_msg . $erro_msg; ?>
+
+            <div class="pm-painel-card pm-painel-header">
+                <div>
+                    <h2 style="margin:0;">Painel do Contratante</h2>
+                    <p style="margin:4px 0 0;">
+                        <strong>Evento:</strong> <?php echo esc_html($evento->nome_evento); ?><br>
+                        <strong>Data:</strong> <?php echo esc_html($evento->data_evento ?? ''); ?>
+                    </p>
+                </div>
+                <div>
+                    <form method="post" style="margin:0 0 8px 0;">
+                        <?php wp_nonce_field('pm_whatsapp_contratante', 'pm_nonce'); ?>
+                        <input type="hidden" name="pm_enviar_whatsapp_contratante" value="1">
+                        <input type="hidden" name="id_evento" value="<?php echo esc_attr($id_evento); ?>">
+                        <button type="submit" class="pm-btn pm-btn-primary">
+                            Enviar link via WhatsApp
+                        </button>
+                    </form>
+
+                    <div style="margin-top:4px;">
+                        <?php if ($termo_aceito): ?>
+                            <span class="pm-tag pm-tag-ok">Termo aceito</span>
+                        <?php else: ?>
+                            <span class="pm-tag pm-tag-pendente">Termo pendente</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pm-painel-card">
+                <h3>Visão geral de acessos</h3>
+                <div class="pm-painel-grid">
+                    <div>
+                        <div class="pm-stat-label">Acessos totais (convidados)</div>
+                        <div class="pm-stat-value"><?php echo intval($stats['acessos_convidados_total'] ?? 0); ?></div>
+                    </div>
+                    <div>
+                        <div class="pm-stat-label">Acessos hoje (convidados)</div>
+                        <div class="pm-stat-value"><?php echo intval($stats['acessos_convidados_hoje'] ?? 0); ?></div>
+                    </div>
+                    <div>
+                        <div class="pm-stat-label">Acessos do contratante</div>
+                        <div class="pm-stat-value"><?php echo intval($stats['acessos_contratante'] ?? 0); ?></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pm-painel-card">
+                <h3>Serviços do evento</h3>
+
+                <?php if (empty($servicos)): ?>
+                    <p>Nenhum serviço cadastrado para este evento.</p>
+                <?php else: ?>
+                    <?php foreach ($servicos as $s): ?>
+
+                        <?php
+                        // Link da galeria para o contratante (sem token, amarrado ao evento)
+                        $link_galeria = home_url("/galeria/{$s->slug_servico}/?contratante={$id_evento}");
+                        ?>
+
+                        <div style="border-bottom:1px solid #eee; padding:10px 0;">
+                            <div class="pm-servico-header">
+                                <div>
+                                    <div class="pm-servico-nome"><?php echo esc_html($s->nome_servico); ?></div>
+                                    <div class="pm-servico-tipo">
+                                        Tipo: <?php echo esc_html($s->tipo_servico ?? ''); ?>
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="pm-tag <?php echo $s->status_servico === 'ativo' ? 'pm-tag-ok' : 'pm-tag-pendente'; ?>">
+                                        <?php echo $s->status_servico === 'ativo' ? 'Ativo' : 'Desativado'; ?>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="pm-servico-acoes">
+                                <!-- Abrir galeria -->
+                                <a href="<?php echo esc_url($link_galeria); ?>" target="_blank" class="pm-btn pm-btn-primary pm-btn-small">
+                                    Abrir galeria
+                                </a>
+
+                                <!-- Copiar link (JS simples) -->
+                                <button type="button"
+                                        class="pm-btn pm-btn-outline pm-btn-small"
+                                        onclick="navigator.clipboard.writeText('<?php echo esc_js($link_galeria); ?>'); alert('Link copiado!');">
+                                    Copiar link
+                                </button>
+
+                                <!-- Enviar link da galeria via WhatsApp -->
+                                <form method="post" style="display:inline;">
+                                    <?php wp_nonce_field('pm_whatsapp_servico', 'pm_nonce_servico'); ?>
+                                    <input type="hidden" name="pm_enviar_whatsapp_servico" value="1">
+                                    <input type="hidden" name="id_evento" value="<?php echo esc_attr($id_evento); ?>">
+                                    <input type="hidden" name="id_servico" value="<?php echo esc_attr($s->id); ?>">
+                                    <button type="submit" class="pm-btn pm-btn-outline pm-btn-small">
+                                        Enviar link via WhatsApp
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+
+        </div>
+
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Processa o envio do WhatsApp (link do painel)
+     */
+    public static function processar_envio_whatsapp() {
+
+        if (!isset($_POST['pm_enviar_whatsapp_contratante'])) {
+            return;
+        }
+
+        if (!isset($_POST['pm_nonce']) || !wp_verify_nonce($_POST['pm_nonce'], 'pm_whatsapp_contratante')) {
+            return;
+        }
+
+        $id_evento = intval($_POST['id_evento']);
+
+        $resultado = self::enviar_whatsapp_contratante($id_evento);
+
+        if (is_wp_error($resultado)) {
+            wp_redirect(add_query_arg([
+                'evento' => $id_evento,
+                'erro'   => $resultado->get_error_message()
+            ], home_url('/painel-contratante/')));
+            exit;
+        }
+
+        wp_redirect(add_query_arg([
+            'evento' => $id_evento,
+            'ok'     => 1
+        ], home_url('/painel-contratante/')));
+        exit;
+    }
+
+    /**
+     * Processa o envio do WhatsApp por serviço (link da galeria)
+     */
+    public static function processar_envio_whatsapp_servico() {
+
+        if (!isset($_POST['pm_enviar_whatsapp_servico'])) {
+            return;
+        }
+
+        if (!isset($_POST['pm_nonce_servico']) || !wp_verify_nonce($_POST['pm_nonce_servico'], 'pm_whatsapp_servico')) {
+            return;
+        }
+
+        $id_evento  = intval($_POST['id_evento']);
+        $id_servico = intval($_POST['id_servico']);
+
+        $resultado = self::enviar_whatsapp_servico($id_evento, $id_servico);
+
+        if (is_wp_error($resultado)) {
+            wp_redirect(add_query_arg([
+                'evento' => $id_evento,
+                'erro'   => $resultado->get_error_message()
+            ], home_url('/painel-contratante/')));
+            exit;
+        }
+
+        wp_redirect(add_query_arg([
+            'evento' => $id_evento,
+            'ok'     => 1
+        ], home_url('/painel-contratante/')));
+        exit;
+    }
+
+    /**
+     * Envia o link do painel do contratante via WhatsApp
+     */
+    public static function enviar_whatsapp_contratante($id_evento) {
+
+        $evento = PhotoMusic_Events::get_event($id_evento);
+        if (!$evento) {
+            return new WP_Error('evento_inexistente', 'Evento não encontrado.');
+        }
+
+        $telefone = $evento->telefone_contratante ?? '';
+        if (empty($telefone)) {
+            return new WP_Error('telefone_vazio', 'O evento não possui telefone do contratante.');
+        }
+
+        $template = get_option('pm_msg_contratante');
+        if (empty($template)) {
+            return new WP_Error('template_vazio', 'Nenhuma mensagem padrão configurada.');
+        }
+
+        $link = home_url("/painel-contratante/?evento={$id_evento}");
+
+        $mensagem = PhotoMusic_WhatsApp::build_message($template, [
+            'nome'     => $evento->nome_contratante ?? '',
+            'evento'   => $evento->nome_evento ?? '',
+            'telefone' => $telefone,
+            'link'     => $link
+        ]);
+
+        return PhotoMusic_WhatsApp::send(
+            $telefone,
+            $mensagem,
+            [
+                'id_evento'  => $id_evento,
+                'id_servico' => null,
+                'id_convite' => null
+            ]
+        );
+    }
+
+    /**
+     * Envia o link da galeria de um serviço via WhatsApp
+     */
+    public static function enviar_whatsapp_servico($id_evento, $id_servico) {
+
+        $evento = PhotoMusic_Events::get_event($id_evento);
+        if (!$evento) {
+            return new WP_Error('evento_inexistente', 'Evento não encontrado.');
+        }
+
+        $servico = PhotoMusic_Services::get_service($id_servico);
+        if (!$servico || $servico->id_evento != $id_evento) {
+            return new WP_Error('servico_invalido', 'Serviço não pertence ao evento.');
+        }
+
+        $telefone = $evento->telefone_contratante ?? '';
+        if (empty($telefone)) {
+            return new WP_Error('telefone_vazio', 'O evento não possui telefone do contratante.');
+        }
+
+        $template = get_option('pm_msg_convite'); // você pode criar um template específico se quiser
+        if (empty($template)) {
+            $template = "Olá {nome}, aqui está o link da galeria do serviço {servico}: {link}";
+        }
+
+        $link = home_url("/galeria/{$servico->slug_servico}/?contratante={$id_evento}");
+
+        $mensagem = PhotoMusic_WhatsApp::build_message($template, [
+            'nome'     => $evento->nome_contratante ?? '',
+            'evento'   => $evento->nome_evento ?? '',
+            'servico'  => $servico->nome_servico ?? '',
+            'telefone' => $telefone,
+            'link'     => $link
+        ]);
+
+        return PhotoMusic_WhatsApp::send(
+            $telefone,
+            $mensagem,
+            [
+                'id_evento'  => $id_evento,
+                'id_servico' => $id_servico,
+                'id_convite' => null
+            ]
+        );
+    }
+}

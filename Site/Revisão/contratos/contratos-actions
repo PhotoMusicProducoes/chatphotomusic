@@ -1,0 +1,75 @@
+DIAGRAMA COMPLETO — includes/contratos/class-photomusic-contratos-actions.php
+
+PhotoMusic_Contratos_Actions
+   ├── init()
+   │       ├── admin_post pm_editar_contrato        → editar_contrato()
+   │       ├── admin_post pm_enviar_assinatura      → enviar_para_assinatura()
+   │       ├── admin_post pm_cancelar_contrato      → cancelar_contrato()
+   │       ├── admin_post pm_assinar_empresa        → assinar_empresa()
+   │       ├── admin_post pm_assinar_contratante    → assinar_contratante()
+   │       └── admin_post_nopriv pm_assinar_contratante → assinar_contratante()
+   │
+   ├── editar_contrato()
+   │       ├── valida nonce
+   │       ├── validar_editar()
+   │       ├── validar_status_para_edicao()
+   │       ├── sanitiza dados
+   │       ├── PhotoMusic_Contratos::atualizar()
+   │       └── redirect
+   │
+   ├── enviar_para_assinatura()
+   │       ├── valida nonce
+   │       ├── validar_enviar()
+   │       ├── validar_status_para_envio()
+   │       ├── set_status('aguardando_assinatura_admin')
+   │       └── redirect
+   │
+   ├── cancelar_contrato()
+   │       ├── valida nonce
+   │       ├── validar_cancelar()
+   │       ├── validar_status_para_cancelar()
+   │       ├── set_status('cancelado')
+   │       └── redirect
+   │
+   ├── assinar_empresa()
+   │       ├── valida nonce
+   │       ├── pode_assinar()
+   │       ├── registrar_assinatura_admin()
+   │       └── redirect
+   │
+   └── assinar_contratante()
+           ├── valida nonce
+           ├── valida status == aguardando_assinatura_contratante
+           ├── registrar_assinatura_contratante()
+           └── redirect
+
+
+MAPA DAS TABELAS USADAS
+pm_contratos
+pm_contratos_logs
+
+Essas tabelas são acessadas indiretamente via:
+PhotoMusic_Contratos::get()
+PhotoMusic_Contratos::atualizar()
+PhotoMusic_Contratos::set_status()
+PhotoMusic_Contratos::registrar_assinatura_admin()
+PhotoMusic_Contratos::registrar_assinatura_contratante()
+
+MAPA DAS PERMISSÕES USADAS
+A classe usa permissões através de:
+PhotoMusic_Contratos_Permissoes::validar_editar()
+PhotoMusic_Contratos_Permissoes::validar_enviar()
+PhotoMusic_Contratos_Permissoes::validar_cancelar()
+PhotoMusic_Contratos_Permissoes::pode_assinar()
+
+Essas permissões correspondem às metas:
+pm_editar_contratos
+pm_enviar_para_assinatura
+pm_cancelar_contratos
+pm_assinar_contratos
+
+DESCRIÇÃO OFICIAL — PhotoMusic_Contratos_Actions
+Gerencia todas as ações admin-post do módulo de contratos.
+Processa requisições de edição, envio para assinatura interna, cancelamento, assinatura da empresa e assinatura do contratante.
+Cada ação valida nonce, permissões e status do contrato antes de executar qualquer operação, garantindo segurança total e integridade do fluxo.
+É o núcleo operacional que conecta a interface administrativa e a visualização pública ao backend do sistema de contratos.
