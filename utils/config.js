@@ -1,14 +1,17 @@
 // utils/config.js — CommonJS
 
-// Credenciais Z-API
-const INSTANCE_ID = "3EBC850F6EE9E27151AA5A0F11A263D4";
-const TOKEN = "DE2217CB1AFABE0F630A3C55";
+// Carrega variáveis de ambiente
+require("dotenv").config();
 
-// Base completa da API (já com instance/token)
+// Credenciais Z-API (agora seguras)
+const INSTANCE_ID = process.env.INSTANCE_ID;
+const TOKEN = process.env.TOKEN;
+
+// Base completa da API
 const API_URL = `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}`;
 
-// URL pública do webhook (ngrok)
-const WEBHOOK_URL = "https://autoplastic-iona-unpatronizingly.ngrok-free.dev/webhook";
+// URL pública do webhook
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
 // Bases de URL para arquivos da PhotoMusic
 const urlBase  = "https://photomusic.com.br/wp-content/uploads/2025/02/";

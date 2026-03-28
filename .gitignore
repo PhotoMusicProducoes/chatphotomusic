@@ -1,0 +1,55 @@
+# ============================
+# IGNORAR ARQUIVOS SENSÍVEIS
+# ============================
+.env
+*.env
+.env.local
+.env.development
+.env.production
+
+# ============================
+# NODE / NPM
+# ============================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ============================
+# SISTEMA OPERACIONAL
+# ============================
+.DS_Store
+Thumbs.db
+
+# ============================
+# LOGS
+# ============================
+logs
+*.log
+*.log.*
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ============================
+# BUILD / CACHE
+# ============================
+dist/
+build/
+.cache/
+.tmp/
+
+# ============================
+# EDITORES
+# ============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ============================
+# FLY.IO
+# ============================
+.fly/
