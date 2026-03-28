@@ -16,6 +16,12 @@ const urlBase1 = "https://photomusic.com.br/wp-content/uploads/2025/03/";
 const urlBase2 = "https://photomusic.com.br/wp-content/uploads/2025/04/";
 const urlBase3 = "https://photomusic.com.br/wp-content/uploads/2026/02/";
 
+// API REST do WordPress (PhotoMusic Pro)
+// Chave de API: copie em WordPress → Eventos → qualquer evento → 🖼️ Galeria → seção API Key
+// (ou acesse /wp-admin → Configurações → WhatsApp → Chave API ChatBot)
+const PM_SITE_URL = "https://photomusic.com.br";
+const PM_API_KEY  = "COLE_AQUI_A_CHAVE_DO_WORDPRESS"; // ← substituir pela chave real
+
 module.exports = {
   INSTANCE_ID,
   TOKEN,
@@ -24,5 +30,7 @@ module.exports = {
   urlBase,
   urlBase1,
   urlBase2,
-  urlBase3
+  urlBase3,
+  PM_SITE_URL,
+  PM_API_KEY,
 };

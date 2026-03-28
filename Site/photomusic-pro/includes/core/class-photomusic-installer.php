@@ -186,6 +186,30 @@ class PhotoMusic_Installer {
         ) $charset;";
 
         /* ============================================================
+        GALERIA — LOG DE VISUALIZAÇÃO POR SERVIÇO
+        ============================================================ */
+        $tbl_views = $wpdb->prefix . 'pm_galeria_views';
+
+        $sql_views = "CREATE TABLE $tbl_views (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            id_evento BIGINT UNSIGNED NOT NULL,
+            id_aceite BIGINT UNSIGNED NOT NULL,
+            tipo_servico VARCHAR(50) DEFAULT NULL,
+            nome_servico VARCHAR(255) DEFAULT NULL,
+            total_views INT DEFAULT 1,
+            primeiro_acesso DATETIME DEFAULT CURRENT_TIMESTAMP,
+            ultimo_acesso DATETIME DEFAULT CURRENT_TIMESTAMP,
+            ip VARCHAR(45) DEFAULT NULL,
+            user_agent TEXT DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY idx_evento (id_evento),
+            KEY idx_aceite (id_aceite),
+            UNIQUE KEY uniq_view (id_evento, id_aceite, nome_servico)
+        ) $charset;";
+
+        dbDelta($sql_views);
+
+        /* ============================================================
            TABELA: ACEITE DO CONTRATANTE
         ============================================================ */
         $sql_aceite_contratante = "CREATE TABLE $tbl_aceite_contratante (
@@ -359,7 +383,7 @@ class PhotoMusic_Installer {
             INDEX idx_telefone (telefone),
             INDEX idx_email (email),
             INDEX idx_cnpj (cnpj),
-            INDEX idx_cpf (cpf)
+            INDEX idx_cpf (cpf),
             INDEX idx_token_acesso (token_acesso)
         ) $charset;";
 
@@ -1019,6 +1043,29 @@ class PhotoMusic_Installer {
         if (empty($col)) {
             $wpdb->query("ALTER TABLE `{$tbl_eventos}` ADD COLUMN `link_galeria_contratante` TEXT NULL");
         }
+
+        /* ============================================================
+        GALERIA — GARANTE TABELA DE LOG DE VISUALIZAÇÃO
+        ============================================================ */
+        $tbl_views = $wpdb->prefix . 'pm_galeria_views';
+
+        $wpdb->query("
+            CREATE TABLE IF NOT EXISTS $tbl_views (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                id_evento BIGINT UNSIGNED NOT NULL,
+                id_aceite BIGINT UNSIGNED NOT NULL,
+                tipo_servico VARCHAR(50) DEFAULT NULL,
+                nome_servico VARCHAR(255) DEFAULT NULL,
+                total_views INT DEFAULT 1,
+                primeiro_acesso DATETIME DEFAULT CURRENT_TIMESTAMP,
+                ultimo_acesso DATETIME DEFAULT CURRENT_TIMESTAMP,
+                ip VARCHAR(45) DEFAULT NULL,
+                user_agent TEXT DEFAULT NULL,
+                PRIMARY KEY (id),
+                KEY idx_evento (id_evento),
+                KEY idx_aceite (id_aceite)
+            ) $charset_collate
+        ");
 
         /* ============================================================
            ACEITES DO CONVIDADO — colunas de segurança e token

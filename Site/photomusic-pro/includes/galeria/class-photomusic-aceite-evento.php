@@ -40,11 +40,13 @@ class PhotoMusic_Aceite_Evento {
                 <?php wp_nonce_field('pm_aceite_evento', 'pm_nonce_aceite'); ?>
                 <input type="hidden" name="pm_aceite_evento" value="1">
 
-                <label>Nome completo:</label>
+                <label>Nome:</label>
                 <input type="text" name="nome" required>
 
-                <label>Telefone (WhatsApp):</label>
-                <input type="text" name="telefone" required>
+                <label>Email:</label>
+                <input type="email" name="email" required>
+
+                <input type="hidden" name="telefone" value="">
 
                 <label>
                     <input type="checkbox" name="aceite" required>
@@ -71,10 +73,34 @@ class PhotoMusic_Aceite_Evento {
         }
 
         $nome     = sanitize_text_field($_POST['nome'] ?? '');
-        $telefone = preg_replace('/\D/', '', $_POST['telefone'] ?? '');
+        $email = sanitize_email($_POST['email'] ?? '');
         $aceite   = isset($_POST['aceite']);
 
-        if (!$nome || !$telefone || !$aceite) {
+        // ============================================================
+        // 📱 TELEFONE AUTOMÁTICO
+        // ============================================================
+
+        // 1. tenta pegar do POST (fallback)
+        $telefone = preg_replace('/\D/', '', $_POST['telefone'] ?? '');
+
+        // 2. se não vier, tenta pegar do device
+        if (empty($telefone)) {
+
+            $device_hash = $this->gerar_device_hash();
+
+            $telefone_db = $this->wpdb->get_var($this->wpdb->prepare(
+                "SELECT telefone FROM {$this->tbl_devices}
+                WHERE device_hash = %s
+                LIMIT 1",
+                $device_hash
+            ));
+
+            if ($telefone_db) {
+                $telefone = $telefone_db;
+            }
+        }
+
+        if (!$nome || !$email || !$aceite) {
             wp_die('Preencha todos os campos e aceite o termo.');
         }
 
@@ -137,8 +163,9 @@ class PhotoMusic_Aceite_Evento {
         ============================================================ */
         $this->wpdb->insert($this->tbl_aceites_evento, [
             'id_evento'     => $id_evento,
-            'nome'          => $nome,
-            'telefone'      => $telefone,
+            'nome'      => $nome,
+            'email'     => $email,
+            'telefone'  => $telefone,
             'device_hash'   => $device_hash,
             'ip'            => $ip,
             'user_agent'    => $user_agent,

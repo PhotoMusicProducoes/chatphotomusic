@@ -25,6 +25,7 @@ function photomusic_pro_autoload_classes() {
     require_once PHOTOMUSIC_PRO_PATH . 'includes/admin/class-photomusic-roadmap-menu.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/admin/class-photomusic-ideias-futuras.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/admin/class-photomusic-projetos.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/admin/class-photomusic-dashboard.php';
 
     /* ---------------- CORE ---------------- */
     require_once PHOTOMUSIC_PRO_PATH . 'includes/core/class-photomusic-installer.php';
@@ -125,6 +126,7 @@ function photomusic_pro_init_modules() {
    new PhotoMusic_Roadmap_Menu();
    PhotoMusic_Ideias_Futuras::init();
    PhotoMusic_Projetos::init();
+   PhotoMusic_Dashboard::init();
 
    // Rotas da galeria
    new PhotoMusic_Galeria_Routes();

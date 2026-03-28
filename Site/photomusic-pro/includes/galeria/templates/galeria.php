@@ -17,14 +17,14 @@ if (!defined('ABSPATH')) exit;
 
 // Ícones por tipo de serviço
 $tipo_icones = [
-    'foto_cabine' => '📸',
-    'totem'       => '🏛️',
-    '360'         => '🎡',
-    'paparazzi'   => '🎭',
-    'lembranca'   => '🖼️',
-    'video'       => '🎥',
-    'gif'         => '🎞️',
-    'outro'       => '📎',
+    'foto_cabine'       => '📸',
+    'totem'             => '🏛️',
+    '360'               => '🎡',
+    'paparazzi_digital' => '🎭',
+    'lembranca'         => '🖼️',
+    'video'             => '🎥',
+    'gif'               => '🎞️',
+    'outro'             => '📎',
 ];
 ?>
 <style>

@@ -144,6 +144,87 @@ class PhotoMusic_Galeria_Controller {
             $servicos_links  = [$fallback];
         }
 
+        // ============================================================
+        // 🔥 REGISTRA VISUALIZAÇÃO DOS SERVIÇOS
+        // ============================================================
+        if (!empty($servicos_links)) {
+            foreach ($servicos_links as $servico) {
+                $this->registrar_view_servico($evento, $aceite, $servico);
+            }
+        }
+
         include $template;
+    }
+
+    /* ============================================================
+        REGISTRA VISUALIZAÇÃO DE SERVIÇO NA GALERIA
+        ------------------------------------------------------------
+        Fluxo:
+        1. Usuário acessa galeria via token
+        2. Sistema identifica serviços disponíveis
+        3. Cada serviço acessado gera registro
+
+        Dados capturados:
+        - Evento
+        - Aceite (usuário)
+        - Tipo e nome do serviço
+        - IP e User Agent
+
+        Futuro:
+        - Ranking de serviços
+        - Analytics por evento
+        - Relatórios comerciais
+    ============================================================ */
+    private function registrar_view_servico($evento, $aceite, $servico) {
+
+        $ip         = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '');
+        $user_agent = sanitize_text_field($_SERVER['HTTP_USER_AGENT'] ?? '');
+
+        $tbl = $this->wpdb->prefix . 'pm_galeria_views';
+
+        // 🔍 Verifica se já existe
+        $existe = $this->wpdb->get_row($this->wpdb->prepare(
+            "SELECT id, total_views FROM $tbl 
+            WHERE id_evento = %d 
+            AND id_aceite = %d 
+            AND nome_servico = %s 
+            LIMIT 1",
+            $evento->id,
+            $aceite->id,
+            $servico->nome_servico
+        ));
+
+        if ($existe) {
+
+            // 🔁 Atualiza
+            $this->wpdb->update(
+                $tbl,
+                [
+                    'total_views'   => $existe->total_views + 1,
+                    'ultimo_acesso' => current_time('mysql'),
+                    'ip'            => $ip,
+                    'user_agent'    => $user_agent,
+                ],
+                ['id' => $existe->id]
+            );
+
+        } else {
+
+            // ➕ Insere
+            $this->wpdb->insert(
+                $tbl,
+                [
+                    'id_evento'       => $evento->id,
+                    'id_aceite'       => $aceite->id,
+                    'tipo_servico'    => $servico->tipo ?? '',
+                    'nome_servico'    => $servico->nome_servico ?? '',
+                    'total_views'     => 1,
+                    'ip'              => $ip,
+                    'user_agent'      => $user_agent,
+                    'primeiro_acesso' => current_time('mysql'),
+                    'ultimo_acesso'   => current_time('mysql'),
+                ]
+            );
+        }
     }
 }
