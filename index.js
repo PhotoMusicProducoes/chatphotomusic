@@ -1333,17 +1333,24 @@ async function handleIncomingMessage(message) {
         return;
 
       default:
-        await sendText(
-          chatId,
-          "*⚠ Opção inválida!* Escolha uma das opções do menu digitando apenas o número: *(Digite somente número)*\n\n" +
-          "*1* - Solicitar um orçamento\n" +
-          "*2* - Estou em processo de contratação\n" +
-          "*3* - Tenho um serviço contratado e preciso de suporte\n" +
-          "*4* - Outros assuntos\n" +
-          "*5* - Não sou cliente, mas preciso falar com você\n" +
-          "*6* - Estou em um evento e desejo baixar minha foto\n" +
-          "*7* - Fotografia 1ª Eucaristia"
-        );
+        // Se o cliente mandou texto puro (ex.: "oi", "olá", "tudo bem") em vez de número,
+        // reenvia o menu de boas-vindas em vez de mostrar "opção inválida"
+        if (opcaoMenu === "") {
+          session.menuInicialEnviado = false;
+          await mostrarMenuInicial(chatId);
+        } else {
+          await sendText(
+            chatId,
+            "*⚠ Opção inválida!* Escolha uma das opções do menu digitando apenas o número: *(Digite somente número)*\n\n" +
+            "*1* - Solicitar um orçamento\n" +
+            "*2* - Estou em processo de contratação\n" +
+            "*3* - Tenho um serviço contratado e preciso de suporte\n" +
+            "*4* - Outros assuntos\n" +
+            "*5* - Não sou cliente, mas preciso falar com você\n" +
+            "*6* - Estou em um evento e desejo baixar minha foto\n" +
+            "*7* - Fotografia 1ª Eucaristia"
+          );
+        }
         return;
     }
   }

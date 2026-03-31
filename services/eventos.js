@@ -48,6 +48,9 @@ async function buscarEventos() {
   try {
     const url = `${PM_API_BASE}/eventos-chatbot`;
 
+    console.log(`🔍 [eventos] Buscando: ${url}`);
+    console.log(`🔑 [eventos] PM_API_KEY configurada: ${PM_API_KEY ? "✅ SIM" : "❌ NÃO (vazia)"}`);
+
     const response = await fetch(url, {
       headers: {
         "X-PM-API-Key": PM_API_KEY,
@@ -56,14 +59,15 @@ async function buscarEventos() {
     });
 
     if (!response.ok) {
-      console.error("❌ Erro ao buscar eventos da API WordPress:", response.status, response.statusText);
+      const corpo = await response.text().catch(() => "");
+      console.error(`❌ [eventos] Erro HTTP ${response.status} ${response.statusText}. Resposta: ${corpo.slice(0, 300)}`);
       return [];
     }
 
     const dados = await response.json();
 
     if (!Array.isArray(dados) || dados.length === 0) {
-      console.log("ℹ️ Nenhum evento ativo no ChatBot no momento.");
+      console.log("ℹ️ [eventos] Nenhum evento ativo no ChatBot no momento.");
       return [];
     }
 
@@ -76,7 +80,7 @@ async function buscarEventos() {
     }));
 
   } catch (error) {
-    console.error("❌ Erro ao conectar com a API WordPress:", error.message);
+    console.error("❌ [eventos] Erro ao conectar com a API WordPress:", error.message);
     return [];
   }
 }
