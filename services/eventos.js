@@ -1,50 +1,50 @@
 // services/eventos.js
 // Funções para fluxo de download de fotos de eventos
+// Versão 2.0 — lê da API WordPress (PhotoMusic Pro) em vez do arquivo .txt
 
 const fetch = require("node-fetch");
 const { sendText, sendTyping } = require("../utils/index.js");
+const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
 
 // ======================================================
-// BUSCA OS EVENTOS NO ARQUIVO REMOTO
+// BUSCA OS EVENTOS ATIVOS NO WORDPRESS
+// Endpoint: GET /wp-json/photomusic/v1/eventos-chatbot
+// Retorna apenas eventos com chatbot_ativo = 1
 // ======================================================
 async function buscarEventos() {
   try {
-    const response = await fetch(
-      "https://photomusic.com.br/wp-content/uploads/2025/05/eventos.txt"
-    );
+    const url = `${PM_API_BASE}/eventos-chatbot`;
+
+    const response = await fetch(url, {
+      headers: {
+        "X-PM-API-Key": PM_API_KEY,
+        "Accept": "application/json",
+      },
+    });
 
     if (!response.ok) {
-      console.error("Erro ao acessar arquivo remoto:", response.status);
+      console.error("❌ Erro ao buscar eventos da API WordPress:", response.status, response.statusText);
       return [];
     }
 
-    const dados = await response.text();
+    const dados = await response.json();
 
-    if (!dados || !dados.trim()) {
-      console.error("Arquivo remoto vazio ou inválido.");
+    if (!Array.isArray(dados) || dados.length === 0) {
+      console.log("ℹ️ Nenhum evento ativo no ChatBot no momento.");
       return [];
     }
 
-    const linhas = dados.trim().split("\n");
+    // Normaliza para o formato interno usado pelo fluxo
+    return dados.map((e) => ({
+      numero: e.numero,        // "1", "2", "3"...
+      nome:   e.nome,          // nome do evento (ex: "Casamento João e Maria")
+      titulo: e.titulo,        // nome + data formatada
+      links:  e.links || [],   // array de { nome, tipo, link }
+      id:     e.id,
+    }));
 
-    const eventos = linhas
-      .map((linha) => {
-        const partes = linha.split("|");
-
-        if (partes.length < 3) {
-          console.error("Linha inválida no arquivo:", linha);
-          return null;
-        }
-
-        const [numero, nome, titulo, ...links] = partes;
-
-        return { numero, nome, titulo, links };
-      })
-      .filter(Boolean);
-
-    return eventos;
   } catch (error) {
-    console.error("Erro ao buscar o arquivo remoto:", error);
+    console.error("❌ Erro ao conectar com a API WordPress:", error.message);
     return [];
   }
 }
@@ -54,7 +54,7 @@ async function buscarEventos() {
 // ======================================================
 async function apresentarEvento(numeroEvento) {
   const eventos = await buscarEventos();
-  const evento = eventos.find((e) => e.numero === numeroEvento);
+  const evento = eventos.find((e) => e.numero === String(numeroEvento));
 
   if (!evento) {
     return "Evento não encontrado. Verifique o número digitado!";
@@ -62,26 +62,22 @@ async function apresentarEvento(numeroEvento) {
 
   let resposta = `🎉 *${evento.titulo}*\n\n`;
 
-  if (evento.links.length === 0) {
-    resposta += "Nenhum link disponível para este evento.\n\n";
+  if (!evento.links || evento.links.length === 0) {
+    resposta += "Nenhum link disponível para este evento no momento.\n\n";
+  } else {
+    for (const link of evento.links) {
+      resposta += `📁 *${link.nome}*\n`;
+      resposta += `🔗 ${link.link}\n\n`;
+    }
   }
 
-  for (let i = 0; i < evento.links.length; i += 2) {
-    const link1 = evento.links[i];
-    const link2 = evento.links[i + 1];
-
-    if (link1) resposta += `${link1}\n\n`;
-    if (link2) resposta += `${link2}\n\n`;
-  }
-
-  resposta += `Siga a nossa página✨ 
-🚨 *Instagram PhotoMusic* 
-https://instagram.com/photomusicproducoes 
-
-[*Link para avaliação no Google*] 
-https://g.page/r/CVcwPOqAtId5EBM/review 
-
-Muitíssimo obrigado🥳`;
+  resposta +=
+    `Siga a nossa página✨ \n` +
+    `🚨 *Instagram PhotoMusic* \n` +
+    `https://instagram.com/photomusicproducoes \n\n` +
+    `[*Link para avaliação no Google*] \n` +
+    `https://g.page/r/CVcwPOqAtId5EBM/review \n\n` +
+    `Muitíssimo obrigado🥳`;
 
   return resposta;
 }
@@ -101,14 +97,15 @@ async function fluxoEventos(chatId, session) {
     return;
   }
 
+  // Se só há 1 evento, apresenta direto sem pedir número
   if (eventos.length === 1) {
     await sendTyping(chatId);
     await sendText(chatId, await apresentarEvento(eventos[0].numero));
-
     session.step = "aguardando_opcao";
     return;
   }
 
+  // Mais de 1 evento — monta menu de escolha
   let mensagem = "Qual evento você está participando? Digite apenas o número:\n\n";
 
   eventos.forEach((e) => {

@@ -4,6 +4,15 @@
 🎯 COMANDOS DE CONTROLE
 ========================================================
 
+RETOMAR ESPECIAL 
+retomarespecial 21 967082501
+Cria SESSÃO para este número com ativoLocal = false
+Numero pausadoespecial volta a receber msg do bot
+
+PAUSAR ESPECIAL
+pausarespecial 21 99999-8888
+Deleta SESSÃO para este número (volta ao padrão: pausado especial)
+
 PAUSAR ATENDIMENTO
 ------------------
 Responda citando a mensagem do cliente e envie:

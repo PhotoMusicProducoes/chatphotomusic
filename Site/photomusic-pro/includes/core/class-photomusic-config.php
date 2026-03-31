@@ -8,6 +8,28 @@ class PhotoMusic_Config {
     public static function init() {
         add_action('admin_init', [__CLASS__, 'register_settings']);
         add_action('admin_post_pm_salvar_config', [__CLASS__, 'salvar']);
+        add_action('admin_post_pm_regenerar_api_key', [__CLASS__, 'regenerar_api_key']);
+    }
+
+    /* ============================================================
+       REGENERA A CHAVE DE API DO CHATBOT
+    ============================================================ */
+    public static function regenerar_api_key() {
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Sem permissão.');
+        }
+
+        check_admin_referer('pm_regenerar_api_key');
+
+        $nova_chave = wp_generate_password(32, false);
+        update_option('pm_chatbot_api_key', $nova_chave);
+
+        wp_redirect(add_query_arg([
+            'page'        => 'photomusic-config',
+            'key_renewed' => 1,
+        ], admin_url('admin.php')));
+        exit;
     }
 
     /* ============================================================
@@ -88,7 +110,16 @@ class PhotoMusic_Config {
 
             <?php if (!empty($_GET['saved'])): ?>
                 <div class="notice notice-success is-dismissible">
-                    <p><strong>Configurações salvas com sucesso.</strong></p>
+                    <p><strong>✅ Configurações salvas com sucesso.</strong></p>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($_GET['key_renewed'])): ?>
+                <div class="notice notice-warning is-dismissible">
+                    <p>
+                        <strong>🔄 Nova chave gerada.</strong>
+                        Atualize o <code>PM_API_KEY</code> no arquivo <code>.env</code> do servidor do ChatBot e reinicie o processo.
+                    </p>
                 </div>
             <?php endif; ?>
 
@@ -289,6 +320,76 @@ class PhotoMusic_Config {
 
                 <?php submit_button('Salvar Configurações'); ?>
 
+            </form>
+
+            <!-- ============================================
+                 CHAVE DE API DO CHATBOT
+            ============================================ -->
+            <hr>
+            <h2>🤖 Integração ChatBot</h2>
+            <p class="description">
+                Esta chave é usada pelo ChatBot (Node.js) para autenticar na API WordPress.
+                Adicione no arquivo <code>.env</code> do servidor do ChatBot.
+            </p>
+            <?php
+            $api_key = get_option('pm_chatbot_api_key', '');
+            if (empty($api_key)) {
+                $api_key = wp_generate_password(32, false);
+                update_option('pm_chatbot_api_key', $api_key);
+            }
+            ?>
+            <table class="widefat" style="max-width:680px; margin-bottom:20px;">
+                <tr>
+                    <th style="width:200px;">Variável no <code>.env</code></th>
+                    <td><code>PM_API_KEY</code></td>
+                </tr>
+                <tr>
+                    <th>Chave</th>
+                    <td>
+                        <code id="pm-api-key-value" style="
+                            display:inline-block;
+                            background:#f0f0f1;
+                            padding:6px 12px;
+                            border-radius:4px;
+                            font-size:14px;
+                            letter-spacing:1px;
+                            user-select:all;
+                        "><?php echo esc_html($api_key); ?></code>
+                        &nbsp;
+                        <button type="button" class="button"
+                            onclick="navigator.clipboard.writeText('<?php echo esc_js($api_key); ?>').then(function(){ this.textContent='✅ Copiado!'; setTimeout(()=>{ this.textContent='📋 Copiar'; },2000); }.bind(this))">
+                            📋 Copiar
+                        </button>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Linha completa para o <code>.env</code></th>
+                    <td>
+                        <code id="pm-env-line">PM_API_KEY=<?php echo esc_html($api_key); ?></code>
+                        &nbsp;
+                        <button type="button" class="button"
+                            onclick="navigator.clipboard.writeText('PM_API_KEY=<?php echo esc_js($api_key); ?>').then(function(){ this.textContent='✅ Copiado!'; setTimeout(()=>{ this.textContent='📋 Copiar linha'; },2000); }.bind(this))">
+                            📋 Copiar linha
+                        </button>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Endpoint ChatBot</th>
+                    <td>
+                        <code><?php echo esc_html(home_url('/wp-json/photomusic/v1/eventos-chatbot')); ?></code>
+                    </td>
+                </tr>
+            </table>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;">
+                <?php wp_nonce_field('pm_regenerar_api_key'); ?>
+                <input type="hidden" name="action" value="pm_regenerar_api_key">
+                <button type="submit" class="button button-secondary"
+                    onclick="return confirm('Atenção: ao regenerar a chave, o ChatBot vai parar de funcionar até você atualizar o .env no servidor. Deseja continuar?')">
+                    🔄 Regenerar chave
+                </button>
+                <p class="description" style="margin-top:6px;">
+                    Use somente se a chave atual for comprometida. Lembre de atualizar o <code>.env</code> no servidor do ChatBot e reiniciá-lo.
+                </p>
             </form>
 
             <!-- ============================================

@@ -1068,6 +1068,26 @@ class PhotoMusic_Installer {
         ");
 
         /* ============================================================
+           PM_EVENTOS — flag de visibilidade no ChatBot
+        ============================================================ */
+        $tbl_eventos = $wpdb->prefix . 'pm_eventos';
+
+        $col = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_eventos}` LIKE 'chatbot_ativo'");
+        if (empty($col)) {
+            $wpdb->query(
+                "ALTER TABLE `{$tbl_eventos}`
+                 ADD COLUMN `chatbot_ativo` TINYINT(1) NOT NULL DEFAULT 0
+                 COMMENT 'Controla se o evento aparece no menu ChatBot (independente de data)'"
+            );
+        }
+
+        // Índice para consulta rápida do ChatBot
+        $idx = $wpdb->get_results("SHOW INDEX FROM `{$tbl_eventos}` WHERE Key_name = 'idx_chatbot_ativo'");
+        if (empty($idx)) {
+            $wpdb->query("ALTER TABLE `{$tbl_eventos}` ADD INDEX `idx_chatbot_ativo` (`chatbot_ativo`)");
+        }
+
+        /* ============================================================
            ACEITES DO CONVIDADO — colunas de segurança e token
         ============================================================ */
         $tbl_aceites = $wpdb->prefix . 'pm_aceites_evento';

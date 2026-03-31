@@ -14,7 +14,7 @@ class PhotoMusic_Eventos_API {
     ============================================================ */
     public static function register_routes() {
 
-        // Eventos de hoje (ChatBot)
+        // Eventos de hoje (ChatBot — legado)
         register_rest_route('photomusic/v1', '/eventos-hoje', [
             'methods'             => 'GET',
             'callback'            => [__CLASS__, 'get_eventos_hoje'],
@@ -25,6 +25,13 @@ class PhotoMusic_Eventos_API {
         register_rest_route('photomusic/v1', '/eventos', [
             'methods'             => 'GET',
             'callback'            => [__CLASS__, 'get_eventos'],
+            'permission_callback' => [__CLASS__, 'check_api_key'],
+        ]);
+
+        // ✅ NOVO — Eventos ativados para o ChatBot (sem filtro de data)
+        register_rest_route('photomusic/v1', '/eventos-chatbot', [
+            'methods'             => 'GET',
+            'callback'            => [__CLASS__, 'get_eventos_chatbot'],
             'permission_callback' => [__CLASS__, 'check_api_key'],
         ]);
     }
@@ -149,6 +156,95 @@ class PhotoMusic_Eventos_API {
                 'horario_inicio' => substr($evento->horario_inicio ?? '', 0, 5),
                 'link_aceite'    => $link_aceite,
                 'servicos'       => $links_servicos,
+            ];
+        }
+
+        return rest_ensure_response($resultado);
+    }
+
+    /* ============================================================
+       GET /wp-json/photomusic/v1/eventos-chatbot
+       -------------------------------------------------------
+       Retorna todos os eventos com chatbot_ativo = 1,
+       independente da data — usado pelo ChatBot para montar
+       o menu "Baixar minha foto".
+
+       Regras:
+       - status_evento = 'ativo'      (evento não foi desativado)
+       - chatbot_ativo = 1            (flag de visibilidade no bot)
+       - Ordena por data_evento DESC  (mais recentes primeiro)
+
+       Links retornados:
+       - links de pm_event_services (status_servico = 'ativo')
+       - fallback: link_galeria_convidado do evento
+    ============================================================ */
+    public static function get_eventos_chatbot(WP_REST_Request $request) {
+        global $wpdb;
+
+        $eventos = $wpdb->get_results(
+            "SELECT id, motivo_evento, codigo_interno, data_evento,
+                    horario_inicio, link_galeria_convidado, link_galeria_contratante
+             FROM {$wpdb->prefix}pm_eventos
+             WHERE status_evento = 'ativo'
+               AND chatbot_ativo = 1
+             ORDER BY data_evento DESC, id DESC"
+        );
+
+        if (empty($eventos)) {
+            return rest_ensure_response([]);
+        }
+
+        $resultado = [];
+
+        foreach ($eventos as $i => $evento) {
+
+            /* --------------------------------------------------
+               Serviços com links individuais
+            -------------------------------------------------- */
+            $servicos = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, nome_servico, tipo, link_convidado, link_contratante
+                 FROM {$wpdb->prefix}pm_event_services
+                 WHERE id_evento = %d
+                   AND status_servico = 'ativo'
+                   AND (link_convidado IS NOT NULL AND link_convidado != '')
+                 ORDER BY id ASC",
+                $evento->id
+            ));
+
+            $links = [];
+
+            foreach ($servicos as $s) {
+                $links[] = [
+                    'nome' => $s->nome_servico,
+                    'tipo' => $s->tipo,
+                    'link' => $s->link_convidado, // link único — mesmo para convidado e contratante
+                ];
+            }
+
+            /* --------------------------------------------------
+               Fallback: link único no campo do evento
+            -------------------------------------------------- */
+            if (empty($links) && !empty($evento->link_galeria_convidado)) {
+                $links[] = [
+                    'nome' => 'Galeria',
+                    'tipo' => 'foto',
+                    'link' => $evento->link_galeria_convidado,
+                ];
+            }
+
+            // Monta data formatada para o título
+            $data_fmt = $evento->data_evento
+                ? date('d/m/Y', strtotime($evento->data_evento))
+                : '';
+
+            $resultado[] = [
+                'id'             => (int) $evento->id,
+                'numero'         => (string) ($i + 1),
+                'nome'           => $evento->motivo_evento,
+                'titulo'         => $evento->motivo_evento . ($data_fmt ? " — {$data_fmt}" : ''),
+                'codigo_interno' => $evento->codigo_interno,
+                'data'           => $evento->data_evento,
+                'links'          => $links,
             ];
         }
 

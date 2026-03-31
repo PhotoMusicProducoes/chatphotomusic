@@ -19,6 +19,11 @@ const urlBase1 = "https://photomusic.com.br/wp-content/uploads/2025/03/";
 const urlBase2 = "https://photomusic.com.br/wp-content/uploads/2025/04/";
 const urlBase3 = "https://photomusic.com.br/wp-content/uploads/2026/02/";
 
+// API WordPress — PhotoMusic Pro
+// Adicione no .env:  PM_API_KEY=<chave gerada pelo plugin em Configurações>
+const PM_API_BASE = process.env.PM_API_BASE || "https://photomusic.com.br/wp-json/photomusic/v1";
+const PM_API_KEY  = process.env.PM_API_KEY  || "";
+
 module.exports = {
   INSTANCE_ID,
   TOKEN,
@@ -27,5 +32,7 @@ module.exports = {
   urlBase,
   urlBase1,
   urlBase2,
-  urlBase3
+  urlBase3,
+  PM_API_BASE,
+  PM_API_KEY,
 };

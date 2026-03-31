@@ -462,6 +462,46 @@ class PhotoMusic_Events {
                 <h3>Endereço do Local</h3>
                 <?php self::render_campos_endereco('local', $evento, $estados, true); ?>
 
+                <!-- ============================================
+                     CHATBOT — LINKS DE GALERIA
+                ============================================ -->
+                <h2>📱 ChatBot — Links de Galeria</h2>
+                <p class="description" style="margin-bottom:12px;">
+                    Configure os links das fotos/vídeos. Ative o <strong>toggle</strong> para que este evento
+                    apareça no menu <em>"Baixar minha foto"</em> do ChatBot. Pode ser ativado a qualquer momento,
+                    inclusive para eventos antigos.
+                </p>
+                <table class="form-table">
+                    <tr>
+                        <th><label>Visível no ChatBot</label></th>
+                        <td>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                                <input type="checkbox" name="chatbot_ativo" value="1"
+                                    <?php checked(intval($evento->chatbot_ativo ?? 0), 1); ?>
+                                    style="width:18px;height:18px;">
+                                <strong>Ativar este evento no ChatBot</strong>
+                            </label>
+                            <p class="description">
+                                Quando marcado, o evento aparece no menu do ChatBot independente da data.
+                                Desmarque para ocultar (ex: fotos ainda não entregues).
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label>Link da Galeria</label></th>
+                        <td>
+                            <input type="url" name="link_galeria_convidado" class="large-text"
+                                   value="<?php echo esc_attr($evento->link_galeria_convidado ?? ''); ?>"
+                                   placeholder="https://fotoshare.com/... ou Google Drive, Dropbox etc.">
+                            <p class="description">
+                                Link único para convidados e contratante. &nbsp;
+                                <strong>Convidados</strong> acessam pelo celular (via ChatBot/WhatsApp). &nbsp;
+                                <strong>Contratante</strong> acessa pelo celular e pelo computador.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
                 <?php submit_button($acao === 'novo' ? 'Criar Evento' : 'Salvar Alterações'); ?>
             </form>
         </div>
@@ -783,6 +823,11 @@ class PhotoMusic_Events {
             'contato_salao'          => sanitize_text_field($_POST['contato_salao'] ?? '') ?: null,
             'contato_cerimonialista' => sanitize_text_field($_POST['contato_cerimonialista'] ?? '') ?: null,
             'contato_responsavel'    => sanitize_text_field($_POST['contato_responsavel'] ?? '') ?: null,
+
+            // ChatBot — Link único da galeria + visibilidade
+            // O mesmo link serve para convidados (celular) e contratante (celular + computador)
+            'chatbot_ativo'          => isset($_POST['chatbot_ativo']) ? 1 : 0,
+            'link_galeria_convidado' => esc_url_raw(trim($_POST['link_galeria_convidado'] ?? '')) ?: null,
         ];
 
         if ($id_evento > 0) {
