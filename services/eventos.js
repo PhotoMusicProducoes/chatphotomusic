@@ -1,10 +1,43 @@
 // services/eventos.js
 // Funções para fluxo de download de fotos de eventos
-// Versão 2.0 — lê da API WordPress (PhotoMusic Pro) em vez do arquivo .txt
+// Versão 2.1 — lê da API WordPress (PhotoMusic Pro), N links por serviço
 
 const fetch = require("node-fetch");
 const { sendText, sendTyping } = require("../utils/index.js");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
+
+// Número do ChatBot — aparece no cabeçalho da mensagem para o cliente salvar
+const NUMERO_CHATBOT = "21964428172";
+
+// ======================================================
+// ÍCONE E TEXTO POR TIPO DE SERVIÇO
+// Detecta pelo nome do serviço cadastrado no WordPress
+// ======================================================
+function formatarLinhaServico(nomeServico, url) {
+  const nome = (nomeServico || "").toLowerCase();
+
+  if (nome.includes("360")) {
+    return `🎥 Baixe o Vídeo da *${nomeServico}*👇!\n${url}`;
+  }
+  if (nome.includes("paparazzi") || nome.includes("paparazzi digital")) {
+    return `📸 Baixe a *${nomeServico}*👇!\n${url}`;
+  }
+  if (nome.includes("cabine") || nome.includes("foto cabine")) {
+    return `📸 Baixe a *${nomeServico}*👇!\n${url}`;
+  }
+  if (nome.includes("vídeo") || nome.includes("video")) {
+    return `🎥 Baixe o *${nomeServico}*👇!\n${url}`;
+  }
+  if (nome.includes("gif")) {
+    return `🎞️ Baixe o *${nomeServico}*👇!\n${url}`;
+  }
+  if (nome.includes("fotografia") || nome.includes("foto")) {
+    return `📸 Baixe as *${nomeServico}*👇!\n${url}`;
+  }
+
+  // Genérico
+  return `📁 Acesse *${nomeServico}*👇!\n${url}`;
+}
 
 // ======================================================
 // BUSCA OS EVENTOS ATIVOS NO WORDPRESS
@@ -34,12 +67,11 @@ async function buscarEventos() {
       return [];
     }
 
-    // Normaliza para o formato interno usado pelo fluxo
     return dados.map((e) => ({
-      numero: e.numero,        // "1", "2", "3"...
-      nome:   e.nome,          // nome do evento (ex: "Casamento João e Maria")
-      titulo: e.titulo,        // nome + data formatada
-      links:  e.links || [],   // array de { nome, tipo, link }
+      numero: e.numero,       // "1", "2", "3"...
+      nome:   e.nome,         // nome do evento
+      titulo: e.titulo,       // nome + data formatada
+      links:  e.links || [],  // array de { nome, link }
       id:     e.id,
     }));
 
@@ -51,6 +83,7 @@ async function buscarEventos() {
 
 // ======================================================
 // MONTA A MENSAGEM DO EVENTO ESCOLHIDO
+// Formato baseado no template real da PhotoMusic
 // ======================================================
 async function apresentarEvento(numeroEvento) {
   const eventos = await buscarEventos();
@@ -60,18 +93,41 @@ async function apresentarEvento(numeroEvento) {
     return "Evento não encontrado. Verifique o número digitado!";
   }
 
-  let resposta = `🎉 *${evento.titulo}*\n\n`;
+  // Cabeçalho
+  let resposta =
+    `🎉 *ATENÇÃO SALVE ESTE CONTATO ${NUMERO_CHATBOT}*\n\n` +
+    `*Bem-vindos ao ${evento.titulo}* 🥳\n\n`;
 
+  // Links por serviço
   if (!evento.links || evento.links.length === 0) {
     resposta += "Nenhum link disponível para este evento no momento.\n\n";
   } else {
     for (const link of evento.links) {
-      resposta += `📁 *${link.nome}*\n`;
-      resposta += `🔗 ${link.link}\n\n`;
+      resposta += formatarLinhaServico(link.nome, link.link) + "\n\n";
     }
   }
 
+  // Social + avaliação
   resposta +=
+    `Siga a nossa página✨ \n` +
+    `🚨 *Instagram PhotoMusic* \n` +
+    `https://instagram.com/photomusicproducoes \n\n` +
+    `[*Link para avaliação no Google*] \n` +
+    `https://g.page/r/CVcwPOqAtId5EBM/review \n\n`;
+
+  // Passo a passo para baixar
+  resposta +=
+    `*Passo a Passo para baixar a foto 🖼️:*\n\n` +
+    `*1º* Salve o Contato ${NUMERO_CHATBOT};\n` +
+    `*2º* Clique no link acima;\n` +
+    `*3º* Procure seu vídeo ou sua foto;\n` +
+    `*4º* Clique no vídeo ou na foto;\n` +
+    `*5º* Clique na seta ⬇️ acima do vídeo ou da foto 🖼️ para baixar cada uma, separadamente.\n\n` +
+    `*OBS:* Ao clicar na seta ⬇️ acima da foto 🖼️ ou do GIF Animado 🎞️, ` +
+    `no *Sistema Android* a foto 🖼️ e o GIF 🎞️ serão salvos direto na galeria, ` +
+    `já no *Iphone*, para salvar a foto clique em salvar imagem (a foto 🖼️ será salva na galeria) ` +
+    `ou em salvar arquivo (a foto 🖼️ será salva em Arquivo), ` +
+    `para salvar o GIF Animado 🎞️ clique em salvar vídeo.\n\n` +
     `Siga a nossa página✨ \n` +
     `🚨 *Instagram PhotoMusic* \n` +
     `https://instagram.com/photomusicproducoes \n\n` +
@@ -97,7 +153,7 @@ async function fluxoEventos(chatId, session) {
     return;
   }
 
-  // Se só há 1 evento, apresenta direto sem pedir número
+  // 1 único evento ativo → vai direto sem pedir número
   if (eventos.length === 1) {
     await sendTyping(chatId);
     await sendText(chatId, await apresentarEvento(eventos[0].numero));
@@ -105,7 +161,7 @@ async function fluxoEventos(chatId, session) {
     return;
   }
 
-  // Mais de 1 evento — monta menu de escolha
+  // Mais de 1 evento → monta menu de escolha
   let mensagem = "Qual evento você está participando? Digite apenas o número:\n\n";
 
   eventos.forEach((e) => {

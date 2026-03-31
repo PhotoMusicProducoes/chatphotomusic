@@ -467,9 +467,9 @@ class PhotoMusic_Events {
                 ============================================ -->
                 <h2>📱 ChatBot — Links de Galeria</h2>
                 <p class="description" style="margin-bottom:12px;">
-                    Configure os links das fotos/vídeos. Ative o <strong>toggle</strong> para que este evento
-                    apareça no menu <em>"Baixar minha foto"</em> do ChatBot. Pode ser ativado a qualquer momento,
-                    inclusive para eventos antigos.
+                    Ative o <strong>toggle</strong> para que este evento apareça no menu
+                    <em>"Baixar minha foto"</em> do ChatBot. Os links são cadastrados
+                    <strong>por serviço</strong> na página de serviços do evento.
                 </p>
                 <table class="form-table">
                     <tr>
@@ -487,20 +487,69 @@ class PhotoMusic_Events {
                             </p>
                         </td>
                     </tr>
-                    <tr>
-                        <th><label>Link da Galeria</label></th>
-                        <td>
-                            <input type="url" name="link_galeria_convidado" class="large-text"
-                                   value="<?php echo esc_attr($evento->link_galeria_convidado ?? ''); ?>"
-                                   placeholder="https://fotoshare.com/... ou Google Drive, Dropbox etc.">
-                            <p class="description">
-                                Link único para convidados e contratante. &nbsp;
-                                <strong>Convidados</strong> acessam pelo celular (via ChatBot/WhatsApp). &nbsp;
-                                <strong>Contratante</strong> acessa pelo celular e pelo computador.
-                            </p>
-                        </td>
-                    </tr>
                 </table>
+
+                <?php if ($id_evento > 0 && class_exists('PhotoMusic_Servicos')): ?>
+                    <?php $servicos_evento = PhotoMusic_Servicos::get_evento_servicos($id_evento); ?>
+
+                    <?php if (!empty($servicos_evento)): ?>
+                        <table class="widefat striped" style="max-width:780px; margin-top:12px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:220px;">Serviço</th>
+                                    <th>Link da Galeria</th>
+                                    <th style="width:80px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            <?php foreach ($servicos_evento as $se): ?>
+                                <tr>
+                                    <td>
+                                        <strong><?php echo esc_html($se['nome_servico'] ?? '—'); ?></strong>
+                                        <?php if (!empty($se['observacoes']) && strpos($se['observacoes'], 'Brinde') !== false): ?>
+                                            <br><span style="color:#2a7a2a; font-size:11px;">🎁 Brinde</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($se['link_galeria'])): ?>
+                                            <a href="<?php echo esc_url($se['link_galeria']); ?>" target="_blank"
+                                               style="color:#2a7a2a;">
+                                                ✅ <?php echo esc_html(mb_strimwidth($se['link_galeria'], 0, 55, '...')); ?>
+                                            </a>
+                                        <?php else: ?>
+                                            <span style="color:#999; font-style:italic;">— sem link cadastrado —</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <a href="<?php echo esc_url(add_query_arg([
+                                            'page'   => 'photomusic-add-servico',
+                                            'id'     => $id_evento,
+                                            'editar' => $se['id'],
+                                        ], admin_url('admin.php'))); ?>"
+                                           class="button button-small">✏️ Link</a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <p class="description" style="margin-top:8px;">
+                            Para alterar um link, clique em <strong>✏️ Link</strong> ao lado do serviço.
+                        </p>
+
+                    <?php else: ?>
+                        <p style="margin-top:8px; color:#666;">
+                            ⚠️ Nenhum serviço adicionado ainda.
+                            <a href="<?php echo esc_url(add_query_arg(['page' => 'photomusic-add-servico', 'id' => $id_evento], admin_url('admin.php'))); ?>">
+                                + Adicionar serviço
+                            </a>
+                        </p>
+                    <?php endif; ?>
+
+                <?php else: ?>
+                    <p style="margin-top:8px; color:#666; font-style:italic;">
+                        Salve o evento primeiro, depois adicione os serviços para cadastrar os links da galeria.
+                    </p>
+                <?php endif; ?>
 
                 <?php submit_button($acao === 'novo' ? 'Criar Evento' : 'Salvar Alterações'); ?>
             </form>

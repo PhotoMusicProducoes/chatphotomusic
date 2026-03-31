@@ -527,20 +527,37 @@ class PhotoMusic_Servicos {
                         <input type="hidden" name="action" value="pm_add_evento_servico">
                         <input type="hidden" name="id_evento" value="<?php echo $id_evento; ?>">
                         <input type="hidden" name="id_evento_servico_editar" value="<?php echo $id_editar; ?>">
+                        <!-- Brinde automático: preenchido via JS quando Plataforma 360 é selecionada -->
+                        <input type="hidden" name="add_brinde_paparazzi" id="add-brinde-paparazzi" value="0">
 
                         <table class="form-table">
                             <tr>
                                 <th><label>Serviço *</label></th>
                                 <td>
-                                    <select name="id_servico" id="select-servico" required onchange="carregarPacotes(this.value)">
+                                    <select name="id_servico" id="select-servico" required onchange="carregarPacotes(this.value); verificarBrinde(this);">
                                         <option value="">— Selecione —</option>
                                         <?php foreach ($servicos as $s): ?>
                                             <option value="<?php echo $s['id']; ?>"
+                                                data-slug="<?php echo esc_attr($s['slug']); ?>"
+                                                data-nome="<?php echo esc_attr($s['nome']); ?>"
                                                 <?php selected($se_editar['id_servico'] ?? '', $s['id']); ?>>
                                                 <?php echo esc_html($s['nome']); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
+                                    <!-- Aviso de brinde — exibido via JS -->
+                                    <div id="aviso-brinde" style="
+                                        display:none;
+                                        margin-top:8px;
+                                        padding:8px 12px;
+                                        background:#f0fff0;
+                                        border-left:4px solid #2a7a2a;
+                                        border-radius:3px;
+                                        font-size:13px;
+                                        color:#2a7a2a;">
+                                        🎁 <strong>Foto Paparazzi Digital</strong> será incluída automaticamente como brinde.
+                                        Se o cliente não quiser, remova após salvar.
+                                    </div>
                                 </td>
                             </tr>
                             <tr>
@@ -594,12 +611,25 @@ class PhotoMusic_Servicos {
                                 <th><label>Observações</label></th>
                                 <td>
                                     <textarea name="observacoes" rows="3" class="large-text"
-                                              placeholder="Informações adicionais sobre este serviço no evento..."></textarea>
+                                              placeholder="Informações adicionais sobre este serviço no evento..."><?php echo esc_textarea($se_editar['observacoes'] ?? ''); ?></textarea>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label>🔗 Link da Galeria</label></th>
+                                <td>
+                                    <input type="url" name="link_galeria" class="large-text"
+                                           value="<?php echo esc_attr($se_editar['link_galeria'] ?? ''); ?>"
+                                           placeholder="https://fotoshare.co/... ou Google Drive, Dropbox etc.">
+                                    <p class="description">
+                                        Link de acesso às fotos/vídeos <strong>deste serviço</strong>.
+                                        Será exibido no ChatBot quando o evento estiver ativado.
+                                        Pode ser preenchido agora ou depois que as fotos estiverem prontas.
+                                    </p>
                                 </td>
                             </tr>
                         </table>
 
-                        <?php submit_button('Adicionar Serviço ao Evento'); ?>
+                        <?php submit_button($id_editar > 0 ? 'Salvar Alterações' : 'Adicionar Serviço ao Evento'); ?>
                     </form>
 
                     <?php endif; ?>
@@ -614,9 +644,11 @@ class PhotoMusic_Servicos {
                     <?php else: ?>
 
                         <?php
+                        // ── Calcula total (loop simples, sem envolver a tabela)
                         $total = 0;
-                        foreach ($servicos_evento as $se):
+                        foreach ($servicos_evento as $se) {
                             $total += floatval($se['valor_final']);
+                        }
                         ?>
                         <table class="widefat striped">
                             <thead>
@@ -632,8 +664,13 @@ class PhotoMusic_Servicos {
                             </thead>
                             <tbody>
                             <?php foreach ($servicos_evento as $se): ?>
-                                <tr>
-                                    <td><strong><?php echo esc_html($se['nome_servico'] ?? $se['id_servico']); ?></strong></td>
+                                <tr <?php echo !empty($se['observacoes']) && strpos($se['observacoes'], 'Brinde') !== false ? 'style="background:#f0fff0;"' : ''; ?>>
+                                    <td>
+                                        <strong><?php echo esc_html($se['nome_servico'] ?? $se['id_servico']); ?></strong>
+                                        <?php if (!empty($se['observacoes']) && strpos($se['observacoes'], 'Brinde') !== false): ?>
+                                            <br><span style="color:#2a7a2a; font-size:11px;">🎁 Brinde</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><?php echo esc_html($se['nome_pacote'] ?? '—'); ?></td>
                                     <td><?php echo intval($se['horas_contratadas']); ?>h</td>
                                     <td>R$ <?php echo number_format(floatval($se['valor_base']), 2, ',', '.'); ?></td>
@@ -668,7 +705,7 @@ class PhotoMusic_Servicos {
                                 </tr>
                             </tfoot>
                         </table>
-                        <?php endforeach; ?>
+
                     <?php endif; ?>
                 </div>
 
@@ -695,6 +732,17 @@ class PhotoMusic_Servicos {
             }
             echo json_encode($todos_pacotes);
         ?>;
+
+        // ── Verifica se o serviço selecionado é Plataforma 360 e ativa o brinde
+        function verificarBrinde(select) {
+            var opt    = select.options[select.selectedIndex];
+            var slug   = (opt ? opt.dataset.slug : '') || '';
+            var nome   = (opt ? opt.dataset.nome  : '') || '';
+            var eh360  = slug.indexOf('360') !== -1 || nome.toLowerCase().indexOf('360') !== -1;
+
+            document.getElementById('aviso-brinde').style.display     = eh360 ? '' : 'none';
+            document.getElementById('add-brinde-paparazzi').value     = eh360 ? '1' : '0';
+        }
 
         function carregarPacotes(id_servico) {
             var select = document.getElementById('select-pacote');
@@ -846,6 +894,7 @@ class PhotoMusic_Servicos {
             'valor_adicional'   => floatval($_POST['valor_adicional'] ?? 0),
             'valor_final'       => floatval($_POST['valor_final'] ?? 0),
             'observacoes'       => sanitize_textarea_field($_POST['observacoes'] ?? ''),
+            'link_galeria'      => esc_url_raw(trim($_POST['link_galeria'] ?? '')) ?: null,
         ];
 
         if ($id_se_editar > 0) {
@@ -858,6 +907,46 @@ class PhotoMusic_Servicos {
         if (class_exists('PhotoMusic_Logs')) {
             PhotoMusic_Logs::add('evento_servico_adicionado', null, $id_evento, null,
                 'Serviço adicionado ao evento.');
+        }
+
+        /* ============================================================
+           BRINDE AUTOMÁTICO: Plataforma 360 → Foto Paparazzi Digital
+           - Só executa ao ADICIONAR (não ao editar)
+           - Só se o JS sinalizou add_brinde_paparazzi = 1
+           - Só se Paparazzi ainda NÃO existe no evento
+        ============================================================ */
+        if ($id_se_editar === 0 && intval($_POST['add_brinde_paparazzi'] ?? 0) === 1) {
+
+            $srv_paparazzi = $wpdb->get_row(
+                "SELECT id FROM {$wpdb->prefix}pm_servicos
+                 WHERE (slug LIKE '%paparazzi%' OR nome LIKE '%Paparazzi%')
+                   AND ativo = 1
+                 ORDER BY id ASC LIMIT 1"
+            );
+
+            if ($srv_paparazzi) {
+
+                $ja_existe = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$wpdb->prefix}pm_eventos_servicos
+                     WHERE id_evento = %d AND id_servico = %d",
+                    $id_evento,
+                    $srv_paparazzi->id
+                ));
+
+                if (!$ja_existe) {
+                    $wpdb->insert($table, [
+                        'id_evento'         => $id_evento,
+                        'id_servico'        => $srv_paparazzi->id,
+                        'id_pacote'         => 0,
+                        'horas_contratadas' => intval($_POST['horas_contratadas'] ?? 4),
+                        'fotos_contratadas' => 0,
+                        'valor_base'        => 0,
+                        'valor_adicional'   => 0,
+                        'valor_final'       => 0,
+                        'observacoes'       => '🎁 Brinde — incluído automaticamente com Plataforma 360°',
+                    ]);
+                }
+            }
         }
 
         $msg = $id_se_editar > 0 ? 'updated=1' : 'saved=1';

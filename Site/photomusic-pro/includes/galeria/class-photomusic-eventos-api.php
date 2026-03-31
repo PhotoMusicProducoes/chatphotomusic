@@ -182,8 +182,7 @@ class PhotoMusic_Eventos_API {
         global $wpdb;
 
         $eventos = $wpdb->get_results(
-            "SELECT id, motivo_evento, codigo_interno, data_evento,
-                    horario_inicio, link_galeria_convidado, link_galeria_contratante
+            "SELECT id, motivo_evento, codigo_interno, data_evento, horario_inicio
              FROM {$wpdb->prefix}pm_eventos
              WHERE status_evento = 'ativo'
                AND chatbot_ativo = 1
@@ -199,15 +198,20 @@ class PhotoMusic_Eventos_API {
         foreach ($eventos as $i => $evento) {
 
             /* --------------------------------------------------
-               Serviços com links individuais
+               Um evento pode ter N serviços, cada um com seu link.
+               Ex: Foto Cabine, Plataforma 360°, Foto Paparazzi,
+                   2x Foto Cabine + 1x Plataforma + 1x Paparazzi...
+               Lê de pm_eventos_servicos (link_galeria por serviço).
             -------------------------------------------------- */
             $servicos = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, nome_servico, tipo, link_convidado, link_contratante
-                 FROM {$wpdb->prefix}pm_event_services
-                 WHERE id_evento = %d
-                   AND status_servico = 'ativo'
-                   AND (link_convidado IS NOT NULL AND link_convidado != '')
-                 ORDER BY id ASC",
+                "SELECT es.id, s.nome AS nome_servico, s.slug AS slug_servico,
+                        es.link_galeria, es.observacoes
+                 FROM {$wpdb->prefix}pm_eventos_servicos es
+                 LEFT JOIN {$wpdb->prefix}pm_servicos s ON s.id = es.id_servico
+                 WHERE es.id_evento = %d
+                   AND es.link_galeria IS NOT NULL
+                   AND es.link_galeria != ''
+                 ORDER BY es.id ASC",
                 $evento->id
             ));
 
@@ -215,20 +219,8 @@ class PhotoMusic_Eventos_API {
 
             foreach ($servicos as $s) {
                 $links[] = [
-                    'nome' => $s->nome_servico,
-                    'tipo' => $s->tipo,
-                    'link' => $s->link_convidado, // link único — mesmo para convidado e contratante
-                ];
-            }
-
-            /* --------------------------------------------------
-               Fallback: link único no campo do evento
-            -------------------------------------------------- */
-            if (empty($links) && !empty($evento->link_galeria_convidado)) {
-                $links[] = [
-                    'nome' => 'Galeria',
-                    'tipo' => 'foto',
-                    'link' => $evento->link_galeria_convidado,
+                    'nome' => $s->nome_servico ?? 'Galeria',
+                    'link' => $s->link_galeria,
                 ];
             }
 

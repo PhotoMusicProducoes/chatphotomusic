@@ -1068,6 +1068,21 @@ class PhotoMusic_Installer {
         ");
 
         /* ============================================================
+           PM_EVENTOS_SERVICOS — link de galeria por serviço do evento
+        ============================================================ */
+        $tbl_es = $wpdb->prefix . 'pm_eventos_servicos';
+
+        $col = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_es}` LIKE 'link_galeria'");
+        if (empty($col)) {
+            $wpdb->query(
+                "ALTER TABLE `{$tbl_es}`
+                 ADD COLUMN `link_galeria` VARCHAR(500) NULL DEFAULT NULL
+                 COMMENT 'Link de acesso às fotos/vídeos deste serviço (Fotoshare, Drive etc.)'
+                 AFTER `observacoes`"
+            );
+        }
+
+        /* ============================================================
            PM_EVENTOS — flag de visibilidade no ChatBot
         ============================================================ */
         $tbl_eventos = $wpdb->prefix . 'pm_eventos';
