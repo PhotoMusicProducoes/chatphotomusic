@@ -157,9 +157,15 @@ function photomusic_pro_init_modules() {
    PhotoMusic_Painel_Contratante::init();
 
    // Endpoints da galeria
-   new PhotoMusic_Gallery_Endpoint();
-   new PhotoMusic_File_Endpoint();
-   new PhotoMusic_Aceite_Endpoint();
+   if (class_exists('PhotoMusic_Gallery_Endpoint')) {
+       new PhotoMusic_Gallery_Endpoint();
+   }
+   if (class_exists('PhotoMusic_File_Endpoint')) {
+       PhotoMusic_File_Endpoint::init();
+   }
+   if (class_exists('PhotoMusic_Aceite_Endpoint')) {
+       new PhotoMusic_Aceite_Endpoint();
+   }
 
    // Configurações
    PhotoMusic_Config::init();

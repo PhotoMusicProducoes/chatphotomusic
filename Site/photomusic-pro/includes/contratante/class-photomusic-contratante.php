@@ -162,7 +162,8 @@ class PhotoMusic_Contratante {
             return new WP_Error('token_vazio', 'Token do contratante não gerado. Edite o evento para gerar o token.');
         }
 
-        $link = home_url('/painel-contratante/?token=' . urlencode($token));
+        // Envia para o ponto de entrada — valida token, verifica termo, redireciona ao painel
+        $link = home_url('/acesso-do-contratante/?token=' . urlencode($token));
 
         $nome = $contratante->nome_fantasia
             ?? $contratante->nome

@@ -89,7 +89,10 @@ async function buscarEventos() {
 // MONTA A MENSAGEM DO EVENTO ESCOLHIDO
 // Formato baseado no template real da PhotoMusic
 // ======================================================
-async function apresentarEvento(numeroEvento) {
+// URL base da página de aceite
+const ACEITE_BASE_URL = "https://photomusic.com.br/aceite-de-fotos-e-videos/";
+
+async function apresentarEvento(numeroEvento, telefone = "") {
   const eventos = await buscarEventos();
   const evento = eventos.find((e) => e.numero === String(numeroEvento));
 
@@ -102,13 +105,22 @@ async function apresentarEvento(numeroEvento) {
     `🎉 *ATENÇÃO SALVE ESTE CONTATO ${NUMERO_CHATBOT}*\n\n` +
     `*Bem-vindos ao ${evento.titulo}* 🥳\n\n`;
 
-  // Links por serviço
-  if (!evento.links || evento.links.length === 0) {
-    resposta += "Nenhum link disponível para este evento no momento.\n\n";
-  } else {
+  // Monta link da página de aceite com telefone e id do evento pré-preenchidos
+  // Ao aceitar, o sistema registra o convidado e redireciona para a galeria no iframe
+  const telLimpo = (telefone || "").replace(/\D/g, "");
+  const urlAceite = evento.id
+    ? `${ACEITE_BASE_URL}?telefone=${telLimpo}&evento=${evento.id}`
+    : (evento.link_aceite || "");
+
+  if (urlAceite) {
+    resposta += `📸🎥 Clique no link abaixo para acessar suas fotos e vídeos👇!\n${urlAceite}\n\n`;
+  } else if (evento.links && evento.links.length > 0) {
+    // Fallback: evento sem id/codigo — envia links diretos
     for (const link of evento.links) {
       resposta += formatarLinhaServico(link.nome, link.link) + "\n\n";
     }
+  } else {
+    resposta += "Nenhum link disponível para este evento no momento.\n\n";
   }
 
   // Social + avaliação
@@ -160,7 +172,7 @@ async function fluxoEventos(chatId, session) {
   // 1 único evento ativo → vai direto sem pedir número
   if (eventos.length === 1) {
     await sendTyping(chatId);
-    await sendText(chatId, await apresentarEvento(eventos[0].numero));
+    await sendText(chatId, await apresentarEvento(eventos[0].numero, chatId));
     session.step = "aguardando_opcao";
     return;
   }

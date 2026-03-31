@@ -1047,7 +1047,8 @@ class PhotoMusic_Installer {
         /* ============================================================
         GALERIA — GARANTE TABELA DE LOG DE VISUALIZAÇÃO
         ============================================================ */
-        $tbl_views = $wpdb->prefix . 'pm_galeria_views';
+        $tbl_views      = $wpdb->prefix . 'pm_galeria_views';
+        $charset_collate = $wpdb->get_charset_collate();
 
         $wpdb->query("
             CREATE TABLE IF NOT EXISTS $tbl_views (

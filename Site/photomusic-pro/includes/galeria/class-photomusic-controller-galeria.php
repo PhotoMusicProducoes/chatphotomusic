@@ -24,8 +24,7 @@ class PhotoMusic_Galeria_Controller {
     ============================================================ */
     public function handle_request() {
 
-        // Correção: o nome correto da query var é "evento_slug"
-        $slug  = sanitize_text_field(get_query_var('evento_slug'));
+        $slug  = sanitize_text_field(get_query_var('pm_evento_slug'));
         $token = sanitize_text_field($_GET['token'] ?? '');
 
         if (!$slug || !$token) {
@@ -122,27 +121,20 @@ class PhotoMusic_Galeria_Controller {
         $id_evento      = $evento->id;
         $id_aceite      = $aceite->id;
         $aceite_nome    = $aceite->nome ?? '';
-        $link_fotoshare = $evento->link_galeria_convidado ?? ''; // fallback único
-
-        // Carrega serviços com links individuais (um evento pode ter vários)
+        // Carrega serviços com links individuais de pm_eventos_servicos
+        // (link_galeria salvo por serviço na página de Serviços do evento)
         $servicos_links = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT nome_servico, tipo, link_convidado
-             FROM {$this->wpdb->prefix}pm_event_services
-             WHERE id_evento = %d
-               AND status_servico = 'ativo'
-               AND (link_convidado IS NOT NULL AND link_convidado != '')
-             ORDER BY id ASC",
+            "SELECT s.nome AS nome_servico,
+                    s.slug AS tipo,
+                    es.link_galeria AS link_convidado
+             FROM {$this->wpdb->prefix}pm_eventos_servicos es
+             LEFT JOIN {$this->wpdb->prefix}pm_servicos s ON s.id = es.id_servico
+             WHERE es.id_evento = %d
+               AND es.link_galeria IS NOT NULL
+               AND es.link_galeria != ''
+             ORDER BY es.id ASC",
             $evento->id
         ));
-
-        // Se não há serviços individuais mas há link único, usa o fallback
-        if (empty($servicos_links) && !empty($link_fotoshare)) {
-            $fallback        = new stdClass();
-            $fallback->nome_servico  = 'Galeria';
-            $fallback->tipo          = 'foto';
-            $fallback->link_convidado = $link_fotoshare;
-            $servicos_links  = [$fallback];
-        }
 
         // ============================================================
         // 🔥 REGISTRA VISUALIZAÇÃO DOS SERVIÇOS

@@ -3,6 +3,8 @@
 
 if (!defined('ABSPATH')) exit;
 
+if (class_exists('PhotoMusic_Aceite_Endpoint')) return;
+
 class PhotoMusic_Aceite_Endpoint {
 
     private $wpdb;
@@ -108,10 +110,23 @@ class PhotoMusic_Aceite_Endpoint {
         ));
 
         if ($aceite_existente) {
+            // Reutiliza token já salvo
+            $token_salvo = $this->wpdb->get_var($this->wpdb->prepare(
+                "SELECT token_acesso FROM {$this->tbl_aceites_evento} WHERE id = %d",
+                $aceite_existente
+            ));
+            if (empty($token_salvo)) {
+                $token_salvo = $this->generate_token($idEvento, $aceite_existente);
+                $this->wpdb->update(
+                    $this->tbl_aceites_evento,
+                    ['token_acesso' => $token_salvo],
+                    ['id' => $aceite_existente]
+                );
+            }
             return [
                 'sucesso'  => true,
                 'mensagem' => 'Aceite já registrado.',
-                'redirect' => home_url("/galeria/{$evento->codigo_interno}/?token=" . $this->generate_token($idEvento, $aceite_existente))
+                'redirect' => home_url("/galeria-photomusic/?token={$token_salvo}")
             ];
         }
 
@@ -132,20 +147,19 @@ class PhotoMusic_Aceite_Endpoint {
         $id_aceite = $this->wpdb->insert_id;
 
         /* ============================================================
-           GERAR TOKEN
+           GERAR E SALVAR TOKEN NO BANCO
         ============================================================ */
         $token = $this->generate_token($idEvento, $id_aceite);
 
-        /* ============================================================
-           URL DE REDIRECIONAMENTO
-        ============================================================ */
-        $slug = $evento->codigo_interno;
-
-        $redirect = home_url("/galeria/{$slug}/?token={$token}");
+        $this->wpdb->update(
+            $this->tbl_aceites_evento,
+            ['token_acesso' => $token],
+            ['id' => $id_aceite]
+        );
 
         return [
             'sucesso'  => true,
-            'redirect' => $redirect
+            'redirect' => home_url("/galeria-photomusic/?token={$token}")
         ];
     }
 

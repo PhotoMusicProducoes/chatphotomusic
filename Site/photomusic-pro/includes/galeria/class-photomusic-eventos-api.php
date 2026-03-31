@@ -181,11 +181,14 @@ class PhotoMusic_Eventos_API {
     public static function get_eventos_chatbot(WP_REST_Request $request) {
         global $wpdb;
 
+        // O flag chatbot_ativo é o único controle de visibilidade no ChatBot.
+        // status_evento = 'desativado' ainda pode aparecer se o operador ativou
+        // o toggle explicitamente — confiamos no chatbot_ativo para isso.
         $eventos = $wpdb->get_results(
             "SELECT id, motivo_evento, codigo_interno, data_evento, horario_inicio
              FROM {$wpdb->prefix}pm_eventos
-             WHERE status_evento = 'ativo'
-               AND chatbot_ativo = 1
+             WHERE chatbot_ativo = 1
+               AND status_evento != 'desativado'
              ORDER BY data_evento DESC, id DESC"
         );
 
@@ -229,6 +232,11 @@ class PhotoMusic_Eventos_API {
                 ? date('d/m/Y', strtotime($evento->data_evento))
                 : '';
 
+            // Link da página de aceite (enviado pelo ChatBot)
+            $link_aceite = !empty($evento->codigo_interno)
+                ? home_url('/galeria/' . $evento->codigo_interno . '/aceite/')
+                : '';
+
             $resultado[] = [
                 'id'             => (int) $evento->id,
                 'numero'         => (string) ($i + 1),
@@ -236,6 +244,7 @@ class PhotoMusic_Eventos_API {
                 'titulo'         => $evento->motivo_evento . ($data_fmt ? " — {$data_fmt}" : ''),
                 'codigo_interno' => $evento->codigo_interno,
                 'data'           => $evento->data_evento,
+                'link_aceite'    => $link_aceite,
                 'links'          => $links,
             ];
         }

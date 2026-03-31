@@ -1368,7 +1368,7 @@ async function handleIncomingMessage(message) {
     }
 
     await sendTyping(chatId);
-    await sendText(chatId, await apresentarEvento(numero));
+    await sendText(chatId, await apresentarEvento(numero, chatId));
 
     // ✅ “Encerra” o atendimento do convidado:
     // volta pro menu, mas força que a PRÓXIMA mensagem dispare boas-vindas novamente
