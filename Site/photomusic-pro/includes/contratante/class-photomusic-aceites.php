@@ -251,11 +251,11 @@ class PhotoMusic_Aceites {
 
         foreach ($eventos as $evento) {
 
-            echo '<h2>Evento: ' . esc_html($evento->motivo_evento) . ' (' . esc_html($evento->data_evento) . ')</h2>';
+            echo '<h2>Evento: ' . esc_html($evento->motivo_evento) . ' (' . date('d/m/Y', strtotime($evento->data_evento)) . ')</h2>';
 
             $aceites = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT * FROM {$wpdb->prefix}pm_aceites
+                    "SELECT * FROM {$wpdb->prefix}pm_aceites_evento
                      WHERE id_evento = %d
                      GROUP BY telefone, email
                      ORDER BY aceite_em DESC",
@@ -287,7 +287,7 @@ class PhotoMusic_Aceites {
                         <td>' . esc_html($a->ip) . '</td>
                         <td>' . esc_html($a->dispositivo) . '</td>
                         <td>' . esc_html($a->navegador) . '</td>
-                        <td>' . esc_html($a->aceite_em) . '</td>
+                        <td>' . ($a->aceite_em ? date('d/m/Y H:i', strtotime($a->aceite_em)) : '—') . '</td>
                     </tr>';
             }
 

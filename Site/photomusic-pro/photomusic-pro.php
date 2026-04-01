@@ -52,6 +52,9 @@ function photomusic_pro_autoload_classes() {
     /* ---------------- CONVITES ---------------- */
     require_once PHOTOMUSIC_PRO_PATH . 'includes/convites/class-photomusic-convites.php';
 
+    /* ---------------- 1ª EUCARISTIA ---------------- */
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/eucaristia/class-photomusic-formulario-eucaristia.php';
+
     /* ---------------- CONTRATOS ---------------- */
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos-route.php';
@@ -79,6 +82,7 @@ function photomusic_pro_autoload_classes() {
     require_once PHOTOMUSIC_PRO_PATH . 'includes/galeria/class-photomusic-controller-galeria.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/galeria/class-photomusic-aceite-evento.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/galeria/class-photomusic-aceite-endpoint.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/galeria/class-photomusic-entrada-endpoint.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/galeria/class-photomusic-eventos-api.php';
 
     /* ---------------- SERVIÇOS ---------------- */
@@ -131,6 +135,9 @@ function photomusic_pro_init_modules() {
    // Rotas da galeria
    new PhotoMusic_Galeria_Routes();
 
+   // Galeria — shortcode [photomusic_galeria] e rotas amigáveis
+   PhotoMusic_Galeria::init();
+
    // Menu administrativo principal
    PhotoMusic_Events::init();       // ← Eventos primeiro
    PhotoMusic_Admin_Menu::init();   // ← resto dos submenus depois
@@ -156,6 +163,9 @@ function photomusic_pro_init_modules() {
    // Painel do contratante
    PhotoMusic_Painel_Contratante::init();
 
+   // 1ª Eucaristia — formulário público
+   PhotoMusic_Formulario_Eucaristia::init();
+
    // Endpoints da galeria
    if (class_exists('PhotoMusic_Gallery_Endpoint')) {
        new PhotoMusic_Gallery_Endpoint();
@@ -165,6 +175,9 @@ function photomusic_pro_init_modules() {
    }
    if (class_exists('PhotoMusic_Aceite_Endpoint')) {
        new PhotoMusic_Aceite_Endpoint();
+   }
+   if (class_exists('PhotoMusic_Entrada_Endpoint')) {
+       new PhotoMusic_Entrada_Endpoint();
    }
 
    // Configurações

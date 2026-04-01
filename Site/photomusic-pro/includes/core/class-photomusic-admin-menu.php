@@ -194,12 +194,53 @@ class PhotoMusic_Admin_Menu {
                         '{responsaveis_evento}'    => $evento_tmp->responsavel ?? ($evento_tmp->contato_responsavel ?? ''),
                         '{contato_evento}'         => $evento_tmp->contato_responsavel ?? ($evento_tmp->contato_cerimonialista ?? ''),
                         '{cep_evento}'             => $evento_tmp->cep_evento ? 'CEP: ' . $evento_tmp->cep_evento : '',
+
+                        // 1ª Eucaristia
+                        '{nome_catequista}'            => $evento_tmp->nome_catequista ?? '',
+                        '{horario_catequese}'          => $evento_tmp->horario_catequese ?? '',
+                        '{nome_paroquia}'              => $evento_tmp->nome_paroquia ?? '',
+                        '{nome_capela}'                => $evento_tmp->nome_capela ?? '',
+                        '{forma_pagamento_eucaristia}' => (function() use ($evento_tmp) {
+                            $fp = $evento_tmp->forma_pagamento_eucaristia ?? '';
+                            if ($fp === 'pix') {
+                                $v = get_option('pm_eucaristia_valor_pix', '150,00');
+                                return "PIX — R$ {$v} à vista";
+                            }
+                            if ($fp === 'cartao') {
+                                $v = get_option('pm_eucaristia_valor_cartao', '170,00');
+                                $p = number_format(floatval(str_replace(',', '.', $v)) / 3, 2, ',', '.');
+                                return "Cartão de Crédito — R$ {$v} em 3x de R$ {$p} sem juros";
+                            }
+                            return '';
+                        })(),
                     ];
 
                     $categoria = strtolower($evento_tmp->tipo_evento ?? 'pf') === 'pj' ? 'pj' : 'pf';
                     $clausulas  = PhotoMusic_Clausulas::buscar_por_tags($tags, $categoria);
 
                     global $wpdb;
+
+                    // Monta lista de catequizandos para uso nas cláusulas
+                    $cat_rows = $wpdb->get_results($wpdb->prepare(
+                        "SELECT nome, data_nascimento, grau_parentesco FROM {$wpdb->prefix}pm_eucaristia_catequizandos WHERE id_evento = %d ORDER BY ordem ASC",
+                        $id_ev
+                    ));
+                    if (!empty($cat_rows)) {
+                        $itens = [];
+                        foreach ($cat_rows as $r) {
+                            $linha = esc_html($r->nome);
+                            if ($r->data_nascimento) $linha .= ', nascido(a) em ' . date('d/m/Y', strtotime($r->data_nascimento));
+                            if ($r->grau_parentesco) $linha .= ' (' . esc_html($r->grau_parentesco) . ')';
+                            $itens[] = $linha;
+                        }
+                        $vars['{nome_catequizando_lista}'] = implode('; ', $itens);
+                        // Também preenche {nome_aniversariante} com o primeiro catequizando
+                        if (empty($vars['{nome_aniversariante}'])) {
+                            $vars['{nome_aniversariante}'] = esc_html($cat_rows[0]->nome);
+                        }
+                    } else {
+                        $vars['{nome_catequizando_lista}'] = $evento_tmp->nome_aniversariante ?? '';
+                    }
                     $tbl_cl = $wpdb->prefix . 'pm_clausulas';
                     $clausulas_comuns = $wpdb->get_results(
                         "SELECT * FROM $tbl_cl WHERE ativo = 1 AND (tags IS NULL OR tags = '') ORDER BY ordem ASC"
@@ -959,16 +1000,23 @@ class PhotoMusic_Admin_Menu {
         if (!empty($_GET['servico_removido']))   echo '<div class="notice notice-success is-dismissible"><p>🗑️ Serviço removido.</p></div>';
 
         $codigo_interno = $evento['codigo_interno'] ?? '';
+        $token_evento   = $evento['token_evento']   ?? '';
 
-        // --- Link de aceite (para convidados) ---
-        if ($codigo_interno) {
-            $url_aceite = home_url('/galeria/' . $codigo_interno . '/aceite/');
-            echo '<p><strong>🔗 Link de aceite para convidados (enviar via WhatsApp/QR Code):</strong><br>';
-            echo '<code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:13px;">' . esc_html($url_aceite) . '</code> ';
+        // --- Link de aceite com token do evento (novo formato) ---
+        if ($token_evento) {
+            $url_base_aceite = home_url('/aceite-de-fotos-e-videos/?t=' . $token_evento . '&tel=');
+            echo '<p><strong>🔗 Link de aceite para convidados (WhatsApp/QR Code):</strong><br>';
+            echo '<code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:13px;">'
+                . esc_html($url_base_aceite) . '<em>TELEFONE</em></code> ';
             echo '<button type="button" class="button button-small" '
-                . 'onclick="navigator.clipboard.writeText(\'' . esc_js($url_aceite) . '\').then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
-                . 'Copiar</button></p>';
-            echo '<p style="color:#666;font-size:0.85em;margin-top:-8px;">Ao acessar este link, o convidado preenche nome e telefone e é redirecionado para ver as fotos no site.</p>';
+                . 'onclick="navigator.clipboard.writeText(\'' . esc_js($url_base_aceite) . '\').then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
+                . 'Copiar base</button></p>';
+            echo '<p style="color:#666;font-size:0.85em;margin-top:-8px;">'
+                . 'O bot substitui <strong>TELEFONE</strong> pelo número do convidado. '
+                . 'O sistema verifica automaticamente se já fez aceite e redireciona para a galeria.'
+                . '</p>';
+        } elseif ($codigo_interno) {
+            echo '<div class="notice notice-warning inline"><p>⚠️ Token do evento não gerado. Acesse <strong>Configurações → Ferramentas → Executar Atualizações</strong> para gerar.</p></div>';
         } else {
             echo '<div class="notice notice-warning inline"><p>⚠️ Evento sem <em>código interno</em>. Salve o evento novamente para gerar o código.</p></div>';
         }

@@ -77,6 +77,7 @@ async function buscarEventos() {
       titulo: e.titulo,       // nome + data formatada
       links:  e.links || [],  // array de { nome, link }
       id:     e.id,
+      token:  e.token_evento, // token único do evento (coluna token_evento)
     }));
 
   } catch (error) {
@@ -105,11 +106,11 @@ async function apresentarEvento(numeroEvento, telefone = "") {
     `🎉 *ATENÇÃO SALVE ESTE CONTATO ${NUMERO_CHATBOT}*\n\n` +
     `*Bem-vindos ao ${evento.titulo}* 🥳\n\n`;
 
-  // Monta link da página de aceite com telefone e id do evento pré-preenchidos
-  // Ao aceitar, o sistema registra o convidado e redireciona para a galeria no iframe
+  // Monta link da página de aceite com token do evento e telefone pré-preenchidos
+  // Novo formato: ?t=TOKEN_EVENTO&tel=TELEFONE
   const telLimpo = (telefone || "").replace(/\D/g, "");
-  const urlAceite = evento.id
-    ? `${ACEITE_BASE_URL}?telefone=${telLimpo}&evento=${evento.id}`
+  const urlAceite = evento.token
+    ? `${ACEITE_BASE_URL}?t=${evento.token}&tel=${telLimpo}`
     : (evento.link_aceite || "");
 
   if (urlAceite) {

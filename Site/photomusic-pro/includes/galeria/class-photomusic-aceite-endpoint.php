@@ -3,8 +3,6 @@
 
 if (!defined('ABSPATH')) exit;
 
-if (class_exists('PhotoMusic_Aceite_Endpoint')) return;
-
 class PhotoMusic_Aceite_Endpoint {
 
     private $wpdb;
@@ -42,13 +40,14 @@ class PhotoMusic_Aceite_Endpoint {
 
         $params = $request->get_json_params();
 
-        $nome     = sanitize_text_field($params['nome'] ?? '');
-        $email    = sanitize_email($params['email'] ?? '');
-        $telefone = preg_replace('/\D/', '', $params['telefone'] ?? '');
-        $idioma   = sanitize_text_field($params['idioma'] ?? 'pt');
-        $idEvento = intval($params['idEvento'] ?? 0);
+        $nome        = sanitize_text_field($params['nome'] ?? '');
+        $email       = sanitize_email($params['email'] ?? '');
+        $telefone    = preg_replace('/\D/', '', $params['telefone'] ?? '');
+        $idioma      = sanitize_text_field($params['idioma'] ?? 'pt');
+        $idEvento    = intval($params['idEvento'] ?? 0);
+        $eventoSlug  = sanitize_text_field($params['eventoSlug'] ?? '');
 
-        if (!$nome || !$telefone || !$idEvento) {
+        if (!$nome || !$telefone || (!$idEvento && !$eventoSlug)) {
             return [
                 'sucesso'  => false,
                 'mensagem' => 'Dados incompletos.'
@@ -58,10 +57,17 @@ class PhotoMusic_Aceite_Endpoint {
         /* ============================================================
            VALIDAR EVENTO
         ============================================================ */
-        $evento = $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT * FROM {$this->tbl_eventos} WHERE id = %d",
-            $idEvento
-        ));
+        if ($idEvento) {
+            $evento = $this->wpdb->get_row($this->wpdb->prepare(
+                "SELECT * FROM {$this->tbl_eventos} WHERE id = %d",
+                $idEvento
+            ));
+        } else {
+            $evento = $this->wpdb->get_row($this->wpdb->prepare(
+                "SELECT * FROM {$this->tbl_eventos} WHERE codigo_interno = %s",
+                $eventoSlug
+            ));
+        }
 
         if (!$evento) {
             return [
@@ -100,56 +106,55 @@ class PhotoMusic_Aceite_Endpoint {
         }
 
         /* ============================================================
-           SALVAR ACEITE (1 por dispositivo)
+           SALVAR ACEITE (1 por telefone por evento)
         ============================================================ */
-        $aceite_existente = $this->wpdb->get_var($this->wpdb->prepare(
-            "SELECT id FROM {$this->tbl_aceites_evento}
-             WHERE id_evento = %d AND device_hash = %s LIMIT 1",
-            $idEvento,
-            $device_hash
+        $aceite_existente = $this->wpdb->get_row($this->wpdb->prepare(
+            "SELECT id, token_acesso FROM {$this->tbl_aceites_evento}
+             WHERE id_evento = %d AND telefone = %s LIMIT 1",
+            $evento->id,
+            $telefone
         ));
 
         if ($aceite_existente) {
-            // Reutiliza token já salvo
-            $token_salvo = $this->wpdb->get_var($this->wpdb->prepare(
-                "SELECT token_acesso FROM {$this->tbl_aceites_evento} WHERE id = %d",
-                $aceite_existente
-            ));
+
+            $token_salvo = $aceite_existente->token_acesso;
+
             if (empty($token_salvo)) {
-                $token_salvo = $this->generate_token($idEvento, $aceite_existente);
+                $token_salvo = $this->generate_token($evento->id, $aceite_existente->id);
                 $this->wpdb->update(
                     $this->tbl_aceites_evento,
                     ['token_acesso' => $token_salvo],
-                    ['id' => $aceite_existente]
+                    ['id' => $aceite_existente->id]
                 );
             }
+
             return [
                 'sucesso'  => true,
                 'mensagem' => 'Aceite já registrado.',
-                'redirect' => home_url("/galeria-photomusic/?token={$token_salvo}")
+                'redirect' => home_url("/galeria/{$evento->codigo_interno}/?token={$token_salvo}"),
             ];
         }
 
         $this->wpdb->insert($this->tbl_aceites_evento, [
-            'id_evento'     => $idEvento,
-            'nome'          => $nome,
-            'telefone'      => $telefone,
-            'email'         => $email ?: null,
-            'device_hash'   => $device_hash,
-            'ip'            => $ip,
-            'user_agent'    => $user_agent,
-            'versao_termo'  => '1.0',
-            'origem'        => 'api',
-            'idioma'        => $idioma,
-            'aceite_em'     => current_time('mysql')
+            'id_evento'    => $evento->id,
+            'nome'         => $nome,
+            'telefone'     => $telefone,
+            'email'        => $email ?: null,
+            'device_hash'  => $device_hash,
+            'ip'           => $ip,
+            'user_agent'   => $user_agent,
+            'versao_termo' => '1.0',
+            'origem'       => 'api',
+            'idioma'       => $idioma,
+            'aceite_em'    => current_time('mysql'),
         ]);
 
         $id_aceite = $this->wpdb->insert_id;
 
         /* ============================================================
-           GERAR E SALVAR TOKEN NO BANCO
+           GERAR E SALVAR TOKEN
         ============================================================ */
-        $token = $this->generate_token($idEvento, $id_aceite);
+        $token = $this->generate_token($evento->id, $id_aceite);
 
         $this->wpdb->update(
             $this->tbl_aceites_evento,
@@ -157,9 +162,14 @@ class PhotoMusic_Aceite_Endpoint {
             ['id' => $id_aceite]
         );
 
+        /* ============================================================
+           URL DE REDIRECIONAMENTO
+        ============================================================ */
+        $redirect = home_url("/galeria/{$evento->codigo_interno}/?token={$token}");
+
         return [
             'sucesso'  => true,
-            'redirect' => home_url("/galeria-photomusic/?token={$token}")
+            'redirect' => $redirect
         ];
     }
 

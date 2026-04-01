@@ -24,7 +24,8 @@ class PhotoMusic_Galeria_Controller {
     ============================================================ */
     public function handle_request() {
 
-        $slug  = sanitize_text_field(get_query_var('pm_evento_slug'));
+        // Correção: o nome correto da query var é "evento_slug"
+        $slug  = sanitize_text_field(get_query_var('evento_slug'));
         $token = sanitize_text_field($_GET['token'] ?? '');
 
         if (!$slug || !$token) {
@@ -121,20 +122,27 @@ class PhotoMusic_Galeria_Controller {
         $id_evento      = $evento->id;
         $id_aceite      = $aceite->id;
         $aceite_nome    = $aceite->nome ?? '';
-        // Carrega serviços com links individuais de pm_eventos_servicos
-        // (link_galeria salvo por serviço na página de Serviços do evento)
+        $link_fotoshare = $evento->link_galeria_convidado ?? ''; // fallback único
+
+        // Carrega serviços com links individuais (um evento pode ter vários)
         $servicos_links = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT s.nome AS nome_servico,
-                    s.slug AS tipo,
-                    es.link_galeria AS link_convidado
-             FROM {$this->wpdb->prefix}pm_eventos_servicos es
-             LEFT JOIN {$this->wpdb->prefix}pm_servicos s ON s.id = es.id_servico
-             WHERE es.id_evento = %d
-               AND es.link_galeria IS NOT NULL
-               AND es.link_galeria != ''
-             ORDER BY es.id ASC",
+            "SELECT nome_servico, tipo, link_convidado
+             FROM {$this->wpdb->prefix}pm_event_services
+             WHERE id_evento = %d
+               AND status_servico = 'ativo'
+               AND (link_convidado IS NOT NULL AND link_convidado != '')
+             ORDER BY id ASC",
             $evento->id
         ));
+
+        // Se não há serviços individuais mas há link único, usa o fallback
+        if (empty($servicos_links) && !empty($link_fotoshare)) {
+            $fallback        = new stdClass();
+            $fallback->nome_servico  = 'Galeria';
+            $fallback->tipo          = 'foto';
+            $fallback->link_convidado = $link_fotoshare;
+            $servicos_links  = [$fallback];
+        }
 
         // ============================================================
         // 🔥 REGISTRA VISUALIZAÇÃO DOS SERVIÇOS
@@ -169,54 +177,35 @@ class PhotoMusic_Galeria_Controller {
     ============================================================ */
     private function registrar_view_servico($evento, $aceite, $servico) {
 
-        $ip         = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '');
-        $user_agent = sanitize_text_field($_SERVER['HTTP_USER_AGENT'] ?? '');
+        $ip           = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '');
+        $user_agent   = sanitize_text_field($_SERVER['HTTP_USER_AGENT'] ?? '');
+        $token_aceite = $aceite->token_acesso ?? '';
+        $tipo_servico = $servico->tipo ?? '';
+        $nome_servico = $servico->nome_servico ?? '';
+        $agora        = current_time('mysql');
 
         $tbl = $this->wpdb->prefix . 'pm_galeria_views';
 
-        // 🔍 Verifica se já existe
-        $existe = $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT id, total_views FROM $tbl 
-            WHERE id_evento = %d 
-            AND id_aceite = %d 
-            AND nome_servico = %s 
-            LIMIT 1",
+        $this->wpdb->query($this->wpdb->prepare(
+            "INSERT INTO $tbl
+                (id_evento, id_aceite, token_aceite, tipo_servico, nome_servico,
+                 total_views, total_cliques, ip, user_agent, primeiro_acesso, ultimo_acesso)
+             VALUES (%d, %d, %s, %s, %s, 1, 0, %s, %s, %s, %s)
+             ON DUPLICATE KEY UPDATE
+                total_views   = total_views + 1,
+                token_aceite  = VALUES(token_aceite),
+                ip            = VALUES(ip),
+                user_agent    = VALUES(user_agent),
+                ultimo_acesso = VALUES(ultimo_acesso)",
             $evento->id,
             $aceite->id,
-            $servico->nome_servico
+            $token_aceite,
+            $tipo_servico,
+            $nome_servico,
+            $ip,
+            $user_agent,
+            $agora,
+            $agora
         ));
-
-        if ($existe) {
-
-            // 🔁 Atualiza
-            $this->wpdb->update(
-                $tbl,
-                [
-                    'total_views'   => $existe->total_views + 1,
-                    'ultimo_acesso' => current_time('mysql'),
-                    'ip'            => $ip,
-                    'user_agent'    => $user_agent,
-                ],
-                ['id' => $existe->id]
-            );
-
-        } else {
-
-            // ➕ Insere
-            $this->wpdb->insert(
-                $tbl,
-                [
-                    'id_evento'       => $evento->id,
-                    'id_aceite'       => $aceite->id,
-                    'tipo_servico'    => $servico->tipo ?? '',
-                    'nome_servico'    => $servico->nome_servico ?? '',
-                    'total_views'     => 1,
-                    'ip'              => $ip,
-                    'user_agent'      => $user_agent,
-                    'primeiro_acesso' => current_time('mysql'),
-                    'ultimo_acesso'   => current_time('mysql'),
-                ]
-            );
-        }
     }
 }

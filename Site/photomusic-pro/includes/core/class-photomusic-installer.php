@@ -874,6 +874,23 @@ class PhotoMusic_Installer {
         dbDelta($sql_ideias_futuras);
         dbDelta($sql_projetos);
 
+        /* ============================================================
+           TABELA: CATEQUIZANDOS DA 1ª EUCARISTIA
+           Suporta múltiplos catequizandos por contrato (irmãos/primos)
+        ============================================================ */
+        $tbl_catequizandos = $wpdb->prefix . 'pm_eucaristia_catequizandos';
+        $sql_catequizandos = "CREATE TABLE $tbl_catequizandos (
+            id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            id_evento INT UNSIGNED NOT NULL,
+            nome      VARCHAR(255) NOT NULL,
+            data_nascimento DATE NULL,
+            grau_parentesco VARCHAR(100) NULL,
+            ordem     TINYINT UNSIGNED NOT NULL DEFAULT 1,
+            criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_evento (id_evento)
+        ) $charset;";
+        dbDelta($sql_catequizandos);
+
     } // fim create_tables()
 
     private static function create_roles_and_caps() {
@@ -1104,6 +1121,28 @@ class PhotoMusic_Installer {
         }
 
         /* ============================================================
+           PM_EVENTOS — token único do evento para link de aceite
+        ============================================================ */
+        $tbl_eventos_tok = $wpdb->prefix . 'pm_eventos';
+
+        $col = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_eventos_tok}` LIKE 'token_evento'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE `{$tbl_eventos_tok}` ADD COLUMN `token_evento` VARCHAR(64) NULL DEFAULT NULL");
+        }
+
+        $idx = $wpdb->get_results("SHOW INDEX FROM `{$tbl_eventos_tok}` WHERE Key_name = 'idx_token_evento'");
+        if (empty($idx)) {
+            $wpdb->query("ALTER TABLE `{$tbl_eventos_tok}` ADD UNIQUE INDEX `idx_token_evento` (`token_evento`)");
+        }
+
+        // Gera token para eventos que ainda não têm
+        $wpdb->query(
+            "UPDATE `{$tbl_eventos_tok}`
+             SET token_evento = SHA2(CONCAT(id, '|', codigo_interno, '|', RAND()), 256)
+             WHERE token_evento IS NULL OR token_evento = ''"
+        );
+
+        /* ============================================================
            ACEITES DO CONVIDADO — colunas de segurança e token
         ============================================================ */
         $tbl_aceites = $wpdb->prefix . 'pm_aceites_evento';
@@ -1163,6 +1202,68 @@ class PhotoMusic_Installer {
             $wpdb->query(
                 "ALTER TABLE `{$tbl_es}` MODIFY COLUMN `pasta_protegida` VARCHAR(500) NULL DEFAULT ''"
             );
+        }
+
+        /* ============================================================
+           PM_EVENTOS — campos específicos da 1ª Eucaristia
+        ============================================================ */
+        $cols_eucaristia = [
+            'nome_catequista'           => "VARCHAR(255) NULL COMMENT 'Nome do(a) catequista'",
+            'horario_catequese'         => "VARCHAR(100) NULL COMMENT 'Dia e horário da catequese'",
+            'nome_paroquia'             => "VARCHAR(255) NULL COMMENT 'Nome da paróquia'",
+            'nome_capela'               => "VARCHAR(255) NULL COMMENT 'Nome da capela'",
+            'forma_pagamento_eucaristia'=> "ENUM('pix','cartao') NULL COMMENT 'Forma de pagamento escolhida pelo cliente'",
+            'pre_cadastro_status'       => "ENUM('pendente','confirmado','cancelado') NULL COMMENT 'Status do pré-cadastro via formulário público'",
+        ];
+        foreach ($cols_eucaristia as $col_name => $col_def) {
+            $exists = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_eventos}` LIKE '{$col_name}'");
+            if (empty($exists)) {
+                $wpdb->query("ALTER TABLE `{$tbl_eventos}` ADD COLUMN `{$col_name}` {$col_def}");
+            }
+        }
+
+        /* ============================================================
+           PM_EUCARISTIA_CATEQUIZANDOS — cria tabela se não existir
+        ============================================================ */
+        $tbl_cat = $wpdb->prefix . 'pm_eucaristia_catequizandos';
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$tbl_cat}'") !== $tbl_cat) {
+            $wpdb->query("CREATE TABLE {$tbl_cat} (
+                id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                id_evento INT UNSIGNED NOT NULL,
+                nome      VARCHAR(255) NOT NULL,
+                data_nascimento DATE NULL,
+                grau_parentesco VARCHAR(100) NULL,
+                ordem     TINYINT UNSIGNED NOT NULL DEFAULT 1,
+                criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_evento (id_evento)
+            ) {$charset};");
+        }
+
+        /* ============================================================
+           PM_GALERIA_VIEWS — colunas de rastreio de cliques por serviço
+        ============================================================ */
+        $tbl_views = $wpdb->prefix . 'pm_galeria_views';
+
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$tbl_views}'") === $tbl_views) {
+
+            $cols_views = [
+                'token_aceite'  => "VARCHAR(64) NULL",
+                'total_cliques' => "INT UNSIGNED NOT NULL DEFAULT 0",
+                'ultimo_clique' => "DATETIME NULL",
+            ];
+
+            foreach ($cols_views as $col_name => $col_def) {
+                $exists = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_views}` LIKE '{$col_name}'");
+                if (empty($exists)) {
+                    $wpdb->query("ALTER TABLE `{$tbl_views}` ADD COLUMN `{$col_name}` {$col_def}");
+                }
+            }
+
+            // Índice no token_aceite para lookup rápido
+            $idx = $wpdb->get_results("SHOW INDEX FROM `{$tbl_views}` WHERE Key_name = 'idx_token_aceite'");
+            if (empty($idx)) {
+                $wpdb->query("ALTER TABLE `{$tbl_views}` ADD INDEX `idx_token_aceite` (`token_aceite`)");
+            }
         }
     }
 

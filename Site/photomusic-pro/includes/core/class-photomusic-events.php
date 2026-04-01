@@ -375,6 +375,94 @@ class PhotoMusic_Events {
                             <p class="description">Grau de parentesco do(a) aniversariante com o contratante.</p>
                         </td>
                     </tr>
+
+                    <!-- ============================================
+                         CAMPOS EXCLUSIVOS: 1ª EUCARISTIA
+                    ============================================ -->
+                    <tr id="campo-eucaristia-catequizandos" style="display:none">
+                        <th><label>Catequizando(s)</label></th>
+                        <td>
+                            <div id="pm-catequizandos-lista">
+                                <?php
+                                global $wpdb;
+                                $catequizandos = [];
+                                if ($id_evento > 0) {
+                                    $catequizandos = $wpdb->get_results($wpdb->prepare(
+                                        "SELECT * FROM {$wpdb->prefix}pm_eucaristia_catequizandos WHERE id_evento = %d ORDER BY ordem ASC",
+                                        $id_evento
+                                    ), ARRAY_A);
+                                }
+                                if (empty($catequizandos)) {
+                                    $catequizandos = [['id' => '', 'nome' => '', 'data_nascimento' => '', 'grau_parentesco' => '', 'ordem' => 1]];
+                                }
+                                foreach ($catequizandos as $i => $cat):
+                                ?>
+                                <div class="pm-catequizando-linha" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+                                    <input type="hidden" name="catequizando_id[]" value="<?php echo esc_attr($cat['id']); ?>">
+                                    <input type="text" name="catequizando_nome[]" class="regular-text"
+                                           value="<?php echo esc_attr($cat['nome']); ?>"
+                                           placeholder="Nome completo" style="flex:2;">
+                                    <input type="date" name="catequizando_nascimento[]"
+                                           value="<?php echo esc_attr($cat['data_nascimento'] ?? ''); ?>"
+                                           title="Data de nascimento" style="width:140px;">
+                                    <input type="text" name="catequizando_parentesco[]"
+                                           value="<?php echo esc_attr($cat['grau_parentesco'] ?? ''); ?>"
+                                           placeholder="Parentesco (ex: Filho)" style="width:150px;">
+                                    <?php if ($i > 0): ?>
+                                    <button type="button" class="button pm-remover-catequizando" style="color:red;">✕</button>
+                                    <?php endif; ?>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <button type="button" class="button" id="pm-add-catequizando">+ Adicionar catequizando</button>
+                            <p class="description">Adicione um catequizando por linha. Para irmãos/primos no mesmo contrato, clique em "+ Adicionar".</p>
+                        </td>
+                    </tr>
+                    <tr id="campo-catequista" style="display:none">
+                        <th><label>Nome do(a) Catequista</label></th>
+                        <td><input type="text" name="nome_catequista" class="regular-text"
+                                   value="<?php echo esc_attr($evento->nome_catequista ?? ''); ?>"
+                                   placeholder="Ex: Maria da Silva"></td>
+                    </tr>
+                    <tr id="campo-horario-catequese" style="display:none">
+                        <th><label>Dia e Horário da Catequese</label></th>
+                        <td><input type="text" name="horario_catequese" class="regular-text"
+                                   value="<?php echo esc_attr($evento->horario_catequese ?? ''); ?>"
+                                   placeholder="Ex: Sábado às 09h00"></td>
+                    </tr>
+                    <tr id="campo-paroquia" style="display:none">
+                        <th><label>Nome da Paróquia</label></th>
+                        <td><input type="text" name="nome_paroquia" class="regular-text"
+                                   value="<?php echo esc_attr($evento->nome_paroquia ?? ''); ?>"
+                                   placeholder="Ex: Paróquia São José"></td>
+                    </tr>
+                    <tr id="campo-capela" style="display:none">
+                        <th><label>Nome da Capela</label></th>
+                        <td><input type="text" name="nome_capela" class="regular-text"
+                                   value="<?php echo esc_attr($evento->nome_capela ?? ''); ?>"
+                                   placeholder="Ex: Capela Nossa Senhora de Fátima"></td>
+                    </tr>
+                    <tr id="campo-pagamento-eucaristia" style="display:none">
+                        <th><label>Forma de Pagamento</label></th>
+                        <td>
+                            <?php
+                            $fp = $evento->forma_pagamento_eucaristia ?? '';
+                            $vp = get_option('pm_eucaristia_valor_pix', '150,00');
+                            $vc = get_option('pm_eucaristia_valor_cartao', '170,00');
+                            ?>
+                            <label style="margin-right:20px;">
+                                <input type="radio" name="forma_pagamento_eucaristia" value="pix"
+                                       <?php checked($fp, 'pix'); ?>>
+                                PIX — R$ <?php echo esc_html($vp); ?> à vista
+                            </label>
+                            <label>
+                                <input type="radio" name="forma_pagamento_eucaristia" value="cartao"
+                                       <?php checked($fp, 'cartao'); ?>>
+                                Cartão — R$ <?php echo esc_html($vc); ?> (3x sem juros)
+                            </label>
+                            <p class="description">Valores configuráveis em <strong>Configurações → PhotoMusic → Valores 1ª Eucaristia</strong>.</p>
+                        </td>
+                    </tr>
                     <tr id="campo-noivos" style="display:none">
                         <th><label>Nome dos Noivos / Casal</label></th>
                         <td><input type="text" name="nome_noivos" class="regular-text"
@@ -563,12 +651,12 @@ class PhotoMusic_Events {
             'bodas':       ['campo-noivos','campo-grau-noivos','campo-cores','campo-modelo-foto'],
             'corporativo': ['campo-tema','campo-cores','campo-modelo-foto'],
             'formatura':   ['campo-tema','campo-cores','campo-aniversariante','campo-modelo-foto'],
-            '1eucaristia': ['campo-tema','campo-cores','campo-aniversariante','campo-pais','campo-nascimento-aniversariante','campo-grau-aniversariante','campo-modelo-foto'],
+            '1eucaristia': ['campo-eucaristia-catequizandos','campo-catequista','campo-horario-catequese','campo-paroquia','campo-capela','campo-pagamento-eucaristia','campo-pais','campo-modelo-foto'],
             'outro':       ['campo-tema','campo-cores','campo-modelo-foto'],
         };
 
         function toggleCelebracao(val) {
-            var todos = ['campo-tema','campo-cores','campo-aniversariante','campo-pais','campo-idade','campo-nascimento-aniversariante','campo-grau-aniversariante','campo-noivos','campo-grau-noivos','campo-modelo-foto'];
+            var todos = ['campo-tema','campo-cores','campo-aniversariante','campo-pais','campo-idade','campo-nascimento-aniversariante','campo-grau-aniversariante','campo-noivos','campo-grau-noivos','campo-modelo-foto','campo-eucaristia-catequizandos','campo-catequista','campo-horario-catequese','campo-paroquia','campo-capela','campo-pagamento-eucaristia'];
             todos.forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el) el.style.display = 'none';
@@ -580,6 +668,27 @@ class PhotoMusic_Events {
                 });
             }
         }
+
+        // ── Catequizandos dinâmicos (1ª Eucaristia)
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('pm-add-catequizando') && document.getElementById('pm-add-catequizando').addEventListener('click', function() {
+                var lista = document.getElementById('pm-catequizandos-lista');
+                var div = document.createElement('div');
+                div.className = 'pm-catequizando-linha';
+                div.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+                div.innerHTML = '<input type="hidden" name="catequizando_id[]" value="">'
+                    + '<input type="text" name="catequizando_nome[]" class="regular-text" placeholder="Nome completo" style="flex:2;">'
+                    + '<input type="date" name="catequizando_nascimento[]" title="Data de nascimento" style="width:140px;">'
+                    + '<input type="text" name="catequizando_parentesco[]" placeholder="Parentesco (ex: Filho)" style="width:150px;">'
+                    + '<button type="button" class="button pm-remover-catequizando" style="color:red;">✕</button>';
+                lista.appendChild(div);
+            });
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('pm-remover-catequizando')) {
+                    e.target.closest('.pm-catequizando-linha').remove();
+                }
+            });
+        });
 
         // ── Toggle PF/PJ
         function toggleTipo(tipo) {
@@ -855,6 +964,15 @@ class PhotoMusic_Events {
             'data_nascimento_aniversariante'   => sanitize_text_field($_POST['data_nascimento_aniversariante'] ?? '') ?: null,
             'grau_parentesco_aniversariante'   => sanitize_text_field($_POST['grau_parentesco_aniversariante'] ?? '') ?: null,
             'modelo_foto'                      => sanitize_text_field($_POST['modelo_foto'] ?? '') ?: null,
+
+            // 1ª Eucaristia
+            'nome_catequista'            => sanitize_text_field($_POST['nome_catequista'] ?? '') ?: null,
+            'horario_catequese'          => sanitize_text_field($_POST['horario_catequese'] ?? '') ?: null,
+            'nome_paroquia'              => sanitize_text_field($_POST['nome_paroquia'] ?? '') ?: null,
+            'nome_capela'                => sanitize_text_field($_POST['nome_capela'] ?? '') ?: null,
+            'forma_pagamento_eucaristia' => in_array($_POST['forma_pagamento_eucaristia'] ?? '', ['pix','cartao'])
+                                            ? $_POST['forma_pagamento_eucaristia'] : null,
+
             'data_evento'            => sanitize_text_field($_POST['data_evento'] ?? ''),
             'horario_inicio'         => sanitize_text_field($_POST['horario_inicio'] ?? ''),
             'horario_fim'            => sanitize_text_field($_POST['horario_fim'] ?? ''),
@@ -895,6 +1013,45 @@ class PhotoMusic_Events {
                 PhotoMusic_Contratos::criar_contrato_simplificado($id_evento, 0);
             }
             PhotoMusic_Events::registrar_historico($id_evento, 'Evento criado.');
+        }
+
+        // ── Salva catequizandos (1ª Eucaristia)
+        if (($dados['tipo_celebracao'] ?? '') === '1eucaristia' || isset($_POST['catequizando_nome'])) {
+            $tbl_cat   = $wpdb->prefix . 'pm_eucaristia_catequizandos';
+            $nomes     = array_map('sanitize_text_field', (array)($_POST['catequizando_nome'] ?? []));
+            $nascimentos = array_map('sanitize_text_field', (array)($_POST['catequizando_nascimento'] ?? []));
+            $parentescos = array_map('sanitize_text_field', (array)($_POST['catequizando_parentesco'] ?? []));
+            $ids_enviados = array_map('intval', (array)($_POST['catequizando_id'] ?? []));
+
+            // Remove registros que foram deletados (não vieram no POST)
+            $ids_validos = array_filter($ids_enviados);
+            if (!empty($ids_validos)) {
+                $placeholders = implode(',', array_fill(0, count($ids_validos), '%d'));
+                $wpdb->query($wpdb->prepare(
+                    "DELETE FROM {$tbl_cat} WHERE id_evento = %d AND id NOT IN ({$placeholders})",
+                    array_merge([$id_evento], $ids_validos)
+                ));
+            } else {
+                $wpdb->delete($tbl_cat, ['id_evento' => $id_evento]);
+            }
+
+            foreach ($nomes as $ordem => $nome) {
+                if (empty(trim($nome))) continue;
+                $row_id = $ids_enviados[$ordem] ?? 0;
+                $row_data = [
+                    'nome'            => $nome,
+                    'data_nascimento' => $nascimentos[$ordem] ?: null,
+                    'grau_parentesco' => $parentescos[$ordem] ?: null,
+                    'ordem'           => $ordem + 1,
+                ];
+                if ($row_id > 0) {
+                    $wpdb->update($tbl_cat, $row_data, ['id' => $row_id, 'id_evento' => $id_evento]);
+                } else {
+                    $row_data['id_evento'] = $id_evento;
+                    $row_data['criado_em'] = current_time('mysql');
+                    $wpdb->insert($tbl_cat, $row_data);
+                }
+            }
         }
 
         wp_redirect(admin_url('admin.php?page=photomusic-eventos&saved=1'));
@@ -963,11 +1120,13 @@ class PhotoMusic_Events {
         if (empty($data['motivo_evento'])) return new WP_Error('motivo_obrigatorio', 'Motivo obrigatório.');
         $data_evento = sanitize_text_field($data['data_evento'] ?? '');
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data_evento)) return new WP_Error('data_invalida', 'Data inválida.');
+        $codigo_interno = PhotoMusic_Helpers::generate_code('EVT');
         $wpdb->insert($table, [
             'tipo_evento'    => $tipo_evento,
             'motivo_evento'  => substr(sanitize_text_field($data['motivo_evento']), 0, 200),
             'data_evento'    => $data_evento,
-            'codigo_interno' => PhotoMusic_Helpers::generate_code('EVT'),
+            'codigo_interno' => $codigo_interno,
+            'token_evento'   => hash('sha256', $codigo_interno . '|' . time() . '|' . wp_generate_uuid4()),
             'status_evento'  => 'ativo',
             'criado_por'     => get_current_user_id(),
             'criado_em'      => current_time('mysql'),

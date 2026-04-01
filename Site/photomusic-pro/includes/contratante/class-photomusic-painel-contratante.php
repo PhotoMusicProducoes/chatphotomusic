@@ -82,7 +82,7 @@ class PhotoMusic_Painel_Contratante {
 
         // Aceites únicos do evento
         $aceites = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}pm_aceites
+            "SELECT * FROM {$wpdb->prefix}pm_aceites_evento
              WHERE id_evento = %d
              GROUP BY telefone, email
              ORDER BY aceite_em DESC",
@@ -305,7 +305,7 @@ class PhotoMusic_Painel_Contratante {
                                             <span class="pm-badge pm-badge-ok">Confirmado</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?php echo esc_html($a->aceite_em); ?></td>
+                                    <td><?php echo $a->aceite_em ? date('d/m/Y H:i', strtotime($a->aceite_em)) : '—'; ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -497,7 +497,7 @@ class PhotoMusic_Painel_Contratante {
         global $wpdb;
 
         $aceites = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}pm_aceites
+            "SELECT * FROM {$wpdb->prefix}pm_aceites_evento
              WHERE id_evento = %d
              GROUP BY telefone, email
              ORDER BY aceite_em DESC",
