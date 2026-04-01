@@ -24,8 +24,7 @@ class PhotoMusic_Galeria_Controller {
     ============================================================ */
     public function handle_request() {
 
-        // Correção: o nome correto da query var é "evento_slug"
-        $slug  = sanitize_text_field(get_query_var('evento_slug'));
+        $slug  = sanitize_text_field(get_query_var('pm_evento_slug'));
         $token = sanitize_text_field($_GET['token'] ?? '');
 
         if (!$slug || !$token) {

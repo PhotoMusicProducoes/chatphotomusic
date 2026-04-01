@@ -145,11 +145,6 @@ async function apresentarEvento(numeroEvento, telefone = "") {
     `já no *Iphone*, para salvar a foto clique em salvar imagem (a foto 🖼️ será salva na galeria) ` +
     `ou em salvar arquivo (a foto 🖼️ será salva em Arquivo), ` +
     `para salvar o GIF Animado 🎞️ clique em salvar vídeo.\n\n` +
-    `Siga a nossa página✨ \n` +
-    `🚨 *Instagram PhotoMusic* \n` +
-    `https://instagram.com/photomusicproducoes \n\n` +
-    `[*Link para avaliação no Google*] \n` +
-    `https://g.page/r/CVcwPOqAtId5EBM/review \n\n` +
     `Muitíssimo obrigado🥳`;
 
   return resposta;
