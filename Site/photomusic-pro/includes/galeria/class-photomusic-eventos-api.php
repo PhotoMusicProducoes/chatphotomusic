@@ -185,7 +185,7 @@ class PhotoMusic_Eventos_API {
         // status_evento = 'desativado' ainda pode aparecer se o operador ativou
         // o toggle explicitamente — confiamos no chatbot_ativo para isso.
         $eventos = $wpdb->get_results(
-            "SELECT id, motivo_evento, codigo_interno, data_evento, horario_inicio
+            "SELECT id, motivo_evento, codigo_interno, data_evento, horario_inicio, token_evento
              FROM {$wpdb->prefix}pm_eventos
              WHERE chatbot_ativo = 1
                AND status_evento != 'desativado'
@@ -243,6 +243,7 @@ class PhotoMusic_Eventos_API {
                 'nome'           => $evento->motivo_evento,
                 'titulo'         => $evento->motivo_evento . ($data_fmt ? " — {$data_fmt}" : ''),
                 'codigo_interno' => $evento->codigo_interno,
+                'token_evento'   => $evento->token_evento ?? '',
                 'data'           => $evento->data_evento,
                 'link_aceite'    => $link_aceite,
                 'links'          => $links,
