@@ -1577,14 +1577,14 @@ const resumoEucaristia =
   await sendTyping(chatId);
   await sendText(
     chatId,
-    "Segue o link para pagamento no *Cartão de Crédito* do Serviço de Cobertura Fotográfica:\n" +
+    "💚 Segue o link para pagamento via *PIX* para o Serviço de Cobertura Fotográfica:\n" +
     EUCARISTIA_PIX_URL
   );
 
   await sendTyping(chatId);
   await sendText(
     chatId,
-    "Segue o link para pagamento no *Cartão de Crédito* do Serviço de Cobertura Fotográfica:\n" +
+    "💳 Segue o link para pagamento via *Cartão de Crédito* para o Serviço de Cobertura Fotográfica:\n" +
     EUCARISTIA_CARTAO_URL
   );
 
