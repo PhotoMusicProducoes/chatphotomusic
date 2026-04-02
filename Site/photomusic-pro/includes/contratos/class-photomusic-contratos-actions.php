@@ -54,30 +54,27 @@ class PhotoMusic_Contratos_Actions {
             wp_die('Falha na validação de segurança.');
         }
 
-        PhotoMusic_Contratos_Permissoes::validar_editar();
+        if (!current_user_can('administrator') && !PhotoMusic_Contratos_Permissoes::pode_editar()) {
+            wp_die('Você não tem permissão para editar contratos.');
+        }
 
         $id = intval($_POST['contrato_id']);
         $contrato = PhotoMusic_Contratos::get($id);
 
         if (!$contrato) wp_die('Contrato não encontrado.');
 
-        PhotoMusic_Contratos_Permissoes::validar_status_para_edicao($contrato);
-
         $num_raw = intval($_POST['numero_contrato'] ?? 0);
-        $dados = [
-            'numero_contrato'  => $num_raw > 0 ? $num_raw : null,
-            'evento_nome'      => sanitize_text_field($_POST['evento_nome']),
-            'evento_data'      => sanitize_text_field($_POST['evento_data']),
-            'cliente_nome'     => sanitize_text_field($_POST['cliente_nome']),
-            'cliente_email'    => sanitize_email($_POST['cliente_email']),
-            'valor_total'      => floatval($_POST['valor_total']),
-            'forma_pagamento'  => sanitize_text_field($_POST['forma_pagamento'] ?? ''),
-            'obs_pagamento'    => sanitize_textarea_field($_POST['obs_pagamento'] ?? ''),
-        ];
 
-        PhotoMusic_Contratos::atualizar($id, $dados);
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'pm_contratos',
+            ['numero_contrato' => $num_raw > 0 ? $num_raw : null],
+            ['id' => $id],
+            ['%d'],
+            ['%d']
+        );
 
-        wp_redirect(admin_url('admin.php?page=photomusic_contratos&action=editar&id=' . $id . '&updated=1'));
+        wp_redirect(admin_url('admin.php?page=photomusic-contrato-editar&id=' . $id . '&updated=1'));
         exit;
     }
 
@@ -101,7 +98,7 @@ class PhotoMusic_Contratos_Actions {
 
         PhotoMusic_Contratos::set_status($id, 'cancelado');
 
-        wp_redirect(admin_url('admin.php?page=photomusic_contratos&cancelado=1'));
+        wp_redirect(admin_url('admin.php?page=photomusic-contratos&cancelado=1'));
         exit;
     }
 

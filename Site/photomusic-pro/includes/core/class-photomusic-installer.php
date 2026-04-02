@@ -1240,6 +1240,41 @@ class PhotoMusic_Installer {
         }
 
         /* ============================================================
+           PM_EVENTOS_SERVICOS — coluna descrição e label do adicional
+        ============================================================ */
+        $tbl_ev_serv = $wpdb->prefix . 'pm_eventos_servicos';
+
+        $col_desc = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_ev_serv}` LIKE 'descricao'");
+        if (empty($col_desc)) {
+            $wpdb->query(
+                "ALTER TABLE `{$tbl_ev_serv}`
+                 ADD COLUMN `descricao` TEXT NULL
+                 COMMENT 'Descrição detalhada do serviço contratado'
+                 AFTER `observacoes`"
+            );
+        }
+
+        $col_label = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_ev_serv}` LIKE 'label_adicional'");
+        if (empty($col_label)) {
+            $wpdb->query(
+                "ALTER TABLE `{$tbl_ev_serv}`
+                 ADD COLUMN `label_adicional` VARCHAR(100) NULL DEFAULT 'Deslocamento'
+                 COMMENT 'Rótulo do valor adicional no contrato (ex: Deslocamento, Horas extras)'
+                 AFTER `valor_adicional`"
+            );
+        }
+
+        $col_hr = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_ev_serv}` LIKE 'horario_inicio'");
+        if (empty($col_hr)) {
+            $wpdb->query(
+                "ALTER TABLE `{$tbl_ev_serv}`
+                 ADD COLUMN `horario_inicio` TIME NULL DEFAULT NULL
+                 COMMENT 'Horário de início individual deste serviço no evento'
+                 AFTER `horas_contratadas`"
+            );
+        }
+
+        /* ============================================================
            PM_GALERIA_VIEWS — colunas de rastreio de cliques por serviço
         ============================================================ */
         $tbl_views = $wpdb->prefix . 'pm_galeria_views';

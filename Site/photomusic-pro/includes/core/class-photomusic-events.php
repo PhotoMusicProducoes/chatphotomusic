@@ -7,7 +7,8 @@ class PhotoMusic_Events {
 
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'register_menu']);
-        add_action('admin_post_pm_salvar_evento', [__CLASS__, 'handle_salvar_evento']);
+        add_action('admin_post_pm_salvar_evento',  [__CLASS__, 'handle_salvar_evento']);
+        add_action('admin_post_pm_excluir_evento', [__CLASS__, 'handle_excluir_evento']);
     }
 
     /* ============================================================
@@ -70,6 +71,10 @@ class PhotoMusic_Events {
             echo '<div class="notice notice-success is-dismissible"><p>✅ Evento salvo com sucesso!</p></div>';
         }
 
+        if (!empty($_GET['excluido'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>🗑️ Evento excluído com sucesso.</p></div>';
+        }
+
         echo '<a href="' . esc_url(add_query_arg(['page' => 'photomusic-eventos', 'acao' => 'novo'], admin_url('admin.php'))) . '" class="button button-primary">+ Criar Novo Evento</a>';
 
         if (empty($eventos)) {
@@ -111,10 +116,16 @@ class PhotoMusic_Events {
             echo '<td>' . esc_html($contratante_nome) . '</td>';
             echo '<td>' . esc_html($e->tipo_evento) . '</td>';
             echo '<td>' . esc_html($e->status_evento) . '</td>';
+            $excluir_url = wp_nonce_url(
+                admin_url('admin-post.php?action=pm_excluir_evento&id=' . $e->id),
+                'pm_excluir_evento_' . $e->id
+            );
             echo '<td>
                     <a href="' . esc_url(add_query_arg(['page' => 'photomusic-eventos', 'acao' => 'editar', 'id' => $e->id], admin_url('admin.php'))) . '" class="button">Editar</a>
                     <a href="' . esc_url(add_query_arg(['page' => 'photomusic-evento-detalhes', 'id' => $e->id], admin_url('admin.php'))) . '" class="button">Detalhes</a>
                     <a href="' . esc_url(add_query_arg(['page' => 'photomusic-add-servico', 'id' => $e->id], admin_url('admin.php'))) . '" class="button button-primary">Serviços</a>
+                    <a href="' . esc_url($excluir_url) . '" class="button" style="color:#a00;"
+                       onclick="return confirm(\'Excluir o evento #' . $e->id . ' — ' . esc_js($e->motivo_evento) . '?\nEsta ação não pode ser desfeita e removerá o evento e seus serviços.\');">🗑️ Excluir</a>
                 </td>';
             echo '</tr>';
         }
@@ -260,6 +271,12 @@ class PhotoMusic_Events {
                 <div id="bloco-pj" <?php echo $tipo_atual === 'PF' ? 'style="display:none"' : ''; ?>>
                     <h2>Dados do Contratante — Pessoa Jurídica</h2>
                     <table class="form-table">
+                        <tr>
+                            <th><label>Nome Fantasia</label></th>
+                            <td><input type="text" name="nome_fantasia" class="regular-text"
+                                       value="<?php echo esc_attr($evento->nome_fantasia ?? ''); ?>"
+                                       placeholder="Como a empresa é conhecida"></td>
+                        </tr>
                         <tr>
                             <th><label>Razão Social *</label></th>
                             <td><input type="text" name="razao_social" class="regular-text"
@@ -933,6 +950,7 @@ class PhotoMusic_Events {
             'tipo_evento'             => $tipo_evento,
             'nome_contratante'        => sanitize_text_field($_POST['nome_contratante'] ?? '') ?: null,
             'cpf'                     => $cpf ?: null,
+            'nome_fantasia'           => sanitize_text_field($_POST['nome_fantasia'] ?? '') ?: null,
             'razao_social'            => sanitize_text_field($_POST['razao_social'] ?? '') ?: null,
             'cnpj'                    => $cnpj ?: null,
             'responsavel'             => sanitize_text_field($_POST['responsavel'] ?? '') ?: null,
@@ -1179,5 +1197,38 @@ class PhotoMusic_Events {
     public static function registrar_historico($id_evento, $acao, $detalhes = null) {
         $core = new PhotoMusic_Events_Core();
         return $core->registrar_historico($id_evento, $acao, $detalhes);
+    }
+
+    /* ============================================================
+       HANDLER — EXCLUIR EVENTO
+    ============================================================ */
+    public static function handle_excluir_evento() {
+
+        if (!current_user_can('administrator')) {
+            wp_die('Apenas administradores podem excluir eventos.');
+        }
+
+        $id = intval($_GET['id'] ?? 0);
+
+        if (!$id || !wp_verify_nonce($_GET['_wpnonce'] ?? '', 'pm_excluir_evento_' . $id)) {
+            wp_die('Requisição inválida.');
+        }
+
+        global $wpdb;
+
+        // Remove serviços do evento
+        $wpdb->delete($wpdb->prefix . 'pm_eventos_servicos', ['id_evento' => $id], ['%d']);
+
+        // Remove contratos vinculados
+        $wpdb->delete($wpdb->prefix . 'pm_contratos', ['id_evento' => $id], ['%d']);
+
+        // Remove logs do evento
+        $wpdb->delete($wpdb->prefix . 'pm_logs_sistema', ['id_evento' => $id], ['%d']);
+
+        // Remove o evento principal
+        $wpdb->delete($wpdb->prefix . 'pm_eventos', ['id' => $id], ['%d']);
+
+        wp_redirect(admin_url('admin.php?page=photomusic-eventos&excluido=1'));
+        exit;
     }
 }

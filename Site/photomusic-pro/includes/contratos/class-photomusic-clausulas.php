@@ -490,7 +490,8 @@ class PhotoMusic_Clausulas
             // 4. Limpar linhas em branco extras
             $texto = preg_replace("/\n{3,}/", "\n\n", trim($texto));
 
-            $html .= '<h3>' . esc_html($c->titulo) . "</h3>\n" . $texto . "\n";
+            $titulo_decoded = html_entity_decode($c->titulo, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $html .= '<h3>' . $titulo_decoded . "</h3>\n" . $texto . "\n";
         }
 
         return "<div class='contrato-gerado'>{$html}</div>";

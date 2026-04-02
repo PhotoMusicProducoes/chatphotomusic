@@ -125,12 +125,13 @@ class PhotoMusic_Galeria_Controller {
 
         // Carrega serviços com links individuais (um evento pode ter vários)
         $servicos_links = $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT nome_servico, tipo, link_convidado
-             FROM {$this->wpdb->prefix}pm_event_services
-             WHERE id_evento = %d
-               AND status_servico = 'ativo'
-               AND (link_convidado IS NOT NULL AND link_convidado != '')
-             ORDER BY id ASC",
+            "SELECT s.nome AS nome_servico, s.slug AS tipo, es.link_galeria AS link_convidado
+             FROM {$this->wpdb->prefix}pm_eventos_servicos es
+             LEFT JOIN {$this->wpdb->prefix}pm_servicos s ON s.id = es.id_servico
+             WHERE es.id_evento = %d
+               AND es.link_galeria IS NOT NULL
+               AND es.link_galeria != ''
+             ORDER BY es.id ASC",
             $evento->id
         ));
 

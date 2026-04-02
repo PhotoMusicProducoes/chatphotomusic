@@ -8,7 +8,28 @@ class PhotoMusic_Formulario_Eucaristia {
 
     public static function init() {
         add_shortcode('photomusic_formulario_eucaristia', [__CLASS__, 'render_formulario']);
-        add_action('init', [__CLASS__, 'processar_formulario']);
+        // wp_loaded dispara após init — garante que o processamento ocorre mesmo quando
+        // init() é chamado de dentro do hook 'init' (WordPress não re-executa callbacks
+        // adicionados ao hook corrente na mesma prioridade)
+        add_action('wp_loaded', [__CLASS__, 'processar_formulario']);
+    }
+
+    /* ============================================================
+       VALIDAÇÃO CPF — dígitos verificadores
+    ============================================================ */
+    private static function validar_cpf($cpf) {
+        $cpf = preg_replace('/\D/', '', $cpf);
+        if (strlen($cpf) !== 11 || preg_match('/^(\d)\1+$/', $cpf)) return false;
+        $soma = 0;
+        for ($i = 0; $i < 9; $i++) $soma += intval($cpf[$i]) * (10 - $i);
+        $resto = ($soma * 10) % 11;
+        if ($resto === 10 || $resto === 11) $resto = 0;
+        if ($resto !== intval($cpf[9])) return false;
+        $soma = 0;
+        for ($i = 0; $i < 10; $i++) $soma += intval($cpf[$i]) * (11 - $i);
+        $resto = ($soma * 10) % 11;
+        if ($resto === 10 || $resto === 11) $resto = 0;
+        return $resto === intval($cpf[10]);
     }
 
     /* ============================================================
@@ -17,13 +38,133 @@ class PhotoMusic_Formulario_Eucaristia {
     ============================================================ */
     public static function render_formulario() {
 
-        // Mensagem de confirmação após envio
-        if (!empty($_GET['pm_eucaristia']) && $_GET['pm_eucaristia'] === 'enviado') {
-            return '<div style="max-width:640px;margin:30px auto;padding:20px;background:#e8f5e9;border:1px solid #4caf50;border-radius:6px;font-family:system-ui,sans-serif;">
-                <h2 style="color:#2e7d32;margin-top:0;">✅ Cadastro enviado com sucesso!</h2>
-                <p>Recebemos suas informações. Em breve entraremos em contato via WhatsApp para confirmar o agendamento e enviar o contrato para assinatura.</p>
-                <p><strong>PhotoMusic Produções</strong> — (21) 96442-8172</p>
-            </div>';
+        // Tela de confirmação após envio OU link direto de pagamento (sem cadastro)
+        $pm_euc_estado = sanitize_text_field($_GET['pm_eucaristia'] ?? '');
+        if (!empty($pm_euc_estado) && in_array($pm_euc_estado, ['enviado', 'direto'], true)) {
+
+            $fp           = sanitize_text_field($_GET['fp'] ?? '');
+            $link_direto  = ($pm_euc_estado === 'direto'); // true = veio do link direto, sem msg de cadastro
+
+            // Lê configurações de pagamento
+            $valor_pix       = esc_html(get_option('pm_eucaristia_valor_pix',          '150,00'));
+            $pix_chave       = esc_html(get_option('pm_eucaristia_pix_chave',          '55353989000109'));
+            $pix_banco       = esc_html(get_option('pm_eucaristia_pix_banco',          'Nubank'));
+            $pix_benefic     = esc_html(get_option('pm_eucaristia_pix_beneficiario',   '55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ'));
+            $pix_payload     = get_option('pm_eucaristia_pix_payload',                 '');
+            $valor_cartao    = esc_html(get_option('pm_eucaristia_valor_cartao',       '170,00'));
+            $link_cartao     = get_option('pm_eucaristia_link_cartao',                 '');
+            $wpp_comprovante = preg_replace('/\D/', '', get_option('pm_eucaristia_whatsapp_comprovante', '2196442-8172'));
+
+            ob_start();
+            ?>
+            <div style="max-width:640px;margin:30px auto;font-family:system-ui,sans-serif;padding:0 16px;">
+
+                <?php if (!$link_direto): ?>
+                <div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:6px;padding:20px;margin-bottom:24px;">
+                    <h2 style="color:#2e7d32;margin-top:0;">✅ Cadastro enviado com sucesso!</h2>
+                    <p style="margin:0;">Recebemos suas informações. Em breve entraremos em contato via WhatsApp para confirmar o agendamento e enviar o contrato para assinatura.</p>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($fp === 'pix'): ?>
+                <!-- ===== PAGAMENTO VIA PIX ===== -->
+                <div style="background:#fff8e1;border:1px solid #ffc107;border-radius:6px;padding:20px;margin-bottom:20px;">
+                    <h3 style="color:#e65100;margin-top:0;">💛 Pagamento via PIX - R$ <?php echo $valor_pix; ?></h3>
+                    <p style="margin:0 0 16px;">Para confirmar seu agendamento, realize o pagamento via PIX:</p>
+
+                    <?php if (!empty($pix_payload)): ?>
+                    <!-- QR CODE -->
+                    <div style="text-align:center;margin-bottom:20px;">
+                        <img src="<?php echo esc_url('https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=' . rawurlencode($pix_payload)); ?>"
+                             alt="QR Code PIX R$ <?php echo $valor_pix; ?>"
+                             style="border:3px solid #ffc107;border-radius:8px;display:block;margin:0 auto 10px;">
+                        <span style="font-size:0.85em;color:#555;">Aponte a câmera do celular para pagar</span>
+                    </div>
+                    <!-- COPIA E COLA -->
+                    <div style="margin-bottom:16px;">
+                        <p style="font-weight:600;margin:0 0 6px;">Ou use o PIX Copia e Cola:</p>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <code id="pm-pix-payload" style="background:#fff3cd;padding:6px 10px;border-radius:4px;font-size:0.78em;word-break:break-all;flex:1;min-width:0;"><?php echo esc_html($pix_payload); ?></code>
+                            <button type="button"
+                                    onclick="navigator.clipboard.writeText('<?php echo esc_js($pix_payload); ?>').then(function(){ this.textContent='✅ Copiado!'; setTimeout(()=>{this.textContent='📋 Copiar código';},2500); }.bind(this))"
+                                    style="white-space:nowrap;padding:8px 14px;border:1px solid #ffc107;border-radius:6px;background:#fff;cursor:pointer;font-size:0.9em;font-weight:600;">
+                                📋 Copiar código
+                            </button>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <!-- DADOS PARA TRANSFERÊNCIA MANUAL -->
+                    <table style="width:100%;border-collapse:collapse;font-size:0.92em;">
+                        <tr style="border-bottom:1px solid #ffe082;">
+                            <td style="padding:7px 0;font-weight:600;width:130px;">Chave PIX (CNPJ)</td>
+                            <td style="padding:7px 0;">
+                                <code style="background:#fff3cd;padding:3px 8px;border-radius:4px;"><?php echo $pix_chave; ?></code>
+                                &nbsp;
+                                <button type="button"
+                                        onclick="navigator.clipboard.writeText('<?php echo esc_js($pix_chave); ?>').then(function(){ this.textContent='✅'; setTimeout(()=>{this.textContent='📋';},2000); }.bind(this))"
+                                        style="padding:2px 8px;border:1px solid #ffc107;border-radius:4px;background:#fff;cursor:pointer;font-size:0.85em;">
+                                    📋
+                                </button>
+                            </td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #ffe082;">
+                            <td style="padding:7px 0;font-weight:600;">Banco</td>
+                            <td style="padding:7px 0;"><?php echo $pix_banco; ?></td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #ffe082;">
+                            <td style="padding:7px 0;font-weight:600;">Beneficiário</td>
+                            <td style="padding:7px 0;"><?php echo $pix_benefic; ?></td>
+                        </tr>
+                        <tr>
+                            <td style="padding:7px 0;font-weight:600;">Valor</td>
+                            <td style="padding:7px 0;font-size:1.1em;font-weight:bold;color:#2e7d32;">R$ <?php echo $valor_pix; ?></td>
+                        </tr>
+                    </table>
+
+                    <?php if (!empty($wpp_comprovante)): ?>
+                    <p style="margin:16px 0 0;font-size:0.9em;">
+                        Após realizar o PIX, envie o comprovante pelo WhatsApp:
+                        <a href="https://wa.me/55<?php echo esc_attr($wpp_comprovante); ?>?text=<?php echo urlencode('Olá! Acabei de realizar o pagamento via PIX da 1ª Eucaristia. Segue o comprovante:'); ?>"
+                           target="_blank"
+                           style="display:inline-block;margin-top:8px;padding:8px 16px;background:#25d366;color:#fff;border-radius:6px;text-decoration:none;font-weight:bold;">
+                            📲 Enviar comprovante via WhatsApp
+                        </a>
+                    </p>
+                    <?php endif; ?>
+                </div>
+
+                <?php elseif ($fp === 'cartao' && !empty($link_cartao)): ?>
+                <!-- ===== PAGAMENTO VIA CARTÃO ===== -->
+                <div style="background:#e3f2fd;border:1px solid #2196f3;border-radius:6px;padding:20px;margin-bottom:20px;">
+                    <h3 style="color:#0d47a1;margin-top:0;">💳 Pagamento via Cartão de Crédito - R$ <?php echo $valor_cartao; ?></h3>
+                    <p style="margin:0 0 16px;">Clique no botão abaixo para realizar o pagamento com cartão de crédito em até 3x sem juros:</p>
+
+                    <a href="<?php echo esc_url($link_cartao); ?>" target="_blank"
+                       style="display:inline-block;padding:12px 24px;background:#1565c0;color:#fff;border-radius:6px;text-decoration:none;font-weight:bold;font-size:1.05em;">
+                        💳 Pagar R$ <?php echo $valor_cartao; ?> com Cartão
+                    </a>
+
+                    <?php if (!empty($wpp_comprovante)): ?>
+                    <p style="margin:16px 0 0;font-size:0.9em;">
+                        Após o pagamento, envie o comprovante pelo WhatsApp:
+                        <a href="https://wa.me/55<?php echo esc_attr($wpp_comprovante); ?>?text=<?php echo urlencode('Olá! Sou cliente da 1ª Eucaristia e quero enviar meu comprovante de pagamento com cartão.'); ?>"
+                           target="_blank"
+                           style="display:inline-block;margin-top:8px;padding:8px 16px;background:#25d366;color:#fff;border-radius:6px;text-decoration:none;font-weight:bold;">
+                            📲 Enviar comprovante via WhatsApp
+                        </a>
+                    </p>
+                    <?php endif; ?>
+                </div>
+
+                <?php endif; ?>
+
+                <p style="color:#555;font-size:0.9em;margin-top:8px;">
+                    <strong>PhotoMusic Produções</strong> - (21) 96442-8172
+                </p>
+            </div>
+            <?php
+            return ob_get_clean();
         }
 
         $vp = esc_html(get_option('pm_eucaristia_valor_pix',    '150,00'));
@@ -33,7 +174,7 @@ class PhotoMusic_Formulario_Eucaristia {
         ?>
         <div class="pm-form-eucaristia" style="max-width:640px;margin:30px auto;font-family:system-ui,sans-serif;padding:0 16px;">
 
-            <h2 style="margin-bottom:4px;">📸 Fotografia — 1ª Eucaristia</h2>
+            <h2 style="margin-bottom:4px;">📸 Fotografia - 1ª Eucaristia</h2>
             <p style="color:#555;margin-top:0;">Preencha seus dados para contratar a cobertura fotográfica. Após o envio, entraremos em contato para confirmar e enviar o contrato.</p>
 
             <?php if (!empty($_GET['pm_erro'])): ?>
@@ -45,6 +186,7 @@ class PhotoMusic_Formulario_Eucaristia {
             <form method="post" id="pm-form-eucaristia">
                 <?php wp_nonce_field('pm_precadastro_eucaristia', 'pm_eucaristia_nonce'); ?>
                 <input type="hidden" name="pm_action" value="pm_precadastro_eucaristia">
+                <input type="hidden" name="pm_page_url" value="<?php echo esc_url(get_permalink()); ?>">
 
                 <!-- DADOS DO CONTRATANTE (RESPONSÁVEL) -->
                 <fieldset style="border:1px solid #ddd;border-radius:6px;padding:16px 20px;margin-bottom:20px;">
@@ -60,11 +202,18 @@ class PhotoMusic_Formulario_Eucaristia {
                         <input type="text" name="cpf" required maxlength="14"
                                placeholder="000.000.000-00" id="pm-cpf-pub"
                                style="width:100%;max-width:220px;padding:8px;border:1px solid #ccc;border-radius:4px;">
+                        <span id="pm-cpf-status" style="margin-left:8px;font-weight:600;font-size:0.9em;"></span>
+                        <span id="pm-cpf-msg" style="display:block;margin-top:4px;font-size:0.85em;color:#c62828;"></span>
                     </p>
                     <p>
                         <label style="display:block;font-weight:600;margin-bottom:4px;">RG</label>
                         <input type="text" name="rg"
                                style="width:100%;max-width:220px;padding:8px;border:1px solid #ccc;border-radius:4px;">
+                    </p>
+                    <p>
+                        <label style="display:block;font-weight:600;margin-bottom:4px;">Data de nascimento</label>
+                        <input type="date" name="data_nascimento"
+                               style="width:100%;max-width:200px;padding:8px;border:1px solid #ccc;border-radius:4px;">
                     </p>
                     <p>
                         <label style="display:block;font-weight:600;margin-bottom:4px;">Celular / WhatsApp *</label>
@@ -169,6 +318,11 @@ class PhotoMusic_Formulario_Eucaristia {
                 <fieldset style="border:1px solid #ddd;border-radius:6px;padding:16px 20px;margin-bottom:20px;">
                     <legend style="font-weight:bold;padding:0 8px;">⛪ Dados da Catequese</legend>
                     <p>
+                        <label style="display:block;font-weight:600;margin-bottom:4px;">Data da 1ª Eucaristia *</label>
+                        <input type="date" name="data_evento" required
+                               style="width:100%;max-width:200px;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                    </p>
+                    <p>
                         <label style="display:block;font-weight:600;margin-bottom:4px;">Nome do(a) Catequista</label>
                         <input type="text" name="nome_catequista"
                                style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
@@ -196,12 +350,12 @@ class PhotoMusic_Formulario_Eucaristia {
                     <legend style="font-weight:bold;padding:0 8px;">💳 Forma de Pagamento</legend>
                     <label style="display:block;margin-bottom:10px;cursor:pointer;padding:10px;border:1px solid #ccc;border-radius:4px;">
                         <input type="radio" name="forma_pagamento_eucaristia" value="pix" required>
-                        <strong>PIX</strong> — R$ <?php echo $vp; ?> à vista
+                        <strong>PIX</strong> - R$ <?php echo $vp; ?> à vista
                         <span style="display:block;font-size:0.85em;color:#555;margin-top:4px;margin-left:20px;">Desconto de R$ <?php echo number_format(floatval(str_replace(',','.',$vc)) - floatval(str_replace(',','.',$vp)), 2, ',', '.'); ?> para pagamento via PIX</span>
                     </label>
                     <label style="display:block;cursor:pointer;padding:10px;border:1px solid #ccc;border-radius:4px;">
                         <input type="radio" name="forma_pagamento_eucaristia" value="cartao">
-                        <strong>Cartão de Crédito</strong> — R$ <?php echo $vc; ?> em 3x sem juros
+                        <strong>Cartão de Crédito</strong> - R$ <?php echo $vc; ?> em 3x sem juros
                     </label>
                 </fieldset>
 
@@ -218,16 +372,67 @@ class PhotoMusic_Formulario_Eucaristia {
 
         <script>
         (function() {
-            // Máscara CPF
+
+            /* ---- Validação matemática CPF ---- */
+            function validarCPF(cpf) {
+                cpf = cpf.replace(/\D/g, '');
+                if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
+                var soma = 0, resto;
+                for (var i = 0; i < 9; i++) soma += parseInt(cpf[i]) * (10 - i);
+                resto = (soma * 10) % 11;
+                if (resto === 10 || resto === 11) resto = 0;
+                if (resto !== parseInt(cpf[9])) return false;
+                soma = 0;
+                for (var i = 0; i < 10; i++) soma += parseInt(cpf[i]) * (11 - i);
+                resto = (soma * 10) % 11;
+                if (resto === 10 || resto === 11) resto = 0;
+                return resto === parseInt(cpf[10]);
+            }
+
+            function setCpfStatus(valido, vazio) {
+                var st  = document.getElementById('pm-cpf-status');
+                var msg = document.getElementById('pm-cpf-msg');
+                var el  = document.getElementById('pm-cpf-pub');
+                if (!st) return;
+                if (vazio) {
+                    st.textContent = '';
+                    msg.textContent = '';
+                    el.style.borderColor = '#ccc';
+                } else if (valido) {
+                    st.textContent = '✅';
+                    msg.textContent = '';
+                    el.style.borderColor = '#4caf50';
+                } else {
+                    st.textContent = '❌';
+                    msg.textContent = 'CPF inválido - verifique os números digitados.';
+                    el.style.borderColor = '#f44336';
+                }
+            }
+
+            /* ---- Máscara + validação em tempo real ---- */
             var cpfEl = document.getElementById('pm-cpf-pub');
-            if (cpfEl) cpfEl.addEventListener('input', function() {
-                var v = this.value.replace(/\D/g,'').substring(0,11);
-                v = v.replace(/(\d{3})(\d)/,'$1.$2');
-                v = v.replace(/(\d{3})(\d)/,'$1.$2');
-                v = v.replace(/(\d{3})(\d{1,2})$/,'$1-$2');
-                this.value = v;
-            });
-            // Máscara telefone
+            if (cpfEl) {
+                cpfEl.addEventListener('input', function() {
+                    var d = this.value.replace(/\D/g,'').substring(0,11);
+                    var v = d;
+                    v = v.replace(/(\d{3})(\d)/,'$1.$2');
+                    v = v.replace(/(\d{3})(\d)/,'$1.$2');
+                    v = v.replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+                    this.value = v;
+                    if (d.length === 0) setCpfStatus(false, true);
+                    else if (d.length === 11) setCpfStatus(validarCPF(d), false);
+                    else setCpfStatus(false, true); // ainda digitando — sem erro
+                });
+
+                /* ---- Ao sair do campo: valida imediatamente ---- */
+                cpfEl.addEventListener('blur', function() {
+                    var d = this.value.replace(/\D/g,'');
+                    if (d.length === 0) { setCpfStatus(false, true); return; }
+                    setCpfStatus(validarCPF(d), false);
+                });
+            }
+
+            /* ---- Máscara telefone ---- */
             var telEl = document.getElementById('pm-tel-pub');
             if (telEl) telEl.addEventListener('input', function() {
                 var v = this.value.replace(/\D/g,'').substring(0,11);
@@ -235,7 +440,22 @@ class PhotoMusic_Formulario_Eucaristia {
                 else v = v.replace(/(\d{2})(\d{5})(\d{0,4})/,'($1) $2-$3');
                 this.value = v;
             });
-            // Adicionar catequizando
+
+            /* ---- Bloqueio no submit se CPF inválido ---- */
+            var form = document.getElementById('pm-form-eucaristia');
+            if (form) form.addEventListener('submit', function(e) {
+                var cpfEl = document.getElementById('pm-cpf-pub');
+                if (!cpfEl) return;
+                var d = cpfEl.value.replace(/\D/g,'');
+                if (d.length > 0 && !validarCPF(d)) {
+                    e.preventDefault();
+                    setCpfStatus(false, false);
+                    cpfEl.focus();
+                    cpfEl.scrollIntoView({behavior:'smooth', block:'center'});
+                }
+            });
+
+            /* ---- Adicionar catequizando ---- */
             document.getElementById('pm-cat-pub-add') && document.getElementById('pm-cat-pub-add').addEventListener('click', function() {
                 var lista = document.getElementById('pm-cat-pub-lista');
                 var modelo = lista.querySelector('.pm-cat-pub-linha').cloneNode(true);
@@ -248,6 +468,7 @@ class PhotoMusic_Formulario_Eucaristia {
                 modelo.appendChild(btn);
                 lista.appendChild(modelo);
             });
+
         })();
         </script>
         <?php
@@ -276,15 +497,18 @@ class PhotoMusic_Formulario_Eucaristia {
                             ? $_POST['forma_pagamento_eucaristia'] : null;
 
         // Validações mínimas
+        $data_evento = sanitize_text_field($_POST['data_evento'] ?? '');
+
         $erro = '';
         if (empty($nome_contratante)) $erro = 'O nome é obrigatório.';
-        elseif (empty($telefone))     $erro = 'O celular/WhatsApp é obrigatório.';
+        elseif (empty($telefone))      $erro = 'O celular/WhatsApp é obrigatório.';
+        elseif (empty($data_evento))   $erro = 'A data da 1ª Eucaristia é obrigatória.';
         elseif (empty($nome_paroquia)) $erro = 'O nome da paróquia é obrigatório.';
-        elseif (empty($fp))           $erro = 'Selecione a forma de pagamento.';
+        elseif (empty($fp))            $erro = 'Selecione a forma de pagamento.';
 
-        // Validação CPF
+        // Validação CPF — matemática completa
         $cpf = preg_replace('/\D/', '', $_POST['cpf'] ?? '');
-        if (empty($erro) && !empty($cpf) && strlen($cpf) !== 11) {
+        if (empty($erro) && !empty($cpf) && !self::validar_cpf($cpf)) {
             $erro = 'CPF inválido. Verifique o número digitado.';
         }
 
@@ -294,14 +518,17 @@ class PhotoMusic_Formulario_Eucaristia {
             $erro = 'Informe o nome de pelo menos um(a) catequizando(a).';
         }
 
+        $page_url = esc_url_raw($_POST['pm_page_url'] ?? '');
+        if (empty($page_url)) $page_url = wp_get_referer() ?: home_url('/');
+
         if (!empty($erro)) {
-            wp_redirect(add_query_arg('pm_erro', urlencode($erro), wp_get_referer() ?: get_permalink()));
+            wp_redirect(add_query_arg('pm_erro', urlencode($erro), $page_url));
             exit;
         }
 
         // Monta o motivo/título do evento
         $primeiro_cat = reset($nomes_cat);
-        $motivo = '1ª Eucaristia — ' . $primeiro_cat;
+        $motivo = '1ª Eucaristia - ' . $primeiro_cat;
         if (count($nomes_cat) > 1) {
             $motivo .= ' e mais ' . (count($nomes_cat) - 1);
         }
@@ -312,6 +539,7 @@ class PhotoMusic_Formulario_Eucaristia {
             'nome_contratante'           => $nome_contratante,
             'cpf'                        => $cpf ?: null,
             'rg'                         => sanitize_text_field($_POST['rg'] ?? '') ?: null,
+            'data_nascimento'            => sanitize_text_field($_POST['data_nascimento'] ?? '') ?: null,
             'email_contratante'          => sanitize_email($_POST['email_contratante'] ?? '') ?: null,
             'telefone_contratante'       => preg_replace('/\D/', '', $telefone),
             'grau_parentesco'            => sanitize_text_field($_POST['grau_parentesco'] ?? '') ?: null,
@@ -323,6 +551,7 @@ class PhotoMusic_Formulario_Eucaristia {
             'cont_estado'                => strtoupper(sanitize_text_field($_POST['cont_estado'] ?? 'RJ')),
             'cont_cep'                   => sanitize_text_field($_POST['cont_cep'] ?? '') ?: null,
             'motivo_evento'              => $motivo,
+            'data_evento'                => sanitize_text_field($_POST['data_evento'] ?? '') ?: null,
             'tipo_celebracao'            => '1eucaristia',
             'nome_catequista'            => sanitize_text_field($_POST['nome_catequista'] ?? '') ?: null,
             'horario_catequese'          => sanitize_text_field($_POST['horario_catequese'] ?? '') ?: null,
@@ -362,7 +591,7 @@ class PhotoMusic_Formulario_Eucaristia {
         $tel_admin = get_option('pm_whatsapp_admin');
         if (!empty($tel_admin) && class_exists('PhotoMusic_WhatsApp')) {
             $msg = "📋 *Novo pré-cadastro 1ª Eucaristia*\n"
-                 . "👤 {$nome_contratante} — " . $telefone . "\n"
+                 . "👤 {$nome_contratante} - " . $telefone . "\n"
                  . "✝️ " . implode(', ', $nomes_cat) . "\n"
                  . "⛪ {$nome_paroquia}\n"
                  . "💳 " . ($fp === 'pix' ? 'PIX' : 'Cartão') . "\n"
@@ -375,7 +604,7 @@ class PhotoMusic_Formulario_Eucaristia {
             PhotoMusic_Contratos::criar_contrato_simplificado($id_evento, 0);
         }
 
-        wp_redirect(add_query_arg('pm_eucaristia', 'enviado', get_permalink()));
+        wp_redirect(add_query_arg(['pm_eucaristia' => 'enviado', 'fp' => $fp], $page_url));
         exit;
     }
 }

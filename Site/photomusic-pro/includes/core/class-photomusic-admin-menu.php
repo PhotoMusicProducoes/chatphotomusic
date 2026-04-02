@@ -142,28 +142,48 @@ class PhotoMusic_Admin_Menu {
                             $val_base  = floatval($s['valor_base'] ?? 0);
                             $val_adic  = floatval($s['valor_adicional'] ?? 0);
                             $val       = floatval($s['valor_final']);
-                            $obs       = $s['observacoes'] ?? '';
+                            $obs       = $s['observacoes']        ?? '';
+                            $descricao = $s['descricao_catalogo'] ?? ($s['descricao'] ?? '');
                             $total       += $val;
                             $total_base  += $val_base;
                             $total_adicional += $val_adic;
                             $lista_html .= '<li><strong>' . esc_html($nome);
-                            if ($pac) $lista_html .= ' — ' . esc_html($pac);
-                            if ($hrs) $lista_html .= ' — ' . $hrs . 'h';
+                            if ($pac) $lista_html .= ' - ' . esc_html($pac);
+                            if ($hrs) $lista_html .= ' - ' . $hrs . 'h';
                             $lista_html .= '</strong>';
+                            if ($descricao) $lista_html .= '<br><span style="font-size:0.95em;">' . nl2br(esc_html($descricao)) . '</span>';
                             if ($val_adic > 0) {
+                                $label_adic = !empty($s['label_adicional']) ? $s['label_adicional'] : 'Deslocamento';
                                 $lista_html .= '<ul>';
                                 $lista_html .= '<li>Serviço: R$ ' . number_format($val_base, 2, ',', '.') . '</li>';
-                                $label_adic = $obs ? esc_html($obs) : 'Adicional (deslocamento/horas extras)';
-                                $lista_html .= '<li>' . $label_adic . ': R$ ' . number_format($val_adic, 2, ',', '.') . '</li>';
+                                $lista_html .= '<li>' . esc_html($label_adic) . ': R$ ' . number_format($val_adic, 2, ',', '.') . '</li>';
                                 $lista_html .= '<li><strong>Subtotal: R$ ' . number_format($val, 2, ',', '.') . '</strong></li>';
                                 $lista_html .= '</ul>';
                             } else {
-                                $lista_html .= ' — R$ ' . number_format($val, 2, ',', '.');
+                                $lista_html .= ' - R$ ' . number_format($val, 2, ',', '.');
+                            }
+                            if ($obs) {
+                                $lista_html .= '<p style="margin:4px 0 0 0; font-size:0.95em;">' . nl2br(esc_html($obs)) . '</p>';
                             }
                             $lista_html .= '</li>';
                         }
                     }
                     $lista_html .= '</ul>';
+
+                    // Bloco de horários individuais por serviço
+                    $linhas_horario = [];
+                    if (!empty($servicos_tmp) && is_array($servicos_tmp)) {
+                        foreach ($servicos_tmp as $s) {
+                            if (!empty($s['horario_inicio'])) {
+                                $hr_fmt = substr($s['horario_inicio'], 0, 5);
+                                $linhas_horario[] = esc_html($s['nome_servico'] ?? '') . ': ' . $hr_fmt . ' horas';
+                            }
+                        }
+                    }
+                    if (!empty($linhas_horario)) {
+                        $lista_html .= '<p><strong>Horário de início do(s) serviço(s):</strong><br>'
+                                     . implode('<br>', $linhas_horario) . '</p>';
+                    }
 
                     $contato = $evento_tmp->contato_responsavel ?: $evento_tmp->contato_cerimonialista ?: '';
 
@@ -204,12 +224,12 @@ class PhotoMusic_Admin_Menu {
                             $fp = $evento_tmp->forma_pagamento_eucaristia ?? '';
                             if ($fp === 'pix') {
                                 $v = get_option('pm_eucaristia_valor_pix', '150,00');
-                                return "PIX — R$ {$v} à vista";
+                                return "PIX - R$ {$v} à vista";
                             }
                             if ($fp === 'cartao') {
                                 $v = get_option('pm_eucaristia_valor_cartao', '170,00');
                                 $p = number_format(floatval(str_replace(',', '.', $v)) / 3, 2, ',', '.');
-                                return "Cartão de Crédito — R$ {$v} em 3x de R$ {$p} sem juros";
+                                return "Cartão de Crédito - R$ {$v} em 3x de R$ {$p} sem juros";
                             }
                             return '';
                         })(),
@@ -471,12 +491,34 @@ class PhotoMusic_Admin_Menu {
         );
 
         add_submenu_page(
+            'photomusic-eventos',
+            '1ª Eucaristia — Links',
+            'Eucaristia',
+            'pm_ver_eventos',
+            'photomusic-eucaristia-links',
+            [__CLASS__, 'render_eucaristia_links_page']
+        );
+
+        add_submenu_page(
             null,
             'Detalhes do Contrato',
             'Detalhes do Contrato',
             'pm_ver_eventos',
             'photomusic-contrato-detalhes',
             [__CLASS__, 'render_contrato_detalhes_page']
+        );
+
+        add_submenu_page(
+            null,
+            'Editar Contrato',
+            'Editar Contrato',
+            'pm_ver_eventos',
+            'photomusic-contrato-editar',
+            function() {
+                if (class_exists('PhotoMusic_Contratos_Edit')) {
+                    PhotoMusic_Contratos_Edit::render();
+                }
+            }
         );
 
         add_submenu_page(
@@ -557,6 +599,204 @@ class PhotoMusic_Admin_Menu {
     /* ============================================================
        LISTAGEM DE CONTRATOS
     ============================================================ */
+    /* ============================================================
+       PÁGINA: LINKS E PAGAMENTOS — 1ª EUCARISTIA
+    ============================================================ */
+    public static function render_eucaristia_links_page() {
+
+        $form_url        = get_option('pm_eucaristia_form_url', '');
+        $valor_pix       = get_option('pm_eucaristia_valor_pix', '150,00');
+        $pix_chave       = get_option('pm_eucaristia_pix_chave', '');
+        $pix_banco       = get_option('pm_eucaristia_pix_banco', '');
+        $pix_benefic     = get_option('pm_eucaristia_pix_beneficiario', '');
+        $pix_payload     = get_option('pm_eucaristia_pix_payload', '');
+        $valor_cartao    = get_option('pm_eucaristia_valor_cartao', '170,00');
+        $link_cartao     = get_option('pm_eucaristia_link_cartao', '');
+        $wpp_comprovante = get_option('pm_eucaristia_whatsapp_comprovante', '');
+
+        // Links diretos para a tela de pagamento (sem cadastro, sem mensagem de sucesso)
+        $link_pix_direto    = $form_url ? rtrim($form_url, '/') . '/?pm_eucaristia=direto&fp=pix'    : '';
+        $link_cartao_direto = $form_url ? rtrim($form_url, '/') . '/?pm_eucaristia=direto&fp=cartao' : '';
+
+        $config_url = admin_url('admin.php?page=photomusic_config');
+
+        // Salva a URL do formulário diretamente nesta página
+        if (!empty($_POST['pm_salvar_euc_url']) && check_admin_referer('pm_euc_url_nonce')) {
+            $nova_url = esc_url_raw(trim($_POST['pm_eucaristia_form_url'] ?? ''));
+            update_option('pm_eucaristia_form_url', $nova_url);
+            $form_url = $nova_url;
+            $link_pix_direto    = $form_url ? rtrim($form_url, '/') . '/?fp=pix'    : '';
+            $link_cartao_direto = $form_url ? rtrim($form_url, '/') . '/?fp=cartao' : '';
+            echo '<div class="notice notice-success is-dismissible"><p>✅ URL salva com sucesso!</p></div>';
+        }
+        ?>
+        <div class="wrap">
+            <h1>🥖 1ª Eucaristia — Links e Pagamentos</h1>
+            <p style="color:#666;">Copie os links abaixo para inserir no Sistema ChatBot PhotoMusic Pro.</p>
+
+            <style>
+                .pm-link-card { background:#fff; border:1px solid #ddd; border-radius:6px; padding:20px 24px; margin-bottom:20px; max-width:720px; }
+                .pm-link-card h2 { margin-top:0; font-size:1.1em; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; }
+                .pm-link-row { display:flex; align-items:center; gap:10px; margin-top:8px; }
+                .pm-link-row input[type=text], .pm-link-row textarea { flex:1; font-family:monospace; font-size:13px; background:#f8f8f8; border:1px solid #ccc; border-radius:4px; padding:8px 10px; }
+                .pm-link-row textarea { resize:vertical; min-height:60px; }
+                .pm-copy-btn { white-space:nowrap; }
+                .pm-qr { margin-top:12px; }
+                .pm-link-visivel { display:block; font-size:13px; color:#0073aa; word-break:break-all; margin-top:6px; }
+                .pm-link-visivel:hover { text-decoration:underline; }
+                .pm-label { font-size:12px; color:#666; margin:12px 0 2px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+            </style>
+
+            <!-- FORMULÁRIO DE INSCRIÇÃO -->
+            <div class="pm-link-card">
+                <h2>📋 Link do Formulário de Inscrição</h2>
+                <?php if ($form_url): ?>
+                    <p class="pm-label">Link</p>
+                    <a href="<?php echo esc_url($form_url); ?>" target="_blank" class="pm-link-visivel">
+                        <?php echo esc_html($form_url); ?>
+                    </a>
+                    <div class="pm-link-row">
+                        <input type="text" id="pm-url-form" value="<?php echo esc_attr($form_url); ?>" readonly>
+                        <button class="button button-primary pm-copy-btn" onclick="pmCopiar('pm-url-form', this)">📋 Copiar</button>
+                    </div>
+                    <p style="margin:8px 0 0; font-size:12px; color:#888;">Shortcode da página: <code>[photomusic_formulario_eucaristia]</code></p>
+                    <details style="margin-top:12px;">
+                        <summary style="cursor:pointer; font-size:12px; color:#0073aa;">✏️ Alterar URL do formulário</summary>
+                        <form method="post" style="margin-top:8px;">
+                            <?php wp_nonce_field('pm_euc_url_nonce'); ?>
+                            <input type="hidden" name="pm_salvar_euc_url" value="1">
+                            <div class="pm-link-row">
+                                <input type="url" name="pm_eucaristia_form_url"
+                                       value="<?php echo esc_attr($form_url); ?>"
+                                       style="flex:1; padding:8px 10px; border:1px solid #ccc; border-radius:4px; font-size:13px;"
+                                       required>
+                                <button type="submit" class="button button-primary pm-copy-btn">💾 Salvar</button>
+                            </div>
+                        </form>
+                    </details>
+                <?php else: ?>
+                    <p style="color:#a00; margin-bottom:12px;">⚠️ URL do formulário não configurada. Informe abaixo:</p>
+                    <form method="post">
+                        <?php wp_nonce_field('pm_euc_url_nonce'); ?>
+                        <input type="hidden" name="pm_salvar_euc_url" value="1">
+                        <div class="pm-link-row">
+                            <input type="url" name="pm_eucaristia_form_url"
+                                   placeholder="https://photomusic.com.br/eucaristia/"
+                                   style="flex:1; padding:8px 10px; border:1px solid #ccc; border-radius:4px; font-size:13px;"
+                                   required>
+                            <button type="submit" class="button button-primary pm-copy-btn">💾 Salvar URL</button>
+                        </div>
+                    </form>
+                <?php endif; ?>
+            </div>
+
+            <!-- LINK DIRETO PIX -->
+            <div class="pm-link-card" style="border-left:4px solid #00a651;">
+                <h2>💚 Pagamento via PIX — R$ <?php echo esc_html($valor_pix); ?></h2>
+
+                <?php if ($link_pix_direto): ?>
+                    <p class="pm-label">Link direto para pagamento PIX (sem cadastro)</p>
+                    <a href="<?php echo esc_url($link_pix_direto); ?>" target="_blank" class="pm-link-visivel">
+                        <?php echo esc_html($link_pix_direto); ?>
+                    </a>
+                    <div class="pm-link-row">
+                        <input type="text" id="pm-link-pix" value="<?php echo esc_attr($link_pix_direto); ?>" readonly>
+                        <button class="button button-primary pm-copy-btn" onclick="pmCopiar('pm-link-pix', this)">📋 Copiar</button>
+                    </div>
+                    <hr style="margin:16px 0; border:none; border-top:1px solid #eee;">
+                <?php endif; ?>
+
+                <p class="pm-label">Dados PIX</p>
+                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                    <tr><td style="padding:4px 0; color:#666; width:110px;">Banco</td><td><strong><?php echo esc_html($pix_banco); ?></strong></td></tr>
+                    <tr><td style="padding:4px 0; color:#666;">Beneficiário</td><td><strong><?php echo esc_html($pix_benefic); ?></strong></td></tr>
+                    <tr><td style="padding:4px 0; color:#666;">Chave PIX</td><td><strong><?php echo esc_html($pix_chave); ?></strong></td></tr>
+                </table>
+
+                <?php if ($pix_payload): ?>
+                    <p class="pm-label">PIX Copia e Cola</p>
+                    <div class="pm-link-row">
+                        <textarea id="pm-pix-payload" readonly><?php echo esc_textarea($pix_payload); ?></textarea>
+                        <button class="button button-primary pm-copy-btn" onclick="pmCopiar('pm-pix-payload', this)">📋 Copiar PIX</button>
+                    </div>
+                    <div class="pm-qr">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=<?php echo urlencode($pix_payload); ?>"
+                             alt="QR Code PIX" style="border:1px solid #ddd; border-radius:4px; display:block;">
+                        <span style="font-size:11px; color:#888;">QR Code PIX</span>
+                    </div>
+                <?php else: ?>
+                    <p style="color:#a00; margin-top:10px;">⚠️ PIX Copia e Cola não configurado. <a href="<?php echo esc_url($config_url); ?>">Configurar agora</a></p>
+                <?php endif; ?>
+            </div>
+
+            <!-- LINK DIRETO CARTÃO -->
+            <div class="pm-link-card" style="border-left:4px solid #0073aa;">
+                <h2>💳 Pagamento via Cartão — R$ <?php echo esc_html($valor_cartao); ?></h2>
+
+                <?php if ($link_cartao_direto): ?>
+                    <p class="pm-label">Link direto para pagamento Cartão (sem cadastro)</p>
+                    <a href="<?php echo esc_url($link_cartao_direto); ?>" target="_blank" class="pm-link-visivel">
+                        <?php echo esc_html($link_cartao_direto); ?>
+                    </a>
+                    <div class="pm-link-row">
+                        <input type="text" id="pm-link-cartao-direto" value="<?php echo esc_attr($link_cartao_direto); ?>" readonly>
+                        <button class="button button-primary pm-copy-btn" onclick="pmCopiar('pm-link-cartao-direto', this)">📋 Copiar</button>
+                    </div>
+                    <hr style="margin:16px 0; border:none; border-top:1px solid #eee;">
+                <?php endif; ?>
+
+                <?php if ($link_cartao): ?>
+                    <p class="pm-label">Link do gateway de pagamento (InfinitePay / etc.)</p>
+                    <a href="<?php echo esc_url($link_cartao); ?>" target="_blank" class="pm-link-visivel">
+                        <?php echo esc_html($link_cartao); ?>
+                    </a>
+                    <div class="pm-link-row">
+                        <input type="text" id="pm-url-cartao" value="<?php echo esc_attr($link_cartao); ?>" readonly>
+                        <button class="button button-primary pm-copy-btn" onclick="pmCopiar('pm-url-cartao', this)">📋 Copiar</button>
+                    </div>
+                <?php else: ?>
+                    <p style="color:#a00;">⚠️ Link de cartão não configurado. <a href="<?php echo esc_url($config_url); ?>">Configurar agora</a></p>
+                <?php endif; ?>
+            </div>
+
+            <!-- WHATSAPP COMPROVANTE -->
+            <?php if ($wpp_comprovante): ?>
+            <div class="pm-link-card" style="border-left:4px solid #25D366;">
+                <h2>📲 WhatsApp para envio de Comprovante</h2>
+                <div class="pm-link-row">
+                    <input type="text" id="pm-wpp" value="<?php echo esc_attr($wpp_comprovante); ?>" readonly>
+                    <button class="button pm-copy-btn" onclick="pmCopiar('pm-wpp', this)">📋 Copiar Número</button>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <p style="margin-top:10px;">
+                <a href="<?php echo esc_url($config_url); ?>" class="button">⚙️ Editar Configurações da Eucaristia</a>
+            </p>
+        </div>
+
+        <script>
+        function pmCopiar(id, btn) {
+            var el = document.getElementById(id);
+            el.select();
+            el.setSelectionRange(0, 99999);
+            var orig = btn.textContent;
+            try {
+                navigator.clipboard.writeText(el.value).then(function() {
+                    btn.textContent = '✅ Copiado!';
+                    btn.disabled = true;
+                    setTimeout(function() { btn.textContent = orig; btn.disabled = false; }, 2000);
+                });
+            } catch(e) {
+                document.execCommand('copy');
+                btn.textContent = '✅ Copiado!';
+                setTimeout(function() { btn.textContent = orig; }, 2000);
+            }
+        }
+        </script>
+        <?php
+    }
+
     public static function render_contratos_page() {
 
         if (!PhotoMusic_Users::current_user_can('pm_ver_eventos')) {
@@ -718,8 +958,8 @@ class PhotoMusic_Admin_Menu {
 
         echo '<h1>Contrato #' . $contrato->id . '</h1>';
         echo '<a class="button" href="' . admin_url('admin.php?page=photomusic-contratos') . '">← Voltar</a>';
-        if ($contrato->status_contrato === 'rascunho' && PhotoMusic_Contratos_Permissoes::pode_editar()) {
-            echo ' &nbsp; <a class="button button-secondary" href="' . admin_url('admin.php?page=photomusic_contratos&action=editar&id=' . $contrato->id) . '">✏️ Editar Contrato</a>';
+        if (current_user_can('administrator')) {
+            echo ' &nbsp; <a class="button button-secondary" href="' . admin_url('admin.php?page=photomusic-contrato-editar&id=' . $contrato->id) . '">🔢 Alterar Nº do Contrato</a>';
         }
         echo '<hr>';
 
@@ -730,11 +970,14 @@ class PhotoMusic_Admin_Menu {
         echo '<tr><th>PDF</th><td>';
 
         if ($contrato->pdf_final) {
-            echo '<a class="button button-primary" target="_blank" href="' . esc_url($contrato->pdf_final) . '">Baixar PDF</a> ';
-            echo '<a class="button button-secondary" href="' . esc_url(admin_url('admin.php?page=photomusic-contrato-detalhes&id=' . intval($contrato->id))) . '">Regerar PDF</a> ';
-            echo '<a class="button" href="' . admin_url('admin.php?page=photomusic-contrato-detalhes&enviar_whatsapp=' . $contrato->id) . '">Enviar por WhatsApp</a>';
+            echo '<a class="button button-primary" target="_blank" href="' . esc_url($contrato->pdf_final) . '">📄 Baixar PDF</a> ';
+            echo '<a class="button button-secondary" href="' . esc_url(admin_url('admin.php?page=photomusic-contrato-detalhes&regerar_pdf=' . intval($contrato->id) . '&id=' . intval($contrato->id))) . '"'
+               . ' onclick="return confirm(\'Regerar o PDF do contrato #' . $contrato->id . '?\');">🔄 Regerar PDF</a> ';
+            echo '<a class="button" href="' . esc_url(admin_url('admin.php?page=photomusic-contrato-detalhes&enviar_whatsapp=' . intval($contrato->id) . '&id=' . intval($contrato->id))) . '"'
+               . ' onclick="return confirm(\'Enviar o PDF por WhatsApp para o contratante?\');">📲 Enviar por WhatsApp</a>';
         } else {
-            echo '<em>PDF não gerado</em>';
+            echo '<em>PDF não gerado</em> &nbsp; ';
+            echo '<a class="button button-secondary" href="' . esc_url(admin_url('admin.php?page=photomusic-contrato-detalhes&regerar_pdf=' . intval($contrato->id) . '&id=' . intval($contrato->id))) . '">🔄 Gerar PDF</a>';
         }
 
         echo '</td></tr></table>';
@@ -986,6 +1229,88 @@ class PhotoMusic_Admin_Menu {
                 admin_url('admin-post.php?action=pm_criar_contrato&id_evento=' . $id_evento),
                 'pm_criar_contrato'
             ) . '">📄 Criar Contrato</a>';
+        }
+
+        /* ============================================================
+           SEÇÃO: FORMULÁRIO DE PRÉ-CADASTRO
+        ============================================================ */
+        echo '<hr>';
+        echo '<h2>📋 Pré-Cadastro do Cliente</h2>';
+
+        $tipo_cel_pc = $evento['tipo_celebracao'] ?? '';
+        $token_pc    = $evento['token_evento']    ?? '';
+        $tel_pc      = preg_replace('/\D/', '', $evento['telefone_contratante'] ?? '');
+        if ($tel_pc && strlen($tel_pc) <= 11) {
+            $tel_pc = '55' . $tel_pc;
+        }
+
+        if ($tipo_cel_pc === '1eucaristia') {
+
+            $url_eucaristia = get_option('pm_eucaristia_form_url', '');
+
+            if (empty($url_eucaristia)) {
+                echo '<div class="notice notice-warning inline"><p>'
+                    . '⚠️ URL do formulário de 1ª Eucaristia não configurada. '
+                    . 'Acesse <strong>Configurações → Geral</strong> e informe a URL da página do formulário.'
+                    . '</p></div>';
+            } else {
+                echo '<p>Envie o link abaixo para o cliente preencher o formulário de <strong>1ª Eucaristia</strong>:</p>';
+                echo '<p>';
+                echo '<code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:13px;">'
+                    . esc_html($url_eucaristia) . '</code>&nbsp;';
+                echo '<button type="button" class="button button-small" '
+                    . 'onclick="navigator.clipboard.writeText(' . json_encode($url_eucaristia) . ')'
+                    . '.then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
+                    . '📋 Copiar Link</button>';
+                if ($tel_pc) {
+                    $msg_euc = rawurlencode(
+                        "Olá! Segue o link para preencher o formulário de pré-cadastro da 1ª Eucaristia:\n"
+                        . $url_eucaristia
+                    );
+                    echo ' <a class="button button-primary" target="_blank" rel="noopener"'
+                        . ' href="https://wa.me/' . esc_attr($tel_pc) . '?text=' . $msg_euc . '">'
+                        . '📱 Enviar via WhatsApp</a>';
+                }
+                echo '</p>';
+            }
+
+        } elseif ($token_pc) {
+
+            $url_precadastro = home_url('/pre-cadastro/?t=' . $token_pc);
+            $status_pc       = $evento['pre_cadastro_status'] ?? '';
+
+            $status_labels = [
+                'pendente'   => '<span style="color:#e67e00;font-weight:600;">⏳ Aguardando preenchimento</span>',
+                'confirmado' => '<span style="color:#2a7a2a;font-weight:600;">✅ Preenchido pelo cliente</span>',
+                'cancelado'  => '<span style="color:#c00;font-weight:600;">❌ Cancelado</span>',
+            ];
+            if (!empty($status_pc) && isset($status_labels[$status_pc])) {
+                echo '<p>Status: ' . $status_labels[$status_pc] . '</p>';
+            }
+
+            echo '<p>Envie o link abaixo para o cliente preencher os dados pessoais e confirmar o contrato:</p>';
+            echo '<p>';
+            echo '<code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:13px;">'
+                . esc_html($url_precadastro) . '</code>&nbsp;';
+            echo '<button type="button" class="button button-small" '
+                . 'onclick="navigator.clipboard.writeText(' . json_encode($url_precadastro) . ')'
+                . '.then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
+                . '📋 Copiar Link</button>';
+            if ($tel_pc) {
+                $msg_pc = rawurlencode(
+                    "Olá! Segue o link para preencher o formulário de pré-cadastro do seu evento:\n"
+                    . $url_precadastro
+                );
+                echo ' <a class="button button-primary" target="_blank" rel="noopener"'
+                    . ' href="https://wa.me/' . esc_attr($tel_pc) . '?text=' . $msg_pc . '">'
+                    . '📱 Enviar via WhatsApp</a>';
+            }
+            echo '</p>';
+
+        } else {
+            echo '<div class="notice notice-warning inline"><p>'
+                . '⚠️ Token do evento não encontrado. Salve o evento novamente para gerar o link.'
+                . '</p></div>';
         }
 
         /* ============================================================

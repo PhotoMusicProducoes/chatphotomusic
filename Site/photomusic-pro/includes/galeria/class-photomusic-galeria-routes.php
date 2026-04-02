@@ -6,7 +6,14 @@ if (!defined('ABSPATH')) exit;
 class PhotoMusic_Galeria_Routes {
 
     public function __construct() {
-        add_action('init', [$this, 'add_rewrite_rules']);
+        // Se init já disparou (ex: classe instanciada dentro do próprio init),
+        // chama add_rewrite_rules() diretamente para garantir que as regras
+        // entrem em $wp_rewrite->extra_rules_top antes de qualquer flush_rules().
+        if ( did_action('init') ) {
+            $this->add_rewrite_rules();
+        } else {
+            add_action('init', [$this, 'add_rewrite_rules']);
+        }
         add_filter('query_vars', [$this, 'add_query_vars']);
         add_action('template_redirect', [$this, 'route_handler']);
     }

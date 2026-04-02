@@ -55,6 +55,11 @@ function photomusic_pro_autoload_classes() {
     /* ---------------- 1ª EUCARISTIA ---------------- */
     require_once PHOTOMUSIC_PRO_PATH . 'includes/eucaristia/class-photomusic-formulario-eucaristia.php';
 
+    /* ---------------- PRÉ-CADASTRO EVENTO ---------------- */
+    if (file_exists(PHOTOMUSIC_PRO_PATH . 'includes/precadastro/class-photomusic-precadastro-evento.php')) {
+        require_once PHOTOMUSIC_PRO_PATH . 'includes/precadastro/class-photomusic-precadastro-evento.php';
+    }
+
     /* ---------------- CONTRATOS ---------------- */
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos-route.php';
@@ -126,21 +131,21 @@ register_activation_hook(__FILE__, ['PhotoMusic_Installer', 'activate']);
 // DEPOIS — versão corrigida:
 function photomusic_pro_init_modules() {
 
-   // Menu Roadmap + Ideias + Projetos
-   new PhotoMusic_Roadmap_Menu();
-   PhotoMusic_Ideias_Futuras::init();
-   PhotoMusic_Projetos::init();
-   PhotoMusic_Dashboard::init();
-
    // Rotas da galeria
    new PhotoMusic_Galeria_Routes();
 
    // Galeria — shortcode [photomusic_galeria] e rotas amigáveis
    PhotoMusic_Galeria::init();
 
-   // Menu administrativo principal
-   PhotoMusic_Events::init();       // ← Eventos primeiro
+   // Menu administrativo principal — ordem define posição no submenu
+   PhotoMusic_Events::init();       // ← 1º: Eventos
+   PhotoMusic_Agenda::init();       // ← 2º: Agenda (logo após Eventos)
    PhotoMusic_Admin_Menu::init();   // ← resto dos submenus depois
+
+   // Menu Roadmap + Ideias + Projetos (menus separados)
+   new PhotoMusic_Roadmap_Menu();
+   PhotoMusic_Ideias_Futuras::init();
+   PhotoMusic_Projetos::init();
 
    // Empresa, representantes e permissões
    PhotoMusic_Empresa::init();             // ← ADICIONAR
@@ -165,6 +170,11 @@ function photomusic_pro_init_modules() {
 
    // 1ª Eucaristia — formulário público
    PhotoMusic_Formulario_Eucaristia::init();
+
+   // Pré-Cadastro de evento (outros serviços)
+   if (class_exists('PhotoMusic_Precadastro_Evento')) {
+       PhotoMusic_Precadastro_Evento::init();
+   }
 
    // Endpoints da galeria
    if (class_exists('PhotoMusic_Gallery_Endpoint')) {
@@ -197,7 +207,7 @@ function photomusic_pro_init_modules() {
        update_option('pm_chatbot_api_key', wp_generate_password(32, false));
    }
 
-   // Agenda
-   PhotoMusic_Agenda::init();
+   // Dashboard — registrado por último para aparecer no fim do submenu
+   PhotoMusic_Dashboard::init();
 }
 add_action('init', 'photomusic_pro_init_modules');

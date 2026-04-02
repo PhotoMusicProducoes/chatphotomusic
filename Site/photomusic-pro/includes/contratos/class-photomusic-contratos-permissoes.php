@@ -87,6 +87,9 @@ class PhotoMusic_Contratos_Permissoes {
 
     public static function validar_status_para_edicao($contrato) {
 
+        // Administrador pode editar contratos em qualquer status
+        if (current_user_can('administrator')) return;
+
         if ($contrato->status_contrato !== 'rascunho') {
             wp_die('Este contrato não pode mais ser editado.');
         }

@@ -185,6 +185,7 @@ class PhotoMusic_Servicos {
         return $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT es.*, s.nome as nome_servico, s.slug as slug_servico,
+                        s.descricao as descricao_catalogo,
                         p.titulo as nome_pacote, p.slug as slug_pacote,
                         p.valor_base as pacote_valor_base, p.valor_hora_extra
                  FROM " . self::$tbl_eventos_servicos . " es
@@ -581,6 +582,14 @@ class PhotoMusic_Servicos {
                                 </td>
                             </tr>
                             <tr>
+                                <th><label>Horário de Início do Serviço</label></th>
+                                <td>
+                                    <input type="time" name="horario_inicio" class="regular-text"
+                                           value="<?php echo esc_attr($se_editar['horario_inicio'] ? substr($se_editar['horario_inicio'], 0, 5) : ''); ?>">
+                                    <p class="description">Horário que <strong>este serviço</strong> começa (pode diferir do horário do evento). Aparece no contrato.</p>
+                                </td>
+                            </tr>
+                            <tr>
                                 <th><label>Valor Base (R$) *</label></th>
                                 <td>
                                     <input type="number" name="valor_base" id="input-valor-base"
@@ -595,7 +604,16 @@ class PhotoMusic_Servicos {
                                     <input type="number" name="valor_adicional"
                                            class="regular-text" step="0.01" min="0"
                                            value="<?php echo number_format(floatval($se_editar['valor_adicional'] ?? 0), 2, '.', ''); ?>">
-                                    <p class="description">Horas extras, deslocamento, etc.</p>
+                                    <p class="description">Deslocamento, horas extras, etc.</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label>Rótulo do Valor Adicional</label></th>
+                                <td>
+                                    <input type="text" name="label_adicional" class="regular-text"
+                                           placeholder="Ex: Deslocamento, Hora extra, Taxa..."
+                                           value="<?php echo esc_attr($se_editar['label_adicional'] ?? ''); ?>">
+                                    <p class="description">Nome que aparece no contrato. Se em branco usa "Deslocamento".</p>
                                 </td>
                             </tr>
                             <tr>
@@ -805,6 +823,25 @@ class PhotoMusic_Servicos {
         document.getElementById('input-horas').addEventListener('input', function() {
             atualizarValores();
         });
+
+        // ── Ao carregar a página em modo edição, restaura o pacote selecionado
+        document.addEventListener('DOMContentLoaded', function() {
+            var idServico = <?php echo intval($se_editar['id_servico'] ?? 0); ?>;
+            var idPacote  = <?php echo intval($se_editar['id_pacote']  ?? 0); ?>;
+            if (idServico) {
+                carregarPacotes(idServico);
+                if (idPacote) {
+                    var sel = document.getElementById('select-pacote');
+                    sel.value = idPacote;
+                    // Se o option ainda não existia, tenta novamente após um tick
+                    if (!sel.value) {
+                        setTimeout(function() { sel.value = idPacote; }, 50);
+                    }
+                }
+                var selServico = document.getElementById('select-servico');
+                verificarBrinde(selServico);
+            }
+        });
         </script>
         <?php
     }
@@ -889,9 +926,11 @@ class PhotoMusic_Servicos {
             'id_servico'        => intval($_POST['id_servico'] ?? 0),
             'id_pacote'         => intval($_POST['id_pacote'] ?? 0),
             'horas_contratadas' => intval($_POST['horas_contratadas'] ?? 0),
+            'horario_inicio'    => sanitize_text_field($_POST['horario_inicio'] ?? '') ?: null,
             'fotos_contratadas' => 0,
             'valor_base'        => floatval($_POST['valor_base'] ?? 0),
             'valor_adicional'   => floatval($_POST['valor_adicional'] ?? 0),
+            'label_adicional'   => sanitize_text_field($_POST['label_adicional'] ?? ''),
             'valor_final'       => floatval($_POST['valor_final'] ?? 0),
             'observacoes'       => sanitize_textarea_field($_POST['observacoes'] ?? ''),
             'link_galeria'      => esc_url_raw(trim($_POST['link_galeria'] ?? '')) ?: null,

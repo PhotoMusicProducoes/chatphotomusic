@@ -31,7 +31,13 @@ const {
   enviarFotografia,
   enviarSomDJ,
   enviarIluminacao,
-  enviarAvaliacaoEmpresa
+  enviarAvaliacaoEmpresa,
+  enviarEucaristiaManual,
+  paroquiasEucaristia,
+  EUCARISTIA_PDF_URL,
+  EUCARISTIA_FORM_URL,
+  EUCARISTIA_PIX_URL,
+  EUCARISTIA_CARTAO_URL
 } = require("./services/index.js");
 
 const {
@@ -130,35 +136,7 @@ const mensagemBoasVindas =
   "*6* - Estou em um evento e desejo baixar minha foto\n" +
   "*7* - Fotografia 1ª Eucaristia";
 
-  // ======================================================
-  // FOTOGRAFIA 1ª EUCARISTIA — FLUXO
-  // ======================================================
-  const EUCARISTIA_PDF_URL =
-    "https://photomusic.com.br/wp-content/uploads/2026/02/orcamentoPrimeiraEucaristiaPhotoMusicProducoes2026.pdf";
-
-  const EUCARISTIA_FORM_URL =
-    "https://forms.gle/CXsPBVxHtFbXe2Dm9";
-
-  const paroquiasEucaristia = {
-    1: {
-      nome: "Paróquia São José",
-      capelas: {
-        1: "Matriz São José",
-        2: "Capela Santa Teresinha do Menino Jesus",
-        3: "Capela Nossa Senhora de Bonsucesso",
-        4: "Capela Nossa Senhora da Penha",
-        5: "Capela Santo Antônio"
-      }
-    },
-    2: {
-      nome: "Paróquia São Sebastião",
-      capelas: {
-        1: "Matriz São Sebastião",
-        2: "Capela da Fonte",
-        3: "Capela Maravista"
-      }
-    }
-  };
+  // FOTOGRAFIA 1ª EUCARISTIA — dados em services/eucaristia.js
 
 // ======================================================
 // FUNÇÕES AUXILIARES
@@ -1038,6 +1016,23 @@ async function handleIncomingMessage(message) {
           .map(p => p.trim())
           .filter(p => p.length > 0);
 
+        // ======================================================
+        // COMANDO ESPECIAL: #fotoeucaristia paroquia,capela,data
+        // ======================================================
+        if (nomeComando === "#fotoeucaristia") {
+          const paroquiaId = parseInt(parametros[0], 10);
+          const capelaId = parseInt(parametros[1], 10);
+          const dataEucaristia = parametros[2] || "a confirmar";
+          try {
+            await enviarEucaristiaManual(chatIdCliente, paroquiaId, capelaId, dataEucaristia);
+            await sendText(OPERADOR_TELEFONE_ID, `✅ Informações de 1ª Eucaristia enviadas para *${chatIdCliente}*`);
+          } catch (e) {
+            await sendText(OPERADOR_TELEFONE_ID, `❌ Erro ao enviar Eucaristia: ${e.message}`);
+          }
+          controlaMsgManual2++;
+          continue;
+        }
+
         if (!comandosServicos[nomeComando]) {
           await sendText(OPERADOR_TELEFONE_ID, `⚠ Comando não reconhecido: ${nomeComando}`);
           continue;
@@ -1105,7 +1100,7 @@ async function handleIncomingMessage(message) {
 
       await sendText(OPERADOR_TELEFONE_ID, `controlaMsgManual = ${controlaMsgManual} e controlaMsgManual2 = ${controlaMsgManual2}`);
 
-      if(controlaMsgManual === controlaMsgManual2){
+      if(controlaMsgManual === controlaMsgManual2 && session.orcamento.servicosEnviados.length > 0){
         // 📌 AGUARDAR UM POUCO ANTES DO RESUMO
         await new Promise(r => setTimeout(r, 800));
 
@@ -1577,6 +1572,20 @@ const resumoEucaristia =
     chatId,
     "Segue o link do formulário do Google com os dados para preencher contrato do Serviço de Cobertura Fotográfica:\n" +
     EUCARISTIA_FORM_URL
+  );
+  
+  await sendTyping(chatId);
+  await sendText(
+    chatId,
+    "Segue o link para pagamento no *Cartão de Crédito* do Serviço de Cobertura Fotográfica:\n" +
+    EUCARISTIA_PIX_URL
+  );
+
+  await sendTyping(chatId);
+  await sendText(
+    chatId,
+    "Segue o link para pagamento no *Cartão de Crédito* do Serviço de Cobertura Fotográfica:\n" +
+    EUCARISTIA_CARTAO_URL
   );
 
   await sendTyping(chatId);

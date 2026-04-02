@@ -57,24 +57,21 @@ class PhotoMusic_Config {
         $page_id = intval($_POST['photomusic_contrato_page'] ?? 0);
         update_option('photomusic_contrato_page', $page_id);
 
+        update_option('pm_eucaristia_form_url', esc_url_raw($_POST['pm_eucaristia_form_url'] ?? ''));
+
+        // Pagamento 1ª Eucaristia
+        update_option('pm_eucaristia_valor_pix',          sanitize_text_field($_POST['pm_eucaristia_valor_pix'] ?? '150,00'));
+        update_option('pm_eucaristia_pix_chave',          sanitize_text_field($_POST['pm_eucaristia_pix_chave'] ?? ''));
+        update_option('pm_eucaristia_pix_banco',          sanitize_text_field($_POST['pm_eucaristia_pix_banco'] ?? ''));
+        update_option('pm_eucaristia_pix_beneficiario',   sanitize_text_field($_POST['pm_eucaristia_pix_beneficiario'] ?? ''));
+        update_option('pm_eucaristia_pix_payload',        sanitize_text_field($_POST['pm_eucaristia_pix_payload'] ?? ''));
+        update_option('pm_eucaristia_valor_cartao',       sanitize_text_field($_POST['pm_eucaristia_valor_cartao'] ?? '170,00'));
+        update_option('pm_eucaristia_link_cartao',        esc_url_raw($_POST['pm_eucaristia_link_cartao'] ?? ''));
+        update_option('pm_eucaristia_whatsapp_comprovante', sanitize_text_field($_POST['pm_eucaristia_whatsapp_comprovante'] ?? ''));
+
         // Número sequencial do próximo contrato
         $proximo = intval($_POST['pm_contrato_proximo_numero'] ?? 1);
         if ($proximo > 0) update_option('pm_contrato_proximo_numero', $proximo);
-
-        // Dados da empresa
-        $campos_empresa = [
-            'nome_fantasia', 'slogan', 'razao_social', 'tipo_empresa',
-            'cnpj', 'inscricao_municipal',
-            'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep',
-            'celular', 'email',
-            'representante_nome', 'representante_cpf', 'representante_rg',
-            'logo_url',
-        ];
-        $dados_empresa = [];
-        foreach ($campos_empresa as $campo) {
-            $dados_empresa[$campo] = sanitize_text_field($_POST['empresa_' . $campo] ?? '');
-        }
-        update_option('pm_empresa_dados', $dados_empresa);
 
         wp_redirect(add_query_arg([
             'page'    => 'photomusic-config',
@@ -95,7 +92,18 @@ class PhotoMusic_Config {
         // ID salvo atualmente
         $pagina_contrato_id  = (int) get_option('photomusic_contrato_page', 0);
         $proximo_num         = (int) get_option('pm_contrato_proximo_numero', 1);
-        $empresa             = get_option('pm_empresa_dados', []);
+        $eucaristia_form_url = get_option('pm_eucaristia_form_url', '');
+        $url_empresa         = admin_url('admin.php?page=photomusic_empresa');
+
+        // Pagamento 1ª Eucaristia
+        $euc_valor_pix       = get_option('pm_eucaristia_valor_pix',          '150,00');
+        $euc_pix_chave       = get_option('pm_eucaristia_pix_chave',          '55353989000109');
+        $euc_pix_banco       = get_option('pm_eucaristia_pix_banco',          'Nubank');
+        $euc_pix_benefic     = get_option('pm_eucaristia_pix_beneficiario',   '55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ');
+        $euc_pix_payload     = get_option('pm_eucaristia_pix_payload',         '');
+        $euc_valor_cartao    = get_option('pm_eucaristia_valor_cartao',       '170,00');
+        $euc_link_cartao     = get_option('pm_eucaristia_link_cartao',        '');
+        $euc_wpp_comprovante = get_option('pm_eucaristia_whatsapp_comprovante', '2196442-8172');
 
         // Busca todas as páginas publicadas para o select
         $paginas = get_pages(['post_status' => 'publish', 'sort_column' => 'post_title']);
@@ -178,7 +186,25 @@ class PhotoMusic_Config {
                         </td>
                     </tr>
 
-                </table>
+                    <!-- ============================================
+                         URL DO FORMULÁRIO DE 1ª EUCARISTIA
+                    ============================================ -->
+                    <tr>
+                        <th scope="row">
+                            <label for="pm_eucaristia_form_url">URL do Formulário de 1ª Eucaristia</label>
+                        </th>
+                        <td>
+                            <input type="url" id="pm_eucaristia_form_url" name="pm_eucaristia_form_url"
+                                   class="regular-text"
+                                   value="<?php echo esc_attr($eucaristia_form_url); ?>"
+                                   placeholder="https://photomusic.com.br/formulario-eucaristia/">
+                            <p class="description">
+                                URL da página WordPress que contém o shortcode
+                                <code>[photomusic_formulario_eucaristia]</code>.
+                                Este link é exibido na página do evento para o operador copiar e enviar ao cliente.
+                            </p>
+                        </td>
+                    </tr>
 
                     <!-- ============================================
                          NUMERAÇÃO DE CONTRATOS
@@ -196,126 +222,96 @@ class PhotoMusic_Config {
 
                 </table>
 
-                <h2>Dados da Empresa (Contratada)</h2>
-                <p class="description">Estes dados são inseridos automaticamente no cabeçalho de cada contrato gerado.</p>
+                <div class="notice notice-info inline" style="margin:16px 0;">
+                    <p>
+                        🏢 <strong>Dados da Empresa</strong> (nome, CNPJ, endereço, logo etc.) são gerenciados na página dedicada:<br>
+                        <a href="<?php echo esc_url($url_empresa); ?>" class="button button-secondary" style="margin-top:6px;">
+                            ✏️ Editar Dados da Empresa
+                        </a>
+                    </p>
+                </div>
+
+                <!-- ============================================
+                     PAGAMENTO — 1ª EUCARISTIA
+                ============================================ -->
+                <h2>💳 Pagamento — 1ª Eucaristia</h2>
+                <p class="description">Informações exibidas ao cliente após o envio do formulário de 1ª Eucaristia, de acordo com a forma de pagamento escolhida.</p>
                 <table class="form-table">
-
                     <tr>
-                        <th><label>Nome Fantasia</label></th>
-                        <td><input type="text" name="empresa_nome_fantasia" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['nome_fantasia'] ?? ''); ?>">
-                            <p class="description">Ex.: PHOTOMUSIC PRODUÇÕES</p></td>
+                        <th colspan="2"><strong>PIX</strong></th>
                     </tr>
                     <tr>
-                        <th><label>Slogan</label></th>
-                        <td><input type="text" name="empresa_slogan" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['slogan'] ?? ''); ?>">
-                            <p class="description">Ex.: Uma explosão de alegria e sucesso!!!</p></td>
+                        <th><label for="pm_eucaristia_valor_pix">Valor (PIX)</label></th>
+                        <td><input type="text" id="pm_eucaristia_valor_pix" name="pm_eucaristia_valor_pix"
+                                   style="width:120px;" value="<?php echo esc_attr($euc_valor_pix); ?>"
+                                   placeholder="150,00">
+                            <p class="description">Ex.: 150,00</p></td>
                     </tr>
                     <tr>
-                        <th><label>Razão Social</label></th>
-                        <td><input type="text" name="empresa_razao_social" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['razao_social'] ?? ''); ?>">
-                            <p class="description">Ex.: 55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ</p></td>
+                        <th><label for="pm_eucaristia_pix_chave">Chave PIX</label></th>
+                        <td><input type="text" id="pm_eucaristia_pix_chave" name="pm_eucaristia_pix_chave"
+                                   class="regular-text" value="<?php echo esc_attr($euc_pix_chave); ?>"
+                                   placeholder="CNPJ, CPF, e-mail ou telefone">
+                            <p class="description">Ex.: 55353989000109</p></td>
                     </tr>
                     <tr>
-                        <th><label>Tipo de Empresa</label></th>
-                        <td><input type="text" name="empresa_tipo_empresa" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['tipo_empresa'] ?? ''); ?>">
-                            <p class="description">Ex.: MICROEMPREENDEDOR INDIVIDUAL</p></td>
+                        <th><label for="pm_eucaristia_pix_banco">Banco</label></th>
+                        <td><input type="text" id="pm_eucaristia_pix_banco" name="pm_eucaristia_pix_banco"
+                                   class="regular-text" value="<?php echo esc_attr($euc_pix_banco); ?>"
+                                   placeholder="Ex.: Nubank"></td>
                     </tr>
                     <tr>
-                        <th><label>CNPJ</label></th>
-                        <td><input type="text" name="empresa_cnpj" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['cnpj'] ?? ''); ?>"></td>
+                        <th><label for="pm_eucaristia_pix_beneficiario">Beneficiário</label></th>
+                        <td><input type="text" id="pm_eucaristia_pix_beneficiario" name="pm_eucaristia_pix_beneficiario"
+                                   class="large-text" value="<?php echo esc_attr($euc_pix_benefic); ?>"
+                                   placeholder="Ex.: 55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ"></td>
                     </tr>
                     <tr>
-                        <th><label>Inscrição Municipal</label></th>
-                        <td><input type="text" name="empresa_inscricao_municipal" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['inscricao_municipal'] ?? ''); ?>">
-                            <p class="description">Ex.: Isento</p></td>
-                    </tr>
-
-                    <tr><th colspan="2"><strong>Endereço</strong></th></tr>
-                    <tr>
-                        <th><label>Logradouro</label></th>
-                        <td><input type="text" name="empresa_logradouro" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['logradouro'] ?? ''); ?>">
-                            <p class="description">Ex.: Avenida Central Everton Xavier</p></td>
-                    </tr>
-                    <tr>
-                        <th><label>Número</label></th>
-                        <td><input type="text" name="empresa_numero" style="width:100px;"
-                                   value="<?php echo esc_attr($empresa['numero'] ?? ''); ?>"></td>
-                    </tr>
-                    <tr>
-                        <th><label>Complemento</label></th>
-                        <td><input type="text" name="empresa_complemento" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['complemento'] ?? ''); ?>"></td>
-                    </tr>
-                    <tr>
-                        <th><label>Bairro</label></th>
-                        <td><input type="text" name="empresa_bairro" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['bairro'] ?? ''); ?>"></td>
-                    </tr>
-                    <tr>
-                        <th><label>Cidade</label></th>
-                        <td><input type="text" name="empresa_cidade" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['cidade'] ?? ''); ?>"></td>
-                    </tr>
-                    <tr>
-                        <th><label>Estado</label></th>
-                        <td><input type="text" name="empresa_estado" style="width:80px;"
-                                   value="<?php echo esc_attr($empresa['estado'] ?? ''); ?>"></td>
-                    </tr>
-                    <tr>
-                        <th><label>CEP</label></th>
-                        <td><input type="text" name="empresa_cep" style="width:120px;"
-                                   value="<?php echo esc_attr($empresa['cep'] ?? ''); ?>"></td>
-                    </tr>
-
-                    <tr><th colspan="2"><strong>Contato</strong></th></tr>
-                    <tr>
-                        <th><label>Celular</label></th>
-                        <td><input type="text" name="empresa_celular" style="width:200px;"
-                                   value="<?php echo esc_attr($empresa['celular'] ?? ''); ?>"></td>
-                    </tr>
-                    <tr>
-                        <th><label>E-mail</label></th>
-                        <td><input type="email" name="empresa_email" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['email'] ?? ''); ?>"></td>
-                    </tr>
-
-                    <tr><th colspan="2"><strong>Representante Legal</strong></th></tr>
-                    <tr>
-                        <th><label>Nome</label></th>
-                        <td><input type="text" name="empresa_representante_nome" class="regular-text"
-                                   value="<?php echo esc_attr($empresa['representante_nome'] ?? ''); ?>"></td>
-                    </tr>
-                    <tr>
-                        <th><label>CPF</label></th>
-                        <td><input type="text" name="empresa_representante_cpf" style="width:200px;"
-                                   value="<?php echo esc_attr($empresa['representante_cpf'] ?? ''); ?>"></td>
-                    </tr>
-                    <tr>
-                        <th><label>RG</label></th>
-                        <td><input type="text" name="empresa_representante_rg" style="width:200px;"
-                                   value="<?php echo esc_attr($empresa['representante_rg'] ?? ''); ?>"></td>
-                    </tr>
-
-                    <tr><th colspan="2"><strong>Logo</strong></th></tr>
-                    <tr>
-                        <th><label>URL da Logo</label></th>
+                        <th><label for="pm_eucaristia_pix_payload">PIX Copia e Cola</label></th>
                         <td>
-                            <input type="url" name="empresa_logo_url" class="large-text"
-                                   value="<?php echo esc_attr($empresa['logo_url'] ?? ''); ?>">
-                            <p class="description">URL completa da imagem (ex.: <?php echo esc_url(content_url('uploads/photomusic/logo.png')); ?>). Aparece no cabeçalho do contrato.</p>
-                            <?php if (!empty($empresa['logo_url'])): ?>
-                                <br><img src="<?php echo esc_url($empresa['logo_url']); ?>" style="max-height:60px; margin-top:5px; border:1px solid #ccc; padding:4px;" alt="Logo">
+                            <textarea id="pm_eucaristia_pix_payload" name="pm_eucaristia_pix_payload"
+                                      class="large-text" rows="3"
+                                      placeholder="Cole aqui o código PIX gerado no app do Nubank (começa com 00020126...)"><?php echo esc_textarea($euc_pix_payload); ?></textarea>
+                            <p class="description">
+                                Gere no Nubank → <strong>Cobrar → R$ 150,00 → Gerar QR Code → Copiar código PIX</strong>.<br>
+                                O QR Code e o botão "Copiar" serão exibidos automaticamente na tela de confirmação do cliente.
+                            </p>
+                            <?php if (!empty($euc_pix_payload)): ?>
+                                <p><img src="<?php echo esc_url('https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' . rawurlencode($euc_pix_payload)); ?>"
+                                        alt="QR Code PIX" style="border:1px solid #ccc;padding:4px;margin-top:6px;">
+                                <br><small style="color:#555;">Pré-visualização do QR Code</small></p>
                             <?php endif; ?>
                         </td>
                     </tr>
 
+                    <tr>
+                        <th colspan="2"><strong>Cartão de Crédito</strong></th>
+                    </tr>
+                    <tr>
+                        <th><label for="pm_eucaristia_valor_cartao">Valor (Cartão)</label></th>
+                        <td><input type="text" id="pm_eucaristia_valor_cartao" name="pm_eucaristia_valor_cartao"
+                                   style="width:120px;" value="<?php echo esc_attr($euc_valor_cartao); ?>"
+                                   placeholder="170,00">
+                            <p class="description">Ex.: 170,00</p></td>
+                    </tr>
+                    <tr>
+                        <th><label for="pm_eucaristia_link_cartao">Link de Pagamento (Cartão)</label></th>
+                        <td><input type="url" id="pm_eucaristia_link_cartao" name="pm_eucaristia_link_cartao"
+                                   class="large-text" value="<?php echo esc_attr($euc_link_cartao); ?>"
+                                   placeholder="https://link.infinitepay.io/...">
+                            <p class="description">Link gerado pela maquininha / InfinitePay.</p></td>
+                    </tr>
+
+                    <tr>
+                        <th colspan="2"><strong>WhatsApp para Comprovante</strong></th>
+                    </tr>
+                    <tr>
+                        <th><label for="pm_eucaristia_whatsapp_comprovante">Número WhatsApp</label></th>
+                        <td><input type="text" id="pm_eucaristia_whatsapp_comprovante" name="pm_eucaristia_whatsapp_comprovante"
+                                   style="width:200px;" value="<?php echo esc_attr($euc_wpp_comprovante); ?>"
+                                   placeholder="21996442-8172">
+                            <p class="description">Número para onde o cliente envia o comprovante (PIX ou Cartão).</p></td>
+                    </tr>
                 </table>
 
                 <?php submit_button('Salvar Configurações'); ?>

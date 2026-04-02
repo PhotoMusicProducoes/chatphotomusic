@@ -90,6 +90,7 @@ $tipo_icones = [
         display: block;
     }
 
+
     /* Mensagem quando galeria não disponível */
     .pm-galeria-vazia {
         text-align: center;
@@ -134,12 +135,10 @@ $tipo_icones = [
 
             <div class="pm-servico-bloco">
 
-                <?php if (count($servicos_links) > 1): ?>
-                    <div class="pm-servico-titulo">
-                        <span><?php echo $icone; ?></span>
-                        <span><?php echo esc_html($nome); ?></span>
-                    </div>
-                <?php endif; ?>
+                <div class="pm-servico-titulo">
+                    <span><?php echo $icone; ?></span>
+                    <span><?php echo esc_html(mb_strtoupper($nome)); ?></span>
+                </div>
 
                 <iframe
                     src="<?php echo esc_url($link); ?>"
