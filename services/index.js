@@ -10,7 +10,8 @@ const { enviarFotografia } = require("./fotografia.js");
 const { enviarSomDJ } = require("./somDJ.js");
 const { enviarIluminacao } = require("./iluminacao.js");
 const { enviarAvaliacaoEmpresa } = require("./avaliacaoEmpresa.js");
-const { enviarEucaristiaManual, paroquiasEucaristia, EUCARISTIA_PDF_URL, EUCARISTIA_FORM_URL } = require("./eucaristia.js");
+const { enviarEucaristiaManual, paroquiasEucaristia, EUCARISTIA_PDF_URL, 
+        EUCARISTIA_FORM_URL, EUCARISTIA_PIX_URL, EUCARISTIA_CARTAO_URL } = require("./eucaristia.js");
 
 console.log("📦 [services] Serviços carregados: FotoCabine, TotemFotografico, Plataforma360, Paparazzi, Lembrança, SomDJ, Iluminação, Eucaristia");
 
@@ -29,5 +30,7 @@ module.exports = {
   enviarEucaristiaManual,
   paroquiasEucaristia,
   EUCARISTIA_PDF_URL,
-  EUCARISTIA_FORM_URL
+  EUCARISTIA_FORM_URL,
+  EUCARISTIA_PIX_URL,
+  EUCARISTIA_CARTAO_URL
 };
