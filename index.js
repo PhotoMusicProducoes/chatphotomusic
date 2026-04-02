@@ -1320,7 +1320,7 @@ async function handleIncomingMessage(message) {
         await sendText(
           chatId,
           "Parabéns pelo(a) catequisando(a) está se preparando para receber Jesus Cristo na Santíssima Eucaristia. 😍\n\n" +
-          "Perfeito! Vamos começar.\nQual o seu nome?"
+          "Perfeito! Vamos começar.\nQual o nome do Responsável?"
         );
 
         session.step = "eucaristia_nome";
@@ -1389,7 +1389,7 @@ if (session.step === "eucaristia_nome") {
   await sendTyping(chatId);
   await sendText(
     chatId,
-    "Por favor, escolha a Paróquia que seu filho faz catequese:\n\n" +
+    "Por favor, escolha a Paróquia que seu filho faz catequese: *(Digite somente número)*\n\n" +
     "*1* - Paróquia São José\n" +
     "*2* - Paróquia São Sebastião"
   );
@@ -1417,7 +1417,7 @@ if (session.step === "eucaristia_paroquia") {
     .join("\n");
 
   await sendTyping(chatId);
-  await sendText(chatId, "Qual a Capela?\n\n" + listaCapelas);
+  await sendText(chatId, "Qual a Capela? *(Digite somente número)*\n\n" + listaCapelas);
   return;
 }
 
@@ -1440,7 +1440,7 @@ if (session.step === "eucaristia_capela") {
   session.step = "eucaristia_qtd_criancas";
 
   await sendTyping(chatId);
-  await sendText(chatId, "Quantas crianças estão na catequese? (*Digite somente número*)");
+  await sendText(chatId, "Você tem quantas crianças na catequese? (*Digite somente número*)");
   return;
 }
 
