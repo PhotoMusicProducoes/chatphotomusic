@@ -1591,7 +1591,7 @@ const resumoEucaristia =
   await sendTyping(chatId);
   await sendText(
     chatId,
-    "Segue o link do formulário do Google com os dados para preencher contrato do Serviço de Cobertura Fotográfica:\n" +
+    "Segue o link do formulário com os dados para preencher contrato do Serviço de Cobertura Fotográfica:\n" +
     EUCARISTIA_FORM_URL
   );
   
