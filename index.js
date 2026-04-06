@@ -1621,7 +1621,7 @@ const resumoEucaristia =
   if (session.eucaristia.paroquiaId === 2) {
     // Paróquia São Sebastião
     await sendTyping(chatId);
-    await sendText(chatId, "⚠️ Informamos que o pagamento do serviço deverá estar quitado até o dia *05/04/2026*.");
+    await sendText(chatId, "⚠️ Informamos que o pagamento do serviço deverá estar quitado até a data da 1ª Eucaristia.");
   }
 
   if (session.eucaristia.paroquiaId === 1) {
@@ -2356,13 +2356,14 @@ app.post("/message", async (req, res) => {
 });
 
 // ======================================================
-// INICIALIZAR E SUBIR SERVIDOR
+// INICIALIZAR PAUSA ESPECIAL
+// ======================================================
+inicializarPausaEspecial();
+
+// ======================================================
+// INICIA O SERVIDOR
 // ======================================================
 const PORT = process.env.PORT || 8080;
-
-(async () => {
-  await inicializarPausaEspecial(); // ✅ aguarda carregar o JSON antes de aceitar mensagens
-  app.listen(PORT, () => {
-    console.log("Servidor iniciado na porta " + PORT);
-  });
-})();
+app.listen(PORT, () => {
+  console.log("Servidor iniciado na porta " + PORT);
+});
