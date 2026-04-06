@@ -2356,14 +2356,13 @@ app.post("/message", async (req, res) => {
 });
 
 // ======================================================
-// INICIALIZAR PAUSA ESPECIAL
-// ======================================================
-inicializarPausaEspecial();
-
-// ======================================================
-// INICIA O SERVIDOR
+// INICIALIZAR E SUBIR SERVIDOR
 // ======================================================
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log("Servidor iniciado na porta " + PORT);
-});
+
+(async () => {
+  await inicializarPausaEspecial(); // ✅ aguarda carregar o JSON antes de aceitar mensagens
+  app.listen(PORT, () => {
+    console.log("Servidor iniciado na porta " + PORT);
+  });
+})();
