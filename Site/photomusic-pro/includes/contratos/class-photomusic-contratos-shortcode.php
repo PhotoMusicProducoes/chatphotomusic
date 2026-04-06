@@ -146,6 +146,11 @@ class PhotoMusic_Contratos_Shortcode {
             PhotoMusic_OS::gerar_os($contrato);
         }
 
+        // Gera tarefas automaticamente ao assinar contrato
+        if (class_exists('PhotoMusic_Tarefas_Auto')) {
+            PhotoMusic_Tarefas_Auto::gerar($contrato->id, $contrato->id_evento);
+        }
+
         // Envia contrato ao cliente via WhatsApp automaticamente
         if (class_exists('PhotoMusic_Contratantes') && class_exists('PhotoMusic_WhatsApp')) {
             $contratante = PhotoMusic_Contratantes::get_by_event($contrato->id_evento);

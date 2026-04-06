@@ -7,8 +7,9 @@ class PhotoMusic_Events {
 
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'register_menu']);
-        add_action('admin_post_pm_salvar_evento',  [__CLASS__, 'handle_salvar_evento']);
-        add_action('admin_post_pm_excluir_evento', [__CLASS__, 'handle_excluir_evento']);
+        add_action('admin_post_pm_salvar_evento',   [__CLASS__, 'handle_salvar_evento']);
+        add_action('admin_post_pm_excluir_evento',  [__CLASS__, 'handle_excluir_evento']);
+        add_action('admin_post_pm_concluir_evento', [__CLASS__, 'handle_concluir_evento']);
     }
 
     /* ============================================================
@@ -75,6 +76,10 @@ class PhotoMusic_Events {
             echo '<div class="notice notice-success is-dismissible"><p>🗑️ Evento excluído com sucesso.</p></div>';
         }
 
+        if (!empty($_GET['concluido'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>✅ Evento marcado como concluído.</p></div>';
+        }
+
         echo '<a href="' . esc_url(add_query_arg(['page' => 'photomusic-eventos', 'acao' => 'novo'], admin_url('admin.php'))) . '" class="button button-primary">+ Criar Novo Evento</a>';
 
         if (empty($eventos)) {
@@ -115,15 +120,31 @@ class PhotoMusic_Events {
             echo '<td>' . esc_html($e->local_evento ?? '—') . '</td>';
             echo '<td>' . esc_html($contratante_nome) . '</td>';
             echo '<td>' . esc_html($e->tipo_evento) . '</td>';
-            echo '<td>' . esc_html($e->status_evento) . '</td>';
+            if ($e->status_evento === 'concluido') {
+                $status_label = '<span style="color:#2e7d32;font-weight:600;">✅ Concluído</span>';
+            } elseif ($e->status_evento === 'desativado') {
+                $status_label = '<span style="color:#888;">Desativado</span>';
+            } else {
+                $status_label = '<span style="color:#2271b1;">Ativo</span>';
+            }
+            echo '<td>' . $status_label . '</td>';
             $excluir_url = wp_nonce_url(
                 admin_url('admin-post.php?action=pm_excluir_evento&id=' . $e->id),
                 'pm_excluir_evento_' . $e->id
             );
+            $concluir_url = wp_nonce_url(
+                admin_url('admin-post.php?action=pm_concluir_evento&id=' . $e->id),
+                'pm_concluir_evento_' . $e->id
+            );
+            $btn_concluir = $e->status_evento === 'ativo'
+                ? '<a href="' . esc_url($concluir_url) . '" class="button" style="color:#2e7d32;"
+                     onclick="return confirm(\'Marcar evento #' . $e->id . ' como concluído?\')">✅ Concluir</a>'
+                : '';
             echo '<td>
                     <a href="' . esc_url(add_query_arg(['page' => 'photomusic-eventos', 'acao' => 'editar', 'id' => $e->id], admin_url('admin.php'))) . '" class="button">Editar</a>
                     <a href="' . esc_url(add_query_arg(['page' => 'photomusic-evento-detalhes', 'id' => $e->id], admin_url('admin.php'))) . '" class="button">Detalhes</a>
                     <a href="' . esc_url(add_query_arg(['page' => 'photomusic-add-servico', 'id' => $e->id], admin_url('admin.php'))) . '" class="button button-primary">Serviços</a>
+                    ' . $btn_concluir . '
                     <a href="' . esc_url($excluir_url) . '" class="button" style="color:#a00;"
                        onclick="return confirm(\'Excluir o evento #' . $e->id . ' — ' . esc_js($e->motivo_evento) . '?\nEsta ação não pode ser desfeita e removerá o evento e seus serviços.\');">🗑️ Excluir</a>
                 </td>';
@@ -1229,6 +1250,34 @@ class PhotoMusic_Events {
         $wpdb->delete($wpdb->prefix . 'pm_eventos', ['id' => $id], ['%d']);
 
         wp_redirect(admin_url('admin.php?page=photomusic-eventos&excluido=1'));
+        exit;
+    }
+
+    /* ============================================================
+       HANDLER: CONCLUIR EVENTO
+    ============================================================ */
+    public static function handle_concluir_evento() {
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Acesso negado.');
+        }
+
+        $id = intval($_GET['id'] ?? 0);
+
+        if (!$id || !wp_verify_nonce($_GET['_wpnonce'] ?? '', 'pm_concluir_evento_' . $id)) {
+            wp_die('Requisição inválida.');
+        }
+
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'pm_eventos',
+            ['status_evento' => 'concluido'],
+            ['id' => $id],
+            ['%s'],
+            ['%d']
+        );
+
+        wp_redirect(admin_url('admin.php?page=photomusic-eventos&concluido=1'));
         exit;
     }
 }

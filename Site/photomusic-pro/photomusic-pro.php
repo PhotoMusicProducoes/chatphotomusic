@@ -55,6 +55,12 @@ function photomusic_pro_autoload_classes() {
     /* ---------------- 1ª EUCARISTIA ---------------- */
     require_once PHOTOMUSIC_PRO_PATH . 'includes/eucaristia/class-photomusic-formulario-eucaristia.php';
 
+    /* ---------------- TAREFAS ---------------- */
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/tarefas/class-photomusic-tarefas.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/tarefas/class-photomusic-tarefas-auto.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/tarefas/class-photomusic-tarefas-admin.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/tarefas/class-photomusic-tarefas-api.php';
+
     /* ---------------- PRÉ-CADASTRO EVENTO ---------------- */
     if (file_exists(PHOTOMUSIC_PRO_PATH . 'includes/precadastro/class-photomusic-precadastro-evento.php')) {
         require_once PHOTOMUSIC_PRO_PATH . 'includes/precadastro/class-photomusic-precadastro-evento.php';
@@ -198,6 +204,10 @@ function photomusic_pro_init_modules() {
 
    // Migration de banco de dados
    PhotoMusic_Installer::migrate();
+
+   // Tarefas
+   PhotoMusic_Tarefas_Admin::init();
+   PhotoMusic_Tarefas_API::init();
 
    // API REST para o ChatBot
    PhotoMusic_Eventos_API::init();

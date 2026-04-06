@@ -1,9 +1,18 @@
-// jobs/index.js — Sistema de Mensagens Comemorativas
+// jobs/index.js — Mensagens Comemorativas + Lembretes de Tarefas
 
 const axios = require("axios");
 const cron = require("node-cron");
 const { sendText } = require("../utils/index.js");
 const { normalizarNumero } = require("../index.js");
+const { notificarTarefasAbertas } = require("../services/tarefas.js");
+
+// ================= CRON: LEMBRETES DIÁRIOS DE TAREFAS =================
+// Dispara todo dia às 08:00 (horário de Brasília)
+cron.schedule("0 8 * * *", async () => {
+  console.log("⏰ [Jobs] Verificando tarefas abertas para lembrete diário...");
+  const grupoId = process.env.PM_TAREFAS_GRUPO_ID || "";
+  await notificarTarefasAbertas(grupoId || null);
+}, { timezone: "America/Sao_Paulo" });
 
 // ================= CONFIGURAÇÕES =================
 const URL_DADOS = "https://photomusic.com.br/wp-content/dados/comemoracoes.json";

@@ -143,7 +143,7 @@ class PhotoMusic_Contratos_PDF {
 
         <!-- CONTEÚDO DO CONTRATO (já inclui cabeçalho com logo, número e identificação das partes) -->
         <div style="font-size:11px; line-height:1.7; text-align:justify; margin-bottom:30px;">
-            <?php echo wp_kses_post($contrato->conteudo); ?>
+            <?php echo html_entity_decode(wp_kses_post($contrato->conteudo), ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>
         </div>
 
         <!-- ASSINATURAS -->

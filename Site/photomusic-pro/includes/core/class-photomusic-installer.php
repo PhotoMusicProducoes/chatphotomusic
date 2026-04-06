@@ -120,7 +120,7 @@ class PhotoMusic_Installer {
             contato_salao          VARCHAR(255) NULL,
             contato_cerimonialista VARCHAR(255) NULL,
             contato_responsavel    VARCHAR(255) NULL,
-            status_evento ENUM('ativo','desativado') NOT NULL DEFAULT 'ativo',
+            status_evento ENUM('ativo','desativado','concluido') NOT NULL DEFAULT 'ativo',
 
             codigo_interno VARCHAR(100) NULL,
             criado_por BIGINT UNSIGNED NULL,
@@ -891,6 +891,37 @@ class PhotoMusic_Installer {
         ) $charset;";
         dbDelta($sql_catequizandos);
 
+        /* ============================================================
+           MÓDULO TAREFAS
+        ============================================================ */
+        $tbl_tarefas = $wpdb->prefix . 'pm_tarefas';
+        $sql_tarefas = "CREATE TABLE $tbl_tarefas (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+
+            id_evento   INT UNSIGNED NOT NULL,
+            id_contrato BIGINT UNSIGNED NULL,
+
+            responsavel ENUM('photomusic','cliente') NOT NULL DEFAULT 'photomusic',
+            tipo        VARCHAR(100) NOT NULL,
+            descricao   TEXT NOT NULL,
+
+            data_prevista DATE NULL,
+            status ENUM('pendente','concluida','cancelada') NOT NULL DEFAULT 'pendente',
+
+            notificacoes_enviadas INT UNSIGNED NOT NULL DEFAULT 0,
+            confirmado_por VARCHAR(255) NULL,
+            confirmado_em  DATETIME NULL,
+
+            criado_em    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            atualizado_em DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+
+            INDEX idx_status (status),
+            INDEX idx_evento (id_evento),
+            INDEX idx_responsavel (responsavel),
+            INDEX idx_data_prevista (data_prevista)
+        ) $charset;";
+        dbDelta($sql_tarefas);
+
     } // fim create_tables()
 
     private static function create_roles_and_caps() {
@@ -1020,6 +1051,37 @@ class PhotoMusic_Installer {
      */
     public static function migrate() {
         global $wpdb;
+
+        /* ============================================================
+           TAREFAS — garantir tabela se plugin já estava ativo
+        ============================================================ */
+        $tbl_tarefas = $wpdb->prefix . 'pm_tarefas';
+        $existe = $wpdb->get_var("SHOW TABLES LIKE '{$tbl_tarefas}'");
+        if (!$existe) {
+            $charset = $wpdb->get_charset_collate();
+            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            $sql = "CREATE TABLE $tbl_tarefas (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                id_evento   INT UNSIGNED NOT NULL,
+                id_contrato BIGINT UNSIGNED NULL,
+                responsavel ENUM('photomusic','cliente') NOT NULL DEFAULT 'photomusic',
+                tipo        VARCHAR(100) NOT NULL,
+                descricao   TEXT NOT NULL,
+                data_prevista DATE NULL,
+                status ENUM('pendente','concluida','cancelada') NOT NULL DEFAULT 'pendente',
+                notificacoes_enviadas INT UNSIGNED NOT NULL DEFAULT 0,
+                confirmado_por VARCHAR(255) NULL,
+                confirmado_em  DATETIME NULL,
+                criado_em    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_status (status),
+                INDEX idx_evento (id_evento),
+                INDEX idx_responsavel (responsavel),
+                INDEX idx_data_prevista (data_prevista)
+            ) $charset;";
+            dbDelta($sql);
+        }
+
         $tbl_contratos = $wpdb->prefix . 'pm_contratos';
 
         // Adiciona coluna os_path se não existir

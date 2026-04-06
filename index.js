@@ -37,7 +37,9 @@ const {
   EUCARISTIA_PDF_URL,
   EUCARISTIA_FORM_URL,
   EUCARISTIA_PIX_URL,
-  EUCARISTIA_CARTAO_URL
+  EUCARISTIA_CARTAO_URL,
+  handleComandoTarefas,
+  handleComandoOk,
 } = require("./services/index.js");
 
 const {
@@ -1015,6 +1017,25 @@ async function handleIncomingMessage(message) {
           .split(",")
           .map(p => p.trim())
           .filter(p => p.length > 0);
+
+        // ======================================================
+        // COMANDO ESPECIAL: #tarefas — listar tarefas abertas
+        // ======================================================
+        if (nomeComando === "#tarefas") {
+          await handleComandoTarefas(OPERADOR_TELEFONE_ID);
+          controlaMsgManual2++;
+          continue;
+        }
+
+        // ======================================================
+        // COMANDO ESPECIAL: #ok ID — concluir tarefa
+        // ======================================================
+        if (nomeComando === "#ok") {
+          const idTarefa = parametros[0] || cmd.split(" ")[1];
+          await handleComandoOk(OPERADOR_TELEFONE_ID, idTarefa);
+          controlaMsgManual2++;
+          continue;
+        }
 
         // ======================================================
         // COMANDO ESPECIAL: #fotoeucaristia paroquia,capela,data
