@@ -2,6 +2,7 @@ app = 'chatphotomusic'
 primary_region = 'gru'
 
 [build]
+  depot = false
 
 [processes]
   app = 'npm start'
