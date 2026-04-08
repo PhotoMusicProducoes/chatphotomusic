@@ -79,7 +79,7 @@ class PhotoMusic_Contratos_Shortcode {
 
         // Já assinado pelo cliente
         if (!empty($contrato->assinatura_contratante_data)) {
-            wp_redirect(add_query_arg(['assinatura' => 'ok'], wp_get_referer()));
+            wp_redirect(home_url('/contrato/' . $token . '?assinatura=ok'));
             exit;
         }
 
@@ -157,19 +157,75 @@ class PhotoMusic_Contratos_Shortcode {
             if ($contratante) {
                 $tel = preg_replace('/\D/', '', $contratante->telefone ?? '');
                 $contrato_final = PhotoMusic_Contratos::get($contrato->id);
+
+                // 1. Envia PDF do contrato assinado
                 if ($tel && !empty($contrato_final->pdf_final)) {
-                    PhotoMusic_WhatsApp::send_pdf(
+                    PhotoMusic_WhatsApp::send_pdf_zapi(
                         $tel,
                         "✅ Parabéns! Seu contrato foi assinado com sucesso. Segue uma cópia para seus registros.",
-                        $contrato_final->pdf_final,
-                        ['id_evento' => $contrato->id_evento]
+                        $contrato_final->pdf_final
                     );
+                }
+
+                // 2. Envia mensagem com instruções de pagamento
+                if ($tel && !empty($contrato->id_evento)) {
+                    try {
+                        $ev = $wpdb->get_row($wpdb->prepare(
+                            "SELECT pagamento_config, token_evento, motivo_evento FROM {$wpdb->prefix}pm_eventos WHERE id = %d",
+                            intval($contrato->id_evento)
+                        ));
+                        if ($ev) {
+                            $pgto_cfg = [];
+                            if (!empty($ev->pagamento_config)) {
+                                $pgto_cfg = json_decode($ev->pagamento_config, true) ?: [];
+                            }
+
+                            // Usa descrição de pagamento personalizada ou monta texto automático
+                            $desc_pgto = trim($pgto_cfg['descricao_pagamento'] ?? '');
+
+                            if (!empty($desc_pgto)) {
+                                $msg_pgto = "💰 *Informações de Pagamento*\n\n" . $desc_pgto;
+                            } else {
+                                $forma = $pgto_cfg['forma'] ?? '';
+                                $formas_label = [
+                                    'pix_avista'    => 'PIX à vista',
+                                    'pix_parcelado' => 'PIX parcelado',
+                                    'cartao'        => 'Cartão de Crédito',
+                                    'dinheiro'      => 'Dinheiro',
+                                    'transferencia' => 'Transferência Bancária',
+                                    'misto'         => 'Misto (PIX + Cartão)',
+                                ];
+                                $forma_txt = $formas_label[$forma] ?? 'a combinar';
+                                $msg_pgto  = "💰 *Informações de Pagamento*\n\nForma: {$forma_txt}";
+                            }
+
+                            // Inclui link da página de pagamento
+                            if (!empty($ev->token_evento)) {
+                                $pgto_page_id = intval(get_option('pm_pagamento_page_id', 0));
+                                if ($pgto_page_id > 0) {
+                                    $permalink = get_permalink($pgto_page_id);
+                                    $pgto_url  = $permalink
+                                        ? add_query_arg('t', $ev->token_evento, $permalink)
+                                        : home_url('/pagamento/?t=' . $ev->token_evento);
+                                } else {
+                                    $pgto_url = home_url('/pagamento/?t=' . $ev->token_evento);
+                                }
+                                $msg_pgto .= "\n\n🔗 Acesse para ver detalhes e realizar o pagamento:\n" . $pgto_url;
+                            }
+
+                            PhotoMusic_WhatsApp::send($tel, $msg_pgto, ['id_evento' => intval($contrato->id_evento)]);
+                        }
+                    } catch (\Throwable $e) {
+                        if (class_exists('PhotoMusic_Logs')) {
+                            PhotoMusic_Logs::add('erro_wpp_pagamento', null, intval($contrato->id_evento ?? 0), null, $e->getMessage());
+                        }
+                    }
                 }
             }
         }
 
-        // Redireciona com sucesso
-        wp_redirect(add_query_arg(['assinatura' => 'ok'], wp_get_referer()));
+        // Redireciona com sucesso — usa URL direta do contrato para evitar redirect para admin
+        wp_redirect(home_url('/contrato/' . $token . '?assinatura=ok'));
         exit;
     }
 
@@ -213,14 +269,45 @@ class PhotoMusic_Contratos_Shortcode {
             return '<p><strong>Aguarde: este contrato ainda está em validação interna pela empresa.</strong></p>';
         }
 
-        // Contrato já assinado
-        if (!empty($contrato->assinatura_contratante_data)) {
-            return '<p><strong>Este contrato já foi assinado.</strong></p>';
+        // Assinatura concluída agora (verifica ANTES do "já assinado")
+        if (!empty($_GET['assinatura']) && $_GET['assinatura'] === 'ok') {
+            $nome_ev = '';
+            global $wpdb;
+            $ev_tmp = $wpdb->get_row($wpdb->prepare(
+                "SELECT motivo_evento, token_evento FROM {$wpdb->prefix}pm_eventos WHERE id = %d",
+                intval($contrato->id_evento)
+            ));
+            if ($ev_tmp) $nome_ev = esc_html($ev_tmp->motivo_evento ?? '');
+
+            $pgto_url = '';
+            if (!empty($ev_tmp->token_evento)) {
+                $pgto_page_id = intval(get_option('pm_pagamento_page_id', 0));
+                if ($pgto_page_id > 0) {
+                    $permalink = get_permalink($pgto_page_id);
+                    $pgto_url  = $permalink ? add_query_arg('t', $ev_tmp->token_evento, $permalink) : home_url('/pagamento/?t=' . $ev_tmp->token_evento);
+                } else {
+                    $pgto_url = home_url('/pagamento/?t=' . $ev_tmp->token_evento);
+                }
+            }
+
+            $html  = '<div style="max-width:600px;margin:30px auto;font-family:system-ui,sans-serif;text-align:center;">';
+            $html .= '<div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:10px;padding:32px 24px;">';
+            $html .= '<div style="font-size:3rem;margin-bottom:12px;">✅</div>';
+            $html .= '<h2 style="color:#2e7d32;margin:0 0 12px;">Contrato Assinado com Sucesso!</h2>';
+            if ($nome_ev) $html .= '<p style="color:#333;margin-bottom:16px;">Obrigado! Seu contrato referente a <strong>' . $nome_ev . '</strong> foi assinado e registrado.</p>';
+            $html .= '<p style="color:#555;margin-bottom:20px;">📲 Uma cópia em PDF foi enviada para o seu WhatsApp.</p>';
+            if (!empty($pgto_url)) {
+                $html .= '<a href="' . esc_url($pgto_url) . '" style="display:inline-block;padding:12px 28px;background:#1565c0;color:#fff;border-radius:6px;text-decoration:none;font-weight:bold;font-size:1rem;">💰 Ver instruções de pagamento</a>';
+            }
+            $html .= '</div></div>';
+            return $html;
         }
 
-        // Assinatura concluída agora
-        if (!empty($_GET['assinatura']) && $_GET['assinatura'] === 'ok') {
-            return '<p><strong>Assinatura registrada com sucesso!</strong></p>';
+        // Contrato já assinado (acesso posterior)
+        if (!empty($contrato->assinatura_contratante_data)) {
+            return '<div style="max-width:500px;margin:30px auto;text-align:center;font-family:system-ui,sans-serif;">'
+                 . '<p style="background:#f5f5f5;padding:20px;border-radius:8px;color:#555;">✅ <strong>Este contrato já foi assinado.</strong><br>Se precisar de uma cópia, entre em contato com a PhotoMusic Produções.</p>'
+                 . '</div>';
         }
 
         /* ============================================================

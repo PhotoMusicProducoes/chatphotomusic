@@ -118,10 +118,10 @@ class PhotoMusic_Contratos {
     /* ============================================================
        CRIAR CONTRATO SIMPLIFICADO
        ============================================================ */
-    public static function criar_contrato_simplificado($id_evento, $id_contratante = null) {
+    public static function criar_contrato_simplificado($id_evento, $id_contratante = null, $bypass_permissao = false) {
         global $wpdb;
 
-        if (!PhotoMusic_Contratos_Permissoes::pode_criar()) {
+        if (!$bypass_permissao && !PhotoMusic_Contratos_Permissoes::pode_criar()) {
             wp_die('Você não tem permissão para criar contratos.');
         }
 

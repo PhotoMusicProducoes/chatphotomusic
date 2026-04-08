@@ -66,6 +66,11 @@ function photomusic_pro_autoload_classes() {
         require_once PHOTOMUSIC_PRO_PATH . 'includes/precadastro/class-photomusic-precadastro-evento.php';
     }
 
+    /* ---------------- PÁGINA DE PAGAMENTO EVENTO ---------------- */
+    if (file_exists(PHOTOMUSIC_PRO_PATH . 'includes/pagamento/class-photomusic-pagamento-evento.php')) {
+        require_once PHOTOMUSIC_PRO_PATH . 'includes/pagamento/class-photomusic-pagamento-evento.php';
+    }
+
     /* ---------------- CONTRATOS ---------------- */
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos-route.php';
@@ -180,6 +185,11 @@ function photomusic_pro_init_modules() {
    // Pré-Cadastro de evento (outros serviços)
    if (class_exists('PhotoMusic_Precadastro_Evento')) {
        PhotoMusic_Precadastro_Evento::init();
+   }
+
+   // Página de pagamento público por token de evento
+   if (class_exists('PhotoMusic_Pagamento_Evento')) {
+       PhotoMusic_Pagamento_Evento::init();
    }
 
    // Endpoints da galeria

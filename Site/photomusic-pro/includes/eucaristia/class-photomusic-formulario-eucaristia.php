@@ -45,6 +45,32 @@ class PhotoMusic_Formulario_Eucaristia {
             $fp           = sanitize_text_field($_GET['fp'] ?? '');
             $link_direto  = ($pm_euc_estado === 'direto'); // true = veio do link direto, sem msg de cadastro
 
+            // Verifica se pagamento já foi confirmado pelo operador
+            $token_euc = sanitize_text_field($_GET['t'] ?? '');
+            if (!empty($token_euc)) {
+                global $wpdb;
+                $ev_pgto = $wpdb->get_row($wpdb->prepare(
+                    "SELECT pagamento_confirmado, motivo_evento FROM {$wpdb->prefix}pm_eventos WHERE token_evento = %s LIMIT 1",
+                    $token_euc
+                ));
+                if ($ev_pgto && !empty($ev_pgto->pagamento_confirmado)) {
+                    $nome_ev = esc_html($ev_pgto->motivo_evento ?? '1ª Eucaristia');
+                    return '
+                    <div style="max-width:600px;margin:40px auto;font-family:system-ui,sans-serif;padding:0 16px;text-align:center;">
+                        <div style="background:#e8f5e9;border:1px solid #4caf50;border-radius:10px;padding:32px 24px;">
+                            <div style="font-size:3rem;margin-bottom:12px;">✅</div>
+                            <h2 style="color:#2e7d32;margin:0 0 12px;">Pagamento Realizado com Sucesso!</h2>
+                            <p style="color:#333;font-size:1rem;margin-bottom:20px;">Seu pagamento referente a <strong>' . $nome_ev . '</strong> foi confirmado e registrado em nosso sistema.</p>
+                            <div style="background:#fff;border-radius:8px;padding:18px 20px;margin:0 auto 20px;max-width:460px;text-align:left;border-left:4px solid #4caf50;">
+                                <p style="margin:0;color:#555;font-size:0.95rem;">Agradecemos pelo seu pagamento. 🙏</p>
+                                <p style="margin:10px 0 0;color:#2e7d32;font-weight:600;font-size:1rem;">Deus abençoe e multiplique, grandiosamente, na sua vida e na sua família!!!</p>
+                            </div>
+                            <p style="color:#777;font-size:0.85rem;margin:0;"><strong>PhotoMusic Produções</strong></p>
+                        </div>
+                    </div>';
+                }
+            }
+
             // Lê configurações de pagamento
             $valor_pix       = esc_html(get_option('pm_eucaristia_valor_pix',          '150,00'));
             $pix_chave       = esc_html(get_option('pm_eucaristia_pix_chave',          '55353989000109'));
@@ -158,6 +184,16 @@ class PhotoMusic_Formulario_Eucaristia {
                 </div>
 
                 <?php endif; ?>
+
+                <!-- Mensagem de agradecimento -->
+                <div style="background:#f9fbe7;border:1px solid #c5e1a5;border-radius:8px;padding:18px 20px;margin-top:8px;margin-bottom:16px;">
+                    <p style="margin:0 0 8px;color:#555;font-size:0.95rem;">
+                        ⏳ <strong>Em até 24 horas</strong> estaremos analisando seu pagamento e entraremos em contato para confirmar.
+                    </p>
+                    <p style="margin:0;color:#33691e;font-weight:600;font-size:0.98rem;">
+                        🙏 Agradecemos pelo seu pagamento. Deus abençoe e multiplique, grandiosamente, na sua vida e na sua família!!!
+                    </p>
+                </div>
 
                 <p style="color:#555;font-size:0.9em;margin-top:8px;">
                     <strong>PhotoMusic Produções</strong> - (21) 96442-8172
@@ -314,6 +350,24 @@ class PhotoMusic_Formulario_Eucaristia {
                     </button>
                 </fieldset>
 
+                <!-- NOME DOS PAIS -->
+                <fieldset style="border:1px solid #ddd;border-radius:6px;padding:16px 20px;margin-bottom:20px;">
+                    <legend style="font-weight:bold;padding:0 8px;">👨‍👩‍👧 Nome dos Pais</legend>
+                    <p style="margin-top:0;font-size:0.9em;color:#555;">Necessário para identificação durante o evento fotográfico.</p>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <p style="margin:0;">
+                            <label style="display:block;font-weight:600;margin-bottom:4px;">Nome do Pai *</label>
+                            <input type="text" name="nome_pai" required
+                                   style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                        </p>
+                        <p style="margin:0;">
+                            <label style="display:block;font-weight:600;margin-bottom:4px;">Nome da Mãe *</label>
+                            <input type="text" name="nome_mae" required
+                                   style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                        </p>
+                    </div>
+                </fieldset>
+
                 <!-- DADOS DA CATEQUESE -->
                 <fieldset style="border:1px solid #ddd;border-radius:6px;padding:16px 20px;margin-bottom:20px;">
                     <legend style="font-weight:bold;padding:0 8px;">⛪ Dados da Catequese</legend>
@@ -441,17 +495,30 @@ class PhotoMusic_Formulario_Eucaristia {
                 this.value = v;
             });
 
-            /* ---- Bloqueio no submit se CPF inválido ---- */
+            /* ---- Bloqueio no submit se CPF inválido + anti-duplo-envio ---- */
             var form = document.getElementById('pm-form-eucaristia');
+            var _submitando = false;
             if (form) form.addEventListener('submit', function(e) {
+                // Valida CPF primeiro
                 var cpfEl = document.getElementById('pm-cpf-pub');
-                if (!cpfEl) return;
-                var d = cpfEl.value.replace(/\D/g,'');
-                if (d.length > 0 && !validarCPF(d)) {
-                    e.preventDefault();
-                    setCpfStatus(false, false);
-                    cpfEl.focus();
-                    cpfEl.scrollIntoView({behavior:'smooth', block:'center'});
+                if (cpfEl) {
+                    var d = cpfEl.value.replace(/\D/g,'');
+                    if (d.length > 0 && !validarCPF(d)) {
+                        e.preventDefault();
+                        setCpfStatus(false, false);
+                        cpfEl.focus();
+                        cpfEl.scrollIntoView({behavior:'smooth', block:'center'});
+                        return;
+                    }
+                }
+                // Impede duplo clique / reenvio
+                if (_submitando) { e.preventDefault(); return; }
+                _submitando = true;
+                var btn = form.querySelector('button[type="submit"]');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '⏳ Enviando...';
+                    btn.style.background = '#999';
                 }
             });
 
@@ -493,6 +560,8 @@ class PhotoMusic_Formulario_Eucaristia {
         $nome_contratante = sanitize_text_field($_POST['nome_contratante'] ?? '');
         $telefone         = sanitize_text_field($_POST['telefone_contratante'] ?? '');
         $nome_paroquia    = sanitize_text_field($_POST['nome_paroquia'] ?? '');
+        $nome_pai         = sanitize_text_field($_POST['nome_pai'] ?? '');
+        $nome_mae         = sanitize_text_field($_POST['nome_mae'] ?? '');
         $fp               = in_array($_POST['forma_pagamento_eucaristia'] ?? '', ['pix','cartao'])
                             ? $_POST['forma_pagamento_eucaristia'] : null;
 
@@ -502,6 +571,8 @@ class PhotoMusic_Formulario_Eucaristia {
         $erro = '';
         if (empty($nome_contratante)) $erro = 'O nome é obrigatório.';
         elseif (empty($telefone))      $erro = 'O celular/WhatsApp é obrigatório.';
+        elseif (empty($nome_pai))      $erro = 'O nome do pai é obrigatório.';
+        elseif (empty($nome_mae))      $erro = 'O nome da mãe é obrigatório.';
         elseif (empty($data_evento))   $erro = 'A data da 1ª Eucaristia é obrigatória.';
         elseif (empty($nome_paroquia)) $erro = 'O nome da paróquia é obrigatório.';
         elseif (empty($fp))            $erro = 'Selecione a forma de pagamento.';
@@ -523,6 +594,43 @@ class PhotoMusic_Formulario_Eucaristia {
 
         if (!empty($erro)) {
             wp_redirect(add_query_arg('pm_erro', urlencode($erro), $page_url));
+            exit;
+        }
+
+        // ============================================================
+        // PROTEÇÃO ANTI-DUPLICATA
+        // Verifica se já existe cadastro com mesmo telefone + data do evento.
+        // Se sim, redireciona para a tela de pagamento do cadastro existente
+        // em vez de criar um novo.
+        // ============================================================
+        $tel_limpo    = preg_replace('/\D/', '', $telefone);
+        $data_ev_dup  = sanitize_text_field($_POST['data_evento'] ?? '');
+
+        $duplicado = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, token_evento FROM {$tbl_ev}
+             WHERE telefone_contratante = %s
+               AND data_evento = %s
+               AND tipo_celebracao = '1eucaristia'
+               AND status_evento != 'desativado'
+             ORDER BY id DESC
+             LIMIT 1",
+            $tel_limpo,
+            $data_ev_dup
+        ));
+
+        if ($duplicado) {
+            // Garante token
+            $token_dup = $duplicado->token_evento;
+            if (empty($token_dup)) {
+                $token_dup = bin2hex(random_bytes(16));
+                $wpdb->update($tbl_ev, ['token_evento' => $token_dup], ['id' => $duplicado->id]);
+            }
+            // Redireciona para a tela de pagamento do cadastro já existente
+            wp_redirect(add_query_arg([
+                'pm_eucaristia' => 'enviado',
+                'fp'            => $fp,
+                't'             => $token_dup,
+            ], $page_url));
             exit;
         }
 
@@ -555,6 +663,7 @@ class PhotoMusic_Formulario_Eucaristia {
             'tipo_celebracao'            => '1eucaristia',
             'nome_catequista'            => sanitize_text_field($_POST['nome_catequista'] ?? '') ?: null,
             'horario_catequese'          => sanitize_text_field($_POST['horario_catequese'] ?? '') ?: null,
+            'nome_pais'                  => trim($nome_pai . ' e ' . $nome_mae),
             'nome_paroquia'              => $nome_paroquia,
             'nome_capela'                => sanitize_text_field($_POST['nome_capela'] ?? '') ?: null,
             'forma_pagamento_eucaristia' => $fp,
@@ -601,10 +710,19 @@ class PhotoMusic_Formulario_Eucaristia {
 
         // Cria contrato rascunho
         if (class_exists('PhotoMusic_Contratos')) {
-            PhotoMusic_Contratos::criar_contrato_simplificado($id_evento, 0);
+            PhotoMusic_Contratos::criar_contrato_simplificado($id_evento, 0, true);
         }
 
-        wp_redirect(add_query_arg(['pm_eucaristia' => 'enviado', 'fp' => $fp], $page_url));
+        // Garante que o evento tem token para o link de pagamento
+        $token_ev = $wpdb->get_var($wpdb->prepare(
+            "SELECT token_evento FROM {$tbl_ev} WHERE id = %d", $id_evento
+        ));
+        if (empty($token_ev)) {
+            $token_ev = bin2hex(random_bytes(16));
+            $wpdb->update($tbl_ev, ['token_evento' => $token_ev], ['id' => $id_evento]);
+        }
+
+        wp_redirect(add_query_arg(['pm_eucaristia' => 'enviado', 'fp' => $fp, 't' => $token_ev], $page_url));
         exit;
     }
 }

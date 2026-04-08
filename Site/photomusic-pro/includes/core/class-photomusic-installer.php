@@ -11,6 +11,98 @@ class PhotoMusic_Installer {
     public static function activate() {
         self::create_tables();
         self::create_roles_and_caps();
+        self::create_upload_dirs();
+        self::create_required_pages();
+    }
+
+    /**
+     * Cria as páginas WordPress necessárias para o sistema funcionar
+     * (shortcodes de contrato e pagamento)
+     */
+    private static function create_required_pages() {
+
+        $pages = [
+            [
+                'option'    => 'photomusic_contrato_page',
+                'title'     => 'Assinatura de Contrato',
+                'slug'      => 'assinatura-de-contrato',
+                'shortcode' => '[photomusic_contrato]',
+            ],
+            [
+                'option'    => 'pm_pagamento_page_id',
+                'title'     => 'Pagamento',
+                'slug'      => 'pagamento',
+                'shortcode' => '[photomusic_pagamento_evento]',
+            ],
+        ];
+
+        foreach ($pages as $page) {
+
+            // Já existe opção salva e a página ainda existe?
+            $saved_id = (int) get_option($page['option'], 0);
+            if ($saved_id > 0 && get_post($saved_id) && get_post_status($saved_id) === 'publish') {
+                continue; // já configurado, ignora
+            }
+
+            // Busca por slug existente
+            $existing = get_page_by_path($page['slug']);
+            if ($existing) {
+                update_option($page['option'], $existing->ID);
+                continue;
+            }
+
+            // Busca por shortcode no conteúdo
+            $found = get_posts([
+                'post_type'      => 'page',
+                'post_status'    => 'publish',
+                'posts_per_page' => 1,
+                's'              => trim($page['shortcode'], '[]'),
+            ]);
+            if (!empty($found)) {
+                update_option($page['option'], $found[0]->ID);
+                continue;
+            }
+
+            // Cria a página automaticamente
+            $new_id = wp_insert_post([
+                'post_title'   => $page['title'],
+                'post_name'    => $page['slug'],
+                'post_content' => $page['shortcode'],
+                'post_status'  => 'publish',
+                'post_type'    => 'page',
+                'post_author'  => 1,
+            ]);
+
+            if ($new_id && !is_wp_error($new_id)) {
+                update_option($page['option'], $new_id);
+            }
+        }
+    }
+
+    /**
+     * Cria pastas de upload protegidas
+     */
+    private static function create_upload_dirs() {
+        $upload_dir = wp_upload_dir();
+
+        // Pasta de contratos PDF — protegida contra listagem de diretório
+        $contratos_dir = $upload_dir['basedir'] . '/contratos';
+        if (!file_exists($contratos_dir)) {
+            wp_mkdir_p($contratos_dir);
+        }
+
+        // index.php para bloquear listagem
+        $index_file = $contratos_dir . '/index.php';
+        if (!file_exists($index_file)) {
+            file_put_contents($index_file, '<?php // Silence is golden.');
+        }
+
+        // .htaccess para bloquear listagem de diretório (Apache)
+        $htaccess_file = $contratos_dir . '/.htaccess';
+        if (!file_exists($htaccess_file)) {
+            $htaccess_content = "Options -Indexes\n";
+            file_put_contents($htaccess_file, $htaccess_content);
+        }
     }
 
     /**
@@ -121,6 +213,9 @@ class PhotoMusic_Installer {
             contato_cerimonialista VARCHAR(255) NULL,
             contato_responsavel    VARCHAR(255) NULL,
             status_evento ENUM('ativo','desativado','concluido') NOT NULL DEFAULT 'ativo',
+            pagamento_config LONGTEXT NULL,
+            link_pagamento_cartao TEXT NULL,
+            pagamento_confirmado TINYINT(1) NOT NULL DEFAULT 0,
 
             codigo_interno VARCHAR(100) NULL,
             criado_por BIGINT UNSIGNED NULL,
@@ -1108,6 +1203,13 @@ class PhotoMusic_Installer {
             $wpdb->query("ALTER TABLE `{$tbl_contratos}` ADD COLUMN `numero_contrato` INT UNSIGNED NULL AFTER `id`");
         }
 
+        // Adiciona coluna pagamento_config se não existir
+        $tbl_eventos = $wpdb->prefix . 'pm_eventos';
+        $col_pgto = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_eventos}` LIKE 'pagamento_config'");
+        if (empty($col_pgto)) {
+            $wpdb->query("ALTER TABLE `{$tbl_eventos}` ADD COLUMN `pagamento_config` LONGTEXT NULL");
+        }
+
         /* ============================================================
            GALERIA — links de fotoshare por evento
         ============================================================ */
@@ -1335,6 +1437,30 @@ class PhotoMusic_Installer {
                  AFTER `horas_contratadas`"
             );
         }
+
+        /* ============================================================
+           PM_EVENTOS — link de pagamento por cartão (por evento)
+        ============================================================ */
+        $tbl_eventos = $wpdb->prefix . 'pm_eventos';
+        $col_lpc = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_eventos}` LIKE 'link_pagamento_cartao'");
+        if (empty($col_lpc)) {
+            $wpdb->query(
+                "ALTER TABLE `{$tbl_eventos}`
+                 ADD COLUMN `link_pagamento_cartao` TEXT NULL
+                 COMMENT 'Link de pagamento gerado externamente (Pagar.me, Stripe, etc.) para cartão'"
+            );
+        }
+
+        $col_pgconf = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_eventos}` LIKE 'pagamento_confirmado'");
+        if (empty($col_pgconf)) {
+            $wpdb->query("ALTER TABLE `{$tbl_eventos}` ADD COLUMN `pagamento_confirmado` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = pagamento confirmado pelo operador'");
+        }
+
+        // Garante pasta de contratos com proteção (idempotente)
+        self::create_upload_dirs();
+
+        // Garante páginas necessárias (idempotente)
+        self::create_required_pages();
 
         /* ============================================================
            PM_GALERIA_VIEWS — colunas de rastreio de cliques por serviço

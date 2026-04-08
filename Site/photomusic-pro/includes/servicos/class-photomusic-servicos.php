@@ -495,6 +495,12 @@ class PhotoMusic_Servicos {
                 echo esc_html($evento['motivo_evento'] ?? '');
                 $dt = $evento['data_evento'] ?? '';
                 if ($dt) echo ' — ' . date('d/m/Y', strtotime($dt));
+                $hi = $evento['horario_inicio'] ?? '';
+                $hf = $evento['horario_fim']    ?? '';
+                if ($hi) {
+                    echo ' &nbsp;|&nbsp; ⏰ ' . substr($hi, 0, 5);
+                    if ($hf) echo ' às ' . substr($hf, 0, 5);
+                }
             ?></h3>
             <a class="button" href="<?php echo admin_url('admin.php?page=photomusic-evento-detalhes&id=' . $id_evento); ?>">← Voltar ao Evento</a>
             <hr>
@@ -589,47 +595,16 @@ class PhotoMusic_Servicos {
                                     <p class="description">Horário que <strong>este serviço</strong> começa (pode diferir do horário do evento). Aparece no contrato.</p>
                                 </td>
                             </tr>
+                            <!-- Valor Base: hidden — preenchido pelo JS ao selecionar pacote -->
+                            <input type="hidden" name="valor_base" id="input-valor-base"
+                                   value="<?php echo number_format(floatval($se_editar['valor_base'] ?? 0), 2, '.', ''); ?>">
                             <tr>
-                                <th><label>Valor Base (R$) *</label></th>
-                                <td>
-                                    <input type="number" name="valor_base" id="input-valor-base"
-                                           class="regular-text" step="0.01" min="0"
-                                           value="<?php echo number_format(floatval($se_editar['valor_base'] ?? 0), 2, '.', ''); ?>" required>
-                                    <p class="description">Preenchido automaticamente ao selecionar o pacote. Pode ajustar.</p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th><label>Valor Adicional (R$)</label></th>
-                                <td>
-                                    <input type="number" name="valor_adicional"
-                                           class="regular-text" step="0.01" min="0"
-                                           value="<?php echo number_format(floatval($se_editar['valor_adicional'] ?? 0), 2, '.', ''); ?>">
-                                    <p class="description">Deslocamento, horas extras, etc.</p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th><label>Rótulo do Valor Adicional</label></th>
-                                <td>
-                                    <input type="text" name="label_adicional" class="regular-text"
-                                           placeholder="Ex: Deslocamento, Hora extra, Taxa..."
-                                           value="<?php echo esc_attr($se_editar['label_adicional'] ?? ''); ?>">
-                                    <p class="description">Nome que aparece no contrato. Se em branco usa "Deslocamento".</p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th><label>Valor Final (R$) *</label></th>
+                                <th><label>Valor (R$) *</label></th>
                                 <td>
                                     <input type="number" name="valor_final" id="input-valor-final"
                                            class="regular-text" step="0.01" min="0"
                                            value="<?php echo number_format(floatval($se_editar['valor_final'] ?? 0), 2, '.', ''); ?>" required>
-                                    <p class="description">Valor total cobrado por este serviço.</p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th><label>Observações</label></th>
-                                <td>
-                                    <textarea name="observacoes" rows="3" class="large-text"
-                                              placeholder="Informações adicionais sobre este serviço no evento..."><?php echo esc_textarea($se_editar['observacoes'] ?? ''); ?></textarea>
+                                    <p class="description">Preenchido automaticamente ao selecionar o pacote. Pode ajustar.</p>
                                 </td>
                             </tr>
                             <tr>
@@ -674,9 +649,8 @@ class PhotoMusic_Servicos {
                                     <th>Serviço</th>
                                     <th>Pacote</th>
                                     <th>Horas</th>
-                                    <th>Valor Base</th>
-                                    <th>Adicional</th>
-                                    <th>Total</th>
+                                    <th>Início</th>
+                                    <th>Valor</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -691,8 +665,7 @@ class PhotoMusic_Servicos {
                                     </td>
                                     <td><?php echo esc_html($se['nome_pacote'] ?? '—'); ?></td>
                                     <td><?php echo intval($se['horas_contratadas']); ?>h</td>
-                                    <td>R$ <?php echo number_format(floatval($se['valor_base']), 2, ',', '.'); ?></td>
-                                    <td>R$ <?php echo number_format(floatval($se['valor_adicional']), 2, ',', '.'); ?></td>
+                                    <td><?php echo !empty($se['horario_inicio']) ? substr($se['horario_inicio'], 0, 5) : '—'; ?></td>
                                     <td><strong>R$ <?php echo number_format(floatval($se['valor_final']), 2, ',', '.'); ?></strong></td>
                                     <td style="white-space:nowrap;">
                                         <a href="<?php echo esc_url(add_query_arg([
@@ -717,7 +690,7 @@ class PhotoMusic_Servicos {
                             </tbody>
                             <tfoot>
                                 <tr>
-                                    <td colspan="5" style="text-align:right;"><strong>Total do Evento:</strong></td>
+                                    <td colspan="4" style="text-align:right;"><strong>Total do Evento:</strong></td>
                                     <td><strong style="font-size:1.1em;">R$ <?php echo number_format($total, 2, ',', '.'); ?></strong></td>
                                     <td></td>
                                 </tr>
@@ -826,18 +799,22 @@ class PhotoMusic_Servicos {
 
         // ── Ao carregar a página em modo edição, restaura o pacote selecionado
         document.addEventListener('DOMContentLoaded', function() {
-            var idServico = <?php echo intval($se_editar['id_servico'] ?? 0); ?>;
-            var idPacote  = <?php echo intval($se_editar['id_pacote']  ?? 0); ?>;
+            var idServico    = <?php echo intval($se_editar['id_servico'] ?? 0); ?>;
+            var idPacote     = <?php echo intval($se_editar['id_pacote']  ?? 0); ?>;
+            var savedBase    = <?php echo floatval($se_editar['valor_base']  ?? 0); ?>;
+            var savedFinal   = <?php echo floatval($se_editar['valor_final'] ?? 0); ?>;
             if (idServico) {
-                carregarPacotes(idServico);
+                carregarPacotes(idServico); // reseta valor_base e valor_final para 0
                 if (idPacote) {
                     var sel = document.getElementById('select-pacote');
                     sel.value = idPacote;
-                    // Se o option ainda não existia, tenta novamente após um tick
                     if (!sel.value) {
                         setTimeout(function() { sel.value = idPacote; }, 50);
                     }
                 }
+                // Restaura os valores salvos (carregarPacotes os zeraria)
+                if (savedBase  > 0) document.getElementById('input-valor-base').value  = savedBase.toFixed(2);
+                if (savedFinal > 0) document.getElementById('input-valor-final').value = savedFinal.toFixed(2);
                 var selServico = document.getElementById('select-servico');
                 verificarBrinde(selServico);
             }
@@ -929,10 +906,10 @@ class PhotoMusic_Servicos {
             'horario_inicio'    => sanitize_text_field($_POST['horario_inicio'] ?? '') ?: null,
             'fotos_contratadas' => 0,
             'valor_base'        => floatval($_POST['valor_base'] ?? 0),
-            'valor_adicional'   => floatval($_POST['valor_adicional'] ?? 0),
-            'label_adicional'   => sanitize_text_field($_POST['label_adicional'] ?? ''),
+            'valor_adicional'   => 0,
+            'label_adicional'   => '',
             'valor_final'       => floatval($_POST['valor_final'] ?? 0),
-            'observacoes'       => sanitize_textarea_field($_POST['observacoes'] ?? ''),
+            // 'observacoes' não incluso: preserva valor existente (usado para 🎁 Brinde automático)
             'link_galeria'      => esc_url_raw(trim($_POST['link_galeria'] ?? '')) ?: null,
         ];
 

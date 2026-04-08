@@ -43,19 +43,67 @@ class PhotoMusic_Admin_Menu {
         /* ---- ENVIAR PDF POR WHATSAPP ---- */
         $enviar_whatsapp = isset($_GET['enviar_whatsapp']) ? intval($_GET['enviar_whatsapp']) : 0;
         if ($enviar_whatsapp > 0) {
-            $contrato = PhotoMusic_Contratos::get($enviar_whatsapp);
-            if ($contrato && $contrato->pdf_final) {
-                $contratante_obj = PhotoMusic_Contratantes::get_by_event($contrato->id_evento);
-                $telefone = $contratante_obj
-                    ? preg_replace('/\D/', '', $contratante_obj->telefone ?? '')
-                    : '';
-                PhotoMusic_WhatsApp::send_pdf(
+            $redirect_base = admin_url('admin.php?page=photomusic-contrato-detalhes&id=' . $enviar_whatsapp);
+
+            try {
+                $contrato = class_exists('PhotoMusic_Contratos') ? PhotoMusic_Contratos::get($enviar_whatsapp) : null;
+
+                if (!$contrato) {
+                    wp_redirect($redirect_base . '&whatsapp_erro=' . urlencode('Contrato não encontrado.'));
+                    exit;
+                }
+
+                // PDF ainda não gerado — tenta gerar agora
+                if (empty($contrato->pdf_final)) {
+                    if (class_exists('PhotoMusic_Contratos_PDF')) {
+                        PhotoMusic_Contratos_PDF::gerar_pdf($contrato);
+                        $contrato = PhotoMusic_Contratos::get($enviar_whatsapp); // recarrega com pdf_final atualizado
+                    }
+                }
+
+                if (empty($contrato->pdf_final)) {
+                    wp_redirect($redirect_base . '&whatsapp_erro=' . urlencode('PDF ainda não gerado. Gere o PDF primeiro.'));
+                    exit;
+                }
+
+                // Busca telefone — tenta tabela contratantes primeiro, depois evento diretamente
+                $telefone = '';
+                if (class_exists('PhotoMusic_Contratantes')) {
+                    $contratante_obj = PhotoMusic_Contratantes::get_by_event($contrato->id_evento);
+                    if ($contratante_obj) {
+                        $telefone = preg_replace('/\D/', '', $contratante_obj->telefone ?? '');
+                    }
+                }
+
+                // Fallback: telefone direto no evento (eucaristia, formulário público)
+                if (empty($telefone) && !empty($contrato->id_evento)) {
+                    global $wpdb;
+                    $tel_ev = $wpdb->get_var($wpdb->prepare(
+                        "SELECT telefone_contratante FROM {$wpdb->prefix}pm_eventos WHERE id = %d LIMIT 1",
+                        $contrato->id_evento
+                    ));
+                    $telefone = preg_replace('/\D/', '', $tel_ev ?? '');
+                }
+
+                if (empty($telefone)) {
+                    wp_redirect($redirect_base . '&whatsapp_erro=' . urlencode('Telefone do contratante não encontrado.'));
+                    exit;
+                }
+
+                PhotoMusic_WhatsApp::send_pdf_zapi(
                     $telefone,
-                    "Olá! Segue o contrato do seu evento.",
-                    $contrato->pdf_final,
-                    ['id_evento' => $contrato->id_evento]
+                    "Olá! Segue o contrato do seu evento. Para assinar acesse: " . home_url('/contrato/' . $contrato->token),
+                    $contrato->pdf_final
                 );
-                wp_redirect(admin_url('admin.php?page=photomusic-contrato-detalhes&id=' . $enviar_whatsapp . '&whatsapp_ok=1'));
+
+                wp_redirect($redirect_base . '&whatsapp_ok=1');
+                exit;
+
+            } catch (\Throwable $e) {
+                if (class_exists('PhotoMusic_Logs')) {
+                    PhotoMusic_Logs::add('erro_envio_pdf_wpp', null, null, $enviar_whatsapp, $e->getMessage());
+                }
+                wp_redirect($redirect_base . '&whatsapp_erro=' . urlencode('Erro ao enviar: ' . $e->getMessage()));
                 exit;
             }
         }
@@ -170,6 +218,43 @@ class PhotoMusic_Admin_Menu {
                     }
                     $lista_html .= '</ul>';
 
+                    // ── Cálculo financeiro com descontos do pagamento_config ──
+                    $pgto_cfg = [];
+                    if (!empty($evento_tmp->pagamento_config)) {
+                        $pgto_cfg = json_decode($evento_tmp->pagamento_config, true) ?: [];
+                    }
+                    $pgto_forma_ct = $pgto_cfg['forma'] ?? '';
+
+                    // Descontos que incidem ANTES do desconto PIX
+                    $total_desc_ct = 0;
+                    $linhas_desc_ct = [];
+                    if (!empty($pgto_cfg['desc_segundo_servico']) && !empty($pgto_cfg['desc_segundo_exibir'])) {
+                        $total_desc_ct -= 100.00;
+                        $linhas_desc_ct[] = 'Desconto 2º serviço: − R$ 100,00';
+                    }
+                    if (!empty($pgto_cfg['desc_guestbook']) && !empty($pgto_cfg['desc_guestbook_exibir'])) {
+                        $v = floatval($pgto_cfg['desc_guestbook']);
+                        $total_desc_ct -= $v;
+                        $linhas_desc_ct[] = 'Desconto Guestbook: − R$ ' . number_format($v, 2, ',', '.');
+                    }
+                    $base_ct = $total + $total_desc_ct;
+
+                    // Desconto PIX à vista (não incide sobre deslocamento)
+                    $pct_pix_ct    = 0;
+                    $desc_pix_ct   = 0;
+                    if ($pgto_forma_ct === 'pix_avista') {
+                        $pct_pix_ct  = intval($pgto_cfg['pix_desconto_pct'] ?? 0);
+                        $desc_pix_ct = $base_ct * ($pct_pix_ct / 100);
+                    }
+
+                    // Deslocamento somado DEPOIS do desconto PIX
+                    $desloc_ct = 0;
+                    if (isset($pgto_cfg['desc_deslocamento']) && $pgto_cfg['desc_deslocamento'] !== '' && !empty($pgto_cfg['desc_deslocamento_exibir'])) {
+                        $desloc_ct = floatval($pgto_cfg['desc_deslocamento']);
+                    }
+
+                    $total_final_ct = $base_ct - $desc_pix_ct + $desloc_ct;
+
                     // Bloco de horários individuais por serviço
                     $linhas_horario = [];
                     if (!empty($servicos_tmp) && is_array($servicos_tmp)) {
@@ -185,6 +270,54 @@ class PhotoMusic_Admin_Menu {
                                      . implode('<br>', $linhas_horario) . '</p>';
                     }
 
+                    // ── Resumo Financeiro (aparece no contrato junto com {lista_servicos}) ──
+                    $lista_html .= '<br><table style="border-collapse:collapse;font-size:0.95em;min-width:280px;">';
+                    $lista_html .= '<tr>'
+                        . '<td style="padding:2px 24px 2px 0;">Subtotal dos serviços</td>'
+                        . '<td style="text-align:right;padding:2px 0;">R$ ' . number_format($total, 2, ',', '.') . '</td>'
+                        . '</tr>';
+
+                    if (!empty($pgto_cfg['desc_segundo_servico']) && !empty($pgto_cfg['desc_segundo_exibir'])) {
+                        $lista_html .= '<tr>'
+                            . '<td style="padding:2px 24px 2px 0;color:#555;">Desconto 2º serviço</td>'
+                            . '<td style="text-align:right;padding:2px 0;color:#555;">− R$ 100,00</td>'
+                            . '</tr>';
+                    }
+                    if (!empty($pgto_cfg['desc_guestbook']) && !empty($pgto_cfg['desc_guestbook_exibir'])) {
+                        $v_gb = floatval($pgto_cfg['desc_guestbook']);
+                        $lista_html .= '<tr>'
+                            . '<td style="padding:2px 24px 2px 0;color:#555;">Desconto Guestbook</td>'
+                            . '<td style="text-align:right;padding:2px 0;color:#555;">− R$ ' . number_format($v_gb, 2, ',', '.') . '</td>'
+                            . '</tr>';
+                    }
+                    if ($desc_pix_ct > 0) {
+                        $lista_html .= '<tr>'
+                            . '<td style="padding:2px 24px 2px 0;color:#555;">Desconto PIX (' . $pct_pix_ct . '%)</td>'
+                            . '<td style="text-align:right;padding:2px 0;color:#555;">− R$ ' . number_format($desc_pix_ct, 2, ',', '.') . '</td>'
+                            . '</tr>';
+                    }
+                    if (isset($pgto_cfg['desc_deslocamento']) && $pgto_cfg['desc_deslocamento'] !== '' && !empty($pgto_cfg['desc_deslocamento_exibir'])) {
+                        $desloc_show = floatval($pgto_cfg['desc_deslocamento']);
+                        $desloc_txt  = $desloc_show == 0
+                            ? 'Grátis'
+                            : 'R$ ' . number_format($desloc_show, 2, ',', '.');
+                        $lista_html .= '<tr>'
+                            . '<td style="padding:2px 24px 2px 0;color:#555;">Deslocamento</td>'
+                            . '<td style="text-align:right;padding:2px 0;color:#555;">' . $desloc_txt . '</td>'
+                            . '</tr>';
+                    }
+                    $lista_html .= '<tr style="border-top:1px solid #333;">'
+                        . '<td style="padding:5px 24px 2px 0;font-weight:bold;">Valor Total</td>'
+                        . '<td style="text-align:right;padding:5px 0 2px;font-weight:bold;">R$ ' . number_format($total_final_ct, 2, ',', '.') . '</td>'
+                        . '</tr>';
+                    $lista_html .= '</table>';
+
+                    // ── Descrição de Pagamento ──────────────────────────────────────────────
+                    $desc_pgto_contrato = trim($pgto_cfg['descricao_pagamento'] ?? '');
+                    if (!empty($desc_pgto_contrato)) {
+                        $lista_html .= '<p style="margin-top:10px;">' . nl2br(esc_html($desc_pgto_contrato)) . '</p>';
+                    }
+
                     $contato = $evento_tmp->contato_responsavel ?: $evento_tmp->contato_cerimonialista ?: '';
 
                     $vars = [
@@ -195,9 +328,47 @@ class PhotoMusic_Admin_Menu {
                         '{horario_servico}'        => $hs,
                         '{horario_chegada}'        => $horario_chegada,
                         '{local_evento}'           => ($evento_tmp->local_evento ?? '') . ($endereco_local ? ', situado na ' . $endereco_local : ''),
-                        '{valor_total_final}'      => 'R$ ' . number_format($total, 2, ',', '.'),
+                        '{valor_total_final}'      => 'R$ ' . number_format($total_final_ct, 2, ',', '.'),
                         '{valor_servicos}'         => 'R$ ' . number_format($total_base, 2, ',', '.'),
                         '{valor_adicional}'        => $total_adicional > 0 ? 'R$ ' . number_format($total_adicional, 2, ',', '.') : '',
+                        '{valor_deslocamento}'     => $desloc_ct > 0 ? 'R$ ' . number_format($desloc_ct, 2, ',', '.') : 'Incluso',
+                        '{forma_pagamento}'        => (function() use ($pgto_forma_ct, $pgto_cfg, $total_final_ct, $base_ct, $desc_pix_ct, $pct_pix_ct, $desloc_ct) {
+                            switch ($pgto_forma_ct) {
+                                case 'pix_avista':
+                                    $txt = 'PIX à vista';
+                                    if ($pct_pix_ct > 0) $txt .= " com {$pct_pix_ct}% de desconto — R$ " . number_format($base_ct - $desc_pix_ct, 2, ',', '.');
+                                    else $txt .= ' — R$ ' . number_format($total_final_ct, 2, ',', '.');
+                                    if ($desloc_ct > 0) $txt .= ' + R$ ' . number_format($desloc_ct, 2, ',', '.') . ' deslocamento';
+                                    return $txt;
+                                case 'pix_parcelado':
+                                    $p1 = floatval($pgto_cfg['pix_p_1_valor'] ?? 0);
+                                    $p2 = floatval($pgto_cfg['pix_p_2_valor'] ?? 0);
+                                    $txt = 'PIX parcelado — Total: R$ ' . number_format($total_final_ct, 2, ',', '.');
+                                    if ($p1 > 0) $txt .= ' | 1ª parcela: R$ ' . number_format($p1, 2, ',', '.');
+                                    if ($p2 > 0) {
+                                        $txt .= ' | 2ª parcela: R$ ' . number_format($p2, 2, ',', '.');
+                                        if (!empty($pgto_cfg['pix_p_2_data'])) $txt .= ' até ' . date('d/m/Y', strtotime($pgto_cfg['pix_p_2_data']));
+                                    }
+                                    return $txt;
+                                case 'cartao':
+                                    $p = intval($pgto_cfg['cartao_parcelas'] ?? 1);
+                                    $juros = $p > 3 ? 'com juros' : 'sem juros';
+                                    return 'Cartão de Crédito — R$ ' . number_format($total_final_ct, 2, ',', '.') . " em {$p}x {$juros}";
+                                case 'dinheiro':
+                                    return 'Dinheiro — R$ ' . number_format($total_final_ct, 2, ',', '.');
+                                case 'transferencia':
+                                    return 'Transferência Bancária — R$ ' . number_format($total_final_ct, 2, ',', '.');
+                                case 'misto':
+                                    $mv = floatval($pgto_cfg['misto_valor'] ?? 0);
+                                    $mp = intval($pgto_cfg['misto_parcelas'] ?? 1);
+                                    $mc = $total_final_ct - $mv;
+                                    $juros = $mp > 3 ? 'com juros' : 'sem juros';
+                                    return "Misto — R$ " . number_format($mv, 2, ',', '.') . " em PIX/Dinheiro + R$ " . number_format($mc, 2, ',', '.') . " em {$mp}x no cartão {$juros}";
+                                default:
+                                    return 'A combinar';
+                            }
+                        })(),
+                        '{descricao_pagamento}'    => $pgto_cfg['descricao_pagamento'] ?? '',
                         '{contato_salao}'          => $evento_tmp->contato_salao ?? '',
                         '{contato_cerimonialista}' => $evento_tmp->contato_cerimonialista ?? '',
                         '{contato_responsavel}'    => $contato,
@@ -371,11 +542,15 @@ class PhotoMusic_Admin_Menu {
                         $ct_dob   = '';
                         $dob_raw  = $evento_tmp->data_nascimento ?? ($contratante_tb->data_nascimento ?? '');
                         if ($dob_raw) $ct_dob = date('d/m/Y', strtotime($dob_raw));
+                        $ct_tel   = $evento_tmp->telefone_contratante ?? ($contratante_tb->telefone ?? '');
+                        $ct_email = $evento_tmp->email_contratante    ?? ($contratante_tb->email    ?? '');
                         $ct_linha = esc_html($ct_nome);
                         if ($ct_endereco) $ct_linha .= ', residente e domiciliado(a) na ' . esc_html($ct_endereco);
-                        if ($ct_cpf) $ct_linha .= ', CPF: ' . esc_html($ct_cpf);
-                        if ($ct_rg)  $ct_linha .= ', RG: ' . esc_html($ct_rg) . ($ct_rg_o ? ' ' . esc_html($ct_rg_o) : '');
-                        if ($ct_dob) $ct_linha .= ', data de nascimento: ' . $ct_dob;
+                        if ($ct_cpf)   $ct_linha .= ', CPF: ' . esc_html($ct_cpf);
+                        if ($ct_rg)    $ct_linha .= ', RG: ' . esc_html($ct_rg) . ($ct_rg_o ? ' ' . esc_html($ct_rg_o) : '');
+                        if ($ct_dob)   $ct_linha .= ', data de nascimento: ' . $ct_dob;
+                        if ($ct_tel)   $ct_linha .= ', telefone: ' . esc_html($ct_tel);
+                        if ($ct_email) $ct_linha .= ', e-mail: ' . esc_html($ct_email);
                     }
 
                     // ---- LOGO ----
@@ -872,7 +1047,11 @@ class PhotoMusic_Admin_Menu {
         $notice_msg = '';
 
         if (!empty($_GET['whatsapp_ok'])) {
-            $notice_msg = '<div class="updated notice is-dismissible"><p>PDF enviado por WhatsApp com sucesso!</p></div>';
+            $notice_msg = '<div class="updated notice is-dismissible"><p>✅ PDF enviado por WhatsApp com sucesso!</p></div>';
+        }
+
+        if (!empty($_GET['whatsapp_erro'])) {
+            $notice_msg = '<div class="notice notice-error is-dismissible"><p>❌ Erro ao enviar WhatsApp: ' . esc_html(urldecode($_GET['whatsapp_erro'])) . '</p></div>';
         }
 
         if (!empty($_GET['pdf_ok'])) {
@@ -1259,8 +1438,7 @@ class PhotoMusic_Admin_Menu {
                 echo '<code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:13px;">'
                     . esc_html($url_eucaristia) . '</code>&nbsp;';
                 echo '<button type="button" class="button button-small" '
-                    . 'onclick="navigator.clipboard.writeText(' . json_encode($url_eucaristia) . ')'
-                    . '.then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
+                    . 'onclick="navigator.clipboard.writeText(\'' . esc_js($url_eucaristia) . '\').then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
                     . '📋 Copiar Link</button>';
                 if ($tel_pc) {
                     $msg_euc = rawurlencode(
@@ -1293,8 +1471,7 @@ class PhotoMusic_Admin_Menu {
             echo '<code style="background:#f0f0f0;padding:3px 8px;border-radius:4px;font-size:13px;">'
                 . esc_html($url_precadastro) . '</code>&nbsp;';
             echo '<button type="button" class="button button-small" '
-                . 'onclick="navigator.clipboard.writeText(' . json_encode($url_precadastro) . ')'
-                . '.then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
+                . 'onclick="navigator.clipboard.writeText(\'' . esc_js($url_precadastro) . '\').then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
                 . '📋 Copiar Link</button>';
             if ($tel_pc) {
                 $msg_pc = rawurlencode(

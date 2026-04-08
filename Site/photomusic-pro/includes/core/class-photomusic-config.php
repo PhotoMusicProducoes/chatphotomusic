@@ -57,6 +57,9 @@ class PhotoMusic_Config {
         $page_id = intval($_POST['photomusic_contrato_page'] ?? 0);
         update_option('photomusic_contrato_page', $page_id);
 
+        $pgto_page_id = intval($_POST['pm_pagamento_page_id'] ?? 0);
+        update_option('pm_pagamento_page_id', $pgto_page_id);
+
         update_option('pm_eucaristia_form_url', esc_url_raw($_POST['pm_eucaristia_form_url'] ?? ''));
 
         // Pagamento 1ª Eucaristia
@@ -91,9 +94,14 @@ class PhotoMusic_Config {
 
         // ID salvo atualmente
         $pagina_contrato_id  = (int) get_option('photomusic_contrato_page', 0);
+        $pagina_pagamento_id = (int) get_option('pm_pagamento_page_id', 0);
         $proximo_num         = (int) get_option('pm_contrato_proximo_numero', 1);
         $eucaristia_form_url = get_option('pm_eucaristia_form_url', '');
         $url_empresa         = admin_url('admin.php?page=photomusic_empresa');
+
+        // Verifica páginas configuradas
+        $pagina_pgto_salva = $pagina_pagamento_id ? get_post($pagina_pagamento_id) : null;
+        $url_pgto_publica  = $pagina_pgto_salva ? get_permalink($pagina_pgto_salva) : '';
 
         // Pagamento 1ª Eucaristia
         $euc_valor_pix       = get_option('pm_eucaristia_valor_pix',          '150,00');
@@ -182,6 +190,53 @@ class PhotoMusic_Config {
                                 <code>[photomusic_contrato]</code>.
                                 Todos os links <code>/contrato/{token}/</code>
                                 gerados no PDF e no WhatsApp vão redirecionar para ela.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- ============================================
+                         PÁGINA DE PAGAMENTO
+                    ============================================ -->
+                    <tr>
+                        <th scope="row">
+                            <label for="pm_pagamento_page_id">
+                                Página de Pagamento
+                            </label>
+                        </th>
+                        <td>
+                            <select name="pm_pagamento_page_id"
+                                    id="pm_pagamento_page_id"
+                                    style="min-width: 300px;">
+
+                                <option value="0">— Selecione uma página —</option>
+
+                                <?php foreach ($paginas as $pagina): ?>
+                                    <option value="<?php echo esc_attr($pagina->ID); ?>"
+                                        <?php selected($pagina_pagamento_id, $pagina->ID); ?>>
+                                        <?php echo esc_html($pagina->post_title); ?>
+                                        (ID: <?php echo esc_html($pagina->ID); ?>)
+                                    </option>
+                                <?php endforeach; ?>
+
+                            </select>
+
+                            <?php if ($pagina_pgto_salva && $url_pgto_publica): ?>
+                                <p class="description">
+                                    ✅ Página configurada:
+                                    <a href="<?php echo esc_url($url_pgto_publica); ?>" target="_blank">
+                                        <?php echo esc_html($url_pgto_publica); ?>
+                                    </a>
+                                </p>
+                            <?php else: ?>
+                                <p class="description" style="color: #b32d2e;">
+                                    ⚠️ Nenhuma página configurada. Os links de pagamento não funcionarão.
+                                </p>
+                            <?php endif; ?>
+
+                            <p class="description">
+                                Selecione a página que contém o shortcode
+                                <code>[photomusic_pagamento_evento]</code>.
+                                O link é enviado automaticamente ao cliente após assinar o contrato.
                             </p>
                         </td>
                     </tr>

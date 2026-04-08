@@ -7,9 +7,10 @@ class PhotoMusic_Events {
 
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'register_menu']);
-        add_action('admin_post_pm_salvar_evento',   [__CLASS__, 'handle_salvar_evento']);
-        add_action('admin_post_pm_excluir_evento',  [__CLASS__, 'handle_excluir_evento']);
-        add_action('admin_post_pm_concluir_evento', [__CLASS__, 'handle_concluir_evento']);
+        add_action('admin_post_pm_salvar_evento',      [__CLASS__, 'handle_salvar_evento']);
+        add_action('admin_post_pm_excluir_evento',     [__CLASS__, 'handle_excluir_evento']);
+        add_action('admin_post_pm_concluir_evento',    [__CLASS__, 'handle_concluir_evento']);
+        add_action('admin_post_pm_confirmar_pagamento',[__CLASS__, 'handle_confirmar_pagamento']);
     }
 
     /* ============================================================
@@ -188,11 +189,86 @@ class PhotoMusic_Events {
         $cnpj_fmt     = self::formatar_cnpj($evento->cnpj ?? '');
         $cpf_resp_fmt = self::formatar_cpf($evento->cpf_responsavel ?? '');
 
+        // Carrega config de pagamento
+        $pgto = [];
+        if (!empty($evento->pagamento_config)) {
+            $pgto = json_decode($evento->pagamento_config, true) ?: [];
+        }
+        $pgto_forma             = $pgto['forma'] ?? '';
+        $link_pagamento_cartao  = esc_attr($evento->link_pagamento_cartao ?? '');
+        $token_evento           = esc_attr($evento->token_evento ?? '');
+        $pgto_pix_desconto      = $pgto['pix_desconto_pct'] ?? 5;
+        $pgto_cartao_parcelas   = $pgto['cartao_parcelas'] ?? 3;
+        $pgto_misto_valor       = $pgto['misto_valor'] ?? '';
+        $pgto_misto_parcelas    = $pgto['misto_parcelas'] ?? 3;
+        $pgto_pix_payload       = $pgto['pix_payload'] ?? '';
+        $pgto_pix_p1_valor      = $pgto['pix_p_1_valor'] ?? '';
+        $pgto_pix_p2_valor      = $pgto['pix_p_2_valor'] ?? '';
+        $pgto_pix_p2_data       = $pgto['pix_p_2_data'] ?? '';
+        $desc_segundo           = $pgto['desc_segundo_servico'] ?? false;
+        $desc_segundo_exibir    = $pgto['desc_segundo_exibir'] ?? true;
+        $desc_deslocamento      = $pgto['desc_deslocamento'] ?? '';
+        $desc_deslocamento_exibir = $pgto['desc_deslocamento_exibir'] ?? true;
+        $desc_guestbook         = $pgto['desc_guestbook'] ?? '';
+        $desc_guestbook_exibir  = $pgto['desc_guestbook_exibir'] ?? false;
+        $pgto_descricao         = $pgto['descricao_pagamento'] ?? '';
+
         ?>
         <div class="wrap">
-            <h1><?php echo esc_html($titulo); ?></h1>
+            <h1><?php echo esc_html($titulo);
+
+            // Badge de status
+            if ($acao === 'editar' && $evento):
+                $st = $evento->status_evento ?? 'ativo';
+                if ($st === 'concluido')       echo ' &nbsp;<span style="background:#e8f5e9;color:#2e7d32;font-size:0.75rem;padding:3px 10px;border-radius:12px;font-weight:600;vertical-align:middle;">✅ Concluído</span>';
+                elseif ($st === 'desativado')  echo ' &nbsp;<span style="background:#f5f5f5;color:#888;font-size:0.75rem;padding:3px 10px;border-radius:12px;font-weight:600;vertical-align:middle;">Desativado</span>';
+                else                           echo ' &nbsp;<span style="background:#e3f2fd;color:#1565c0;font-size:0.75rem;padding:3px 10px;border-radius:12px;font-weight:600;vertical-align:middle;">● Ativo</span>';
+            endif;
+            ?></h1>
+
+            <!-- Botões de ação -->
             <a href="<?php echo admin_url('admin.php?page=photomusic-eventos'); ?>" class="button">← Voltar</a>
+            <?php if ($acao === 'editar' && $evento): ?>
+            &nbsp;
+            <a href="<?php echo esc_url(add_query_arg(['page' => 'photomusic-evento-detalhes', 'id' => $id_evento], admin_url('admin.php'))); ?>"
+               class="button">Detalhes</a>
+            <a href="<?php echo esc_url(add_query_arg(['page' => 'photomusic-add-servico', 'id' => $id_evento], admin_url('admin.php'))); ?>"
+               class="button button-primary">Serviços</a>
+            <?php if (($evento->status_evento ?? '') === 'ativo'):
+                $concluir_url = wp_nonce_url(
+                    admin_url('admin-post.php?action=pm_concluir_evento&id=' . $id_evento . '&redirect_id=' . $id_evento),
+                    'pm_concluir_evento_' . $id_evento
+                ); ?>
+            <a href="<?php echo esc_url($concluir_url); ?>" class="button"
+               style="color:#2e7d32;"
+               onclick="return confirm('Marcar evento #<?php echo $id_evento; ?> como concluído?')">✅ Concluir</a>
+            <?php endif; ?>
+            <?php
+            $excluir_url = wp_nonce_url(
+                admin_url('admin-post.php?action=pm_excluir_evento&id=' . $id_evento),
+                'pm_excluir_evento_' . $id_evento
+            ); ?>
+            <a href="<?php echo esc_url($excluir_url); ?>" class="button"
+               style="color:#a00;"
+               onclick="return confirm('Excluir o evento #<?php echo $id_evento; ?> — <?php echo esc_js($evento->motivo_evento ?? ''); ?>?\nEsta ação não pode ser desfeita.')">🗑️ Excluir</a>
+            <?php endif; ?>
             <hr>
+
+            <?php if (!empty($_GET['saved'])): ?>
+            <div class="notice notice-success is-dismissible" style="margin:12px 0;">
+                <p>✅ <strong>Alterações salvas com sucesso!</strong></p>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($_GET['concluido'])): ?>
+            <div class="notice notice-success is-dismissible" style="margin:12px 0;">
+                <p>✅ <strong>Evento marcado como concluído!</strong></p>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($_GET['pgto_confirmado'])): ?>
+            <div class="notice notice-success is-dismissible" style="margin:12px 0;">
+                <p>✅ <strong>Pagamento confirmado!</strong> O cliente verá a tela de pagamento concluído ao acessar o link.</p>
+            </div>
+            <?php endif; ?>
 
             <div id="pm-erros" style="display:none;" class="notice notice-error is-dismissible">
                 <p id="pm-erros-msg"></p>
@@ -232,7 +308,7 @@ class PhotoMusic_Events {
                     <h2>Dados do Contratante — Pessoa Física</h2>
                     <table class="form-table">
                         <tr>
-                            <th><label>Nome Completo *</label></th>
+                            <th><label>Nome Completo</label></th>
                             <td><input type="text" name="nome_contratante" class="regular-text"
                                        value="<?php echo esc_attr($evento->nome_contratante ?? ''); ?>"></td>
                         </tr>
@@ -256,8 +332,8 @@ class PhotoMusic_Events {
                                        value="<?php echo esc_attr($evento->data_nascimento ?? ''); ?>"></td>
                         </tr>
                         <tr>
-                            <th><label>Telefone *</label></th>
-                            <td><input type="text" name="telefone_contratante" class="regular-text pm-telefone"
+                            <th><label>Telefone / WhatsApp *</label></th>
+                            <td><input type="text" name="telefone_contratante" id="telefone_contratante" class="regular-text pm-telefone"
                                        value="<?php echo esc_attr($evento->telefone_contratante ?? ''); ?>"
                                        placeholder="(21) 99999-9999"></td>
                         </tr>
@@ -272,18 +348,18 @@ class PhotoMusic_Events {
                                        value="<?php echo esc_attr($evento->instagram_contratante ?? ''); ?>"
                                        placeholder="@usuario"></td>
                         </tr>
-                        <tr>
+                        <tr id="row-grau-parentesco" style="display:none">
                             <th><label>Grau de Parentesco</label></th>
                             <td>
                                 <input type="text" name="grau_parentesco" class="regular-text"
                                        value="<?php echo esc_attr($evento->grau_parentesco ?? ''); ?>"
-                                       placeholder="Ex: Mãe do aniversariante">
+                                       placeholder="Ex: Mãe do aniversariante, Pai da noiva...">
                                 <p class="description">Relação do contratante com o evento.</p>
                             </td>
                         </tr>
                     </table>
                     <h3 style="margin-top:20px;">Endereço do Contratante</h3>
-                    <?php self::render_campos_endereco('cont', $evento, $estados); ?>
+                    <?php self::render_campos_endereco('cont', $evento, $estados, true); ?>
                 </div>
 
                 <!-- ============================================
@@ -299,7 +375,7 @@ class PhotoMusic_Events {
                                        placeholder="Como a empresa é conhecida"></td>
                         </tr>
                         <tr>
-                            <th><label>Razão Social *</label></th>
+                            <th><label>Razão Social</label></th>
                             <td><input type="text" name="razao_social" class="regular-text"
                                        value="<?php echo esc_attr($evento->razao_social ?? ''); ?>"></td>
                         </tr>
@@ -328,8 +404,8 @@ class PhotoMusic_Events {
                             </td>
                         </tr>
                         <tr>
-                            <th><label>Telefone *</label></th>
-                            <td><input type="text" name="telefone_contratante" class="regular-text pm-telefone"
+                            <th><label>Telefone / WhatsApp *</label></th>
+                            <td><input type="text" name="telefone_contratante" id="telefone_contratante" class="regular-text pm-telefone"
                                        value="<?php echo esc_attr($evento->telefone_contratante ?? ''); ?>"
                                        placeholder="(21) 99999-9999"></td>
                         </tr>
@@ -340,7 +416,7 @@ class PhotoMusic_Events {
                         </tr>
                     </table>
                     <h3 style="margin-top:20px;">Endereço do Contratante</h3>
-                    <?php self::render_campos_endereco('cont', $evento, $estados); ?>
+                    <?php self::render_campos_endereco('cont', $evento, $estados, true); ?>
                 </div>
 
                 <!-- ============================================
@@ -403,15 +479,6 @@ class PhotoMusic_Events {
                         <th><label>Data de Nascimento do(a) Aniversariante</label></th>
                         <td><input type="date" name="data_nascimento_aniversariante"
                                    value="<?php echo esc_attr($evento->data_nascimento_aniversariante ?? ''); ?>"></td>
-                    </tr>
-                    <tr id="campo-grau-aniversariante" style="display:none">
-                        <th><label>Grau de Parentesco com o(a) Aniversariante</label></th>
-                        <td>
-                            <input type="text" name="grau_parentesco_aniversariante" class="regular-text"
-                                   value="<?php echo esc_attr($evento->grau_parentesco_aniversariante ?? ''); ?>"
-                                   placeholder="Ex: Filho(a), Sobrinho(a)...">
-                            <p class="description">Grau de parentesco do(a) aniversariante com o contratante.</p>
-                        </td>
                     </tr>
 
                     <!-- ============================================
@@ -517,9 +584,25 @@ class PhotoMusic_Events {
                     </tr>
                     <tr id="campo-modelo-foto" style="display:none">
                         <th><label>Modelo da Foto</label></th>
-                        <td><input type="text" name="modelo_foto" class="regular-text"
-                                   value="<?php echo esc_attr($evento->modelo_foto ?? ''); ?>"
-                                   placeholder="Ex: Horizontal 10x15 ou Tirinha"></td>
+                        <td>
+                            <?php
+                            $modelos = [
+                                'Foto Tirinha',
+                                'Foto Retrato 10x15',
+                                'Foto Tirinha e Foto Retrato 10x15 (O convidado escolhe o modelo que deseja receber)',
+                            ];
+                            $modelo_atual = $evento->modelo_foto ?? '';
+                            ?>
+                            <select name="modelo_foto" class="regular-text">
+                                <option value="">— Selecione —</option>
+                                <?php foreach ($modelos as $m): ?>
+                                    <option value="<?php echo esc_attr($m); ?>" <?php selected($modelo_atual, $m); ?>>
+                                        <?php echo esc_html($m); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description">Foto Cabine ou Totem Fotográfico.</p>
+                        </td>
                     </tr>
 
                     <tr>
@@ -528,22 +611,14 @@ class PhotoMusic_Events {
                                    value="<?php echo esc_attr($evento->data_evento ?? ''); ?>" required></td>
                     </tr>
                     <tr>
-                        <th><label>Horário de Início *</label></th>
+                        <th><label>Horário de Início</label></th>
                         <td><input type="time" name="horario_inicio"
-                                   value="<?php echo esc_attr($evento->horario_inicio ? substr($evento->horario_inicio, 0, 5) : ''); ?>" required></td>
+                                   value="<?php echo esc_attr($evento->horario_inicio ? substr($evento->horario_inicio, 0, 5) : ''); ?>"></td>
                     </tr>
                     <tr>
-                        <th><label>Horário de Fim *</label></th>
+                        <th><label>Horário de Fim</label></th>
                         <td><input type="time" name="horario_fim"
-                                   value="<?php echo esc_attr($evento->horario_fim ? substr($evento->horario_fim, 0, 5) : ''); ?>" required></td>
-                    </tr>
-                    <tr>
-                        <th><label>Horário de Início do Serviço</label></th>
-                        <td>
-                            <input type="time" name="horario_servico"
-                                   value="<?php echo esc_attr($evento->horario_servico ? substr($evento->horario_servico, 0, 5) : ''); ?>">
-                            <p class="description">Preencha somente se o serviço começar após o início do evento. Ex: Plataforma 360° inicia 30min depois.</p>
-                        </td>
+                                   value="<?php echo esc_attr($evento->horario_fim ? substr($evento->horario_fim, 0, 5) : ''); ?>"></td>
                     </tr>
                 </table>
 
@@ -553,11 +628,10 @@ class PhotoMusic_Events {
                 <h2>Local do Evento</h2>
                 <table class="form-table">
                     <tr>
-                        <th><label>Nome do Local *</label></th>
+                        <th><label>Nome do Local</label></th>
                         <td><input type="text" name="local_evento" class="regular-text"
                                    value="<?php echo esc_attr($evento->local_evento ?? ''); ?>"
-                                   placeholder="Ex: Salão de Festas XYZ / BASC - Base Aérea de Santa Cruz"
-                                   required></td>
+                                   placeholder="Ex: Salão de Festas XYZ / BASC - Base Aérea de Santa Cruz"></td>
                     </tr>
                     <tr>
                         <th><label>Contato do Salão</label></th>
@@ -615,35 +689,49 @@ class PhotoMusic_Events {
                     </tr>
                 </table>
 
-                <?php if ($id_evento > 0 && class_exists('PhotoMusic_Servicos')): ?>
-                    <?php $servicos_evento = PhotoMusic_Servicos::get_evento_servicos($id_evento); ?>
-
+                <?php
+                $servicos_evento = [];
+                if ($id_evento > 0 && class_exists('PhotoMusic_Servicos')) {
+                    $servicos_evento = PhotoMusic_Servicos::get_evento_servicos($id_evento);
+                }
+                ?>
+                <?php if ($id_evento > 0): ?>
                     <?php if (!empty($servicos_evento)): ?>
-                        <table class="widefat striped" style="max-width:780px; margin-top:12px;">
+                        <?php
+                        $total_servicos_edit = 0;
+                        foreach ($servicos_evento as $se) $total_servicos_edit += floatval($se['valor_final']);
+                        ?>
+                        <table class="widefat striped" style="max-width:820px; margin-top:12px;">
                             <thead>
                                 <tr>
-                                    <th style="width:220px;">Serviço</th>
-                                    <th>Link da Galeria</th>
-                                    <th style="width:80px;"></th>
+                                    <th>Serviço</th>
+                                    <th>Pacote</th>
+                                    <th style="width:50px;">Horas</th>
+                                    <th style="width:60px;">Início</th>
+                                    <th style="width:110px;">Valor</th>
+                                    <th style="width:120px;">Galeria</th>
+                                    <th style="width:40px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
                             <?php foreach ($servicos_evento as $se): ?>
-                                <tr>
+                                <tr <?php echo !empty($se['observacoes']) && strpos($se['observacoes'], 'Brinde') !== false ? 'style="background:#f0fff0;"' : ''; ?>>
                                     <td>
                                         <strong><?php echo esc_html($se['nome_servico'] ?? '—'); ?></strong>
                                         <?php if (!empty($se['observacoes']) && strpos($se['observacoes'], 'Brinde') !== false): ?>
                                             <br><span style="color:#2a7a2a; font-size:11px;">🎁 Brinde</span>
                                         <?php endif; ?>
                                     </td>
+                                    <td><?php echo esc_html($se['nome_pacote'] ?? '—'); ?></td>
+                                    <td><?php echo intval($se['horas_contratadas']); ?>h</td>
+                                    <td><?php echo !empty($se['horario_inicio']) ? substr($se['horario_inicio'], 0, 5) : '—'; ?></td>
+                                    <td><strong>R$ <?php echo number_format(floatval($se['valor_final']), 2, ',', '.'); ?></strong></td>
                                     <td>
                                         <?php if (!empty($se['link_galeria'])): ?>
                                             <a href="<?php echo esc_url($se['link_galeria']); ?>" target="_blank"
-                                               style="color:#2a7a2a;">
-                                                ✅ <?php echo esc_html(mb_strimwidth($se['link_galeria'], 0, 55, '...')); ?>
-                                            </a>
+                                               style="color:#2a7a2a;font-size:12px;">✅ Link</a>
                                         <?php else: ?>
-                                            <span style="color:#999; font-style:italic;">— sem link cadastrado —</span>
+                                            <span style="color:#bbb;font-size:12px;">—</span>
                                         <?php endif; ?>
                                     </td>
                                     <td>
@@ -652,14 +740,22 @@ class PhotoMusic_Events {
                                             'id'     => $id_evento,
                                             'editar' => $se['id'],
                                         ], admin_url('admin.php'))); ?>"
-                                           class="button button-small">✏️ Link</a>
+                                           class="button button-small" title="Editar serviço">✏️</a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>
+                            <tfoot>
+                                <tr style="background:#f9f9f9;">
+                                    <td colspan="4" style="text-align:right;padding:8px 4px;"><strong>Total dos serviços:</strong></td>
+                                    <td style="padding:8px 4px;"><strong style="font-size:1.05em;">R$ <?php echo number_format($total_servicos_edit, 2, ',', '.'); ?></strong></td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
                         </table>
-                        <p class="description" style="margin-top:8px;">
-                            Para alterar um link, clique em <strong>✏️ Link</strong> ao lado do serviço.
+                        <p style="margin-top:8px;">
+                            <a href="<?php echo esc_url(add_query_arg(['page' => 'photomusic-add-servico', 'id' => $id_evento], admin_url('admin.php'))); ?>"
+                               class="button button-primary">+ Adicionar / Gerenciar Serviços</a>
                         </p>
 
                     <?php else: ?>
@@ -677,6 +773,363 @@ class PhotoMusic_Events {
                     </p>
                 <?php endif; ?>
 
+                <!-- ============================================
+                     PAGAMENTO E DESCONTOS
+                ============================================ -->
+                <h2>💰 Pagamento e Descontos</h2>
+
+                <h3>Descontos</h3>
+                <table class="form-table">
+                    <tr>
+                        <th>Desconto 2º Serviço</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="desc_segundo_servico" value="1"
+                                       <?php checked($desc_segundo); ?>>
+                                Aplicar desconto de <strong>R$ 100,00</strong> no 2º serviço
+                            </label>
+                            &nbsp;&nbsp;
+                            <label>
+                                <input type="checkbox" name="desc_segundo_exibir" value="1"
+                                       <?php checked($desc_segundo_exibir); ?>>
+                                Exibir ao cliente
+                            </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Deslocamento</th>
+                        <td>
+                            <input type="number" name="desc_deslocamento" step="0.01" min="0"
+                                   value="<?php echo esc_attr($desc_deslocamento); ?>"
+                                   placeholder="0,00 = Grátis / deixe vazio = não se aplica"
+                                   style="width:200px;">
+                            <p class="description">Use <strong>0</strong> para "Grátis (Niterói)". Deixe vazio se não há deslocamento.</p>
+                            <label style="margin-top:6px;display:inline-block;">
+                                <input type="checkbox" name="desc_deslocamento_exibir" value="1"
+                                       <?php checked($desc_deslocamento_exibir); ?>>
+                                Exibir ao cliente
+                            </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Desconto Guestbook</th>
+                        <td>
+                            <input type="number" name="desc_guestbook" step="0.01" min="0"
+                                   value="<?php echo esc_attr($desc_guestbook); ?>"
+                                   placeholder="Valor do desconto em R$"
+                                   style="width:200px;">
+                            <p class="description">Deixe vazio se não há desconto no guestbook.</p>
+                            <label style="margin-top:6px;display:inline-block;">
+                                <input type="checkbox" name="desc_guestbook_exibir" value="1"
+                                       <?php checked($desc_guestbook_exibir); ?>>
+                                Exibir ao cliente
+                            </label>
+                        </td>
+                    </tr>
+                </table>
+
+                <h3>Forma de Pagamento</h3>
+                <table class="form-table">
+                    <tr>
+                        <th>Opção</th>
+                        <td>
+                            <div style="display:flex;flex-direction:column;gap:18px;">
+
+                                <!-- PIX À VISTA -->
+                                <label style="font-weight:600;">
+                                    <input type="radio" name="pgto_forma" value="pix_avista"
+                                           <?php checked($pgto_forma, 'pix_avista'); ?>
+                                           onchange="pmPgtoToggle()">
+                                    💸 PIX à vista
+                                </label>
+                                <div id="pgto-pix-avista" style="margin-left:24px;<?php echo $pgto_forma !== 'pix_avista' ? 'display:none;' : ''; ?>">
+                                    <p style="margin:6px 0 4px;">
+                                        <label style="font-weight:600;">Link PIX (Copia e Cola) <span style="font-weight:400;color:#777;">— opcional</span></label><br>
+                                        <textarea name="pgto_pix_payload" rows="3"
+                                                  style="width:100%;max-width:600px;font-family:monospace;font-size:0.85em;"
+                                                  placeholder="Cole aqui o código PIX Copia e Cola gerado pelo banco (opcional). Se em branco, o cliente verá só a chave PIX."><?php echo esc_textarea($pgto_pix_payload); ?></textarea>
+                                    </p>
+                                    <label>Desconto:
+                                        <select name="pgto_pix_desconto">
+                                            <option value="0"  <?php selected($pgto_pix_desconto, 0);  ?>>Sem desconto</option>
+                                            <option value="5"  <?php selected($pgto_pix_desconto, 5);  ?>>5%</option>
+                                            <option value="10" <?php selected($pgto_pix_desconto, 10); ?>>10%</option>
+                                        </select>
+                                    </label>
+                                    <p class="description">O valor com desconto será calculado automaticamente na página de pagamento.</p>
+                                </div>
+
+                                <!-- PIX PARCELADO -->
+                                <label style="font-weight:600;">
+                                    <input type="radio" name="pgto_forma" value="pix_parcelado"
+                                           <?php checked($pgto_forma, 'pix_parcelado'); ?>
+                                           onchange="pmPgtoToggle()">
+                                    📅 PIX parcelado
+                                </label>
+                                <div id="pgto-pix-parcelado" style="margin-left:24px;<?php echo $pgto_forma !== 'pix_parcelado' ? 'display:none;' : ''; ?>">
+                                    <p style="margin:6px 0 4px;">
+                                        <label style="font-weight:600;">Link PIX (Copia e Cola) <span style="font-weight:400;color:#777;">— opcional</span></label><br>
+                                        <textarea name="pgto_pix_payload" rows="3"
+                                                  style="width:100%;max-width:600px;font-family:monospace;font-size:0.85em;"
+                                                  placeholder="Cole aqui o código PIX Copia e Cola gerado pelo banco (opcional). Se em branco, o cliente verá só a chave PIX."><?php echo esc_textarea($pgto_pix_payload); ?></textarea>
+                                    </p>
+                                    <table style="border-collapse:collapse;">
+                                        <tr>
+                                            <td style="padding:4px 12px 4px 0;font-weight:600;">1ª parcela</td>
+                                            <td>R$ <input type="number" name="pgto_pix_p1_valor" step="0.01" min="0"
+                                                          value="<?php echo esc_attr($pgto_pix_p1_valor); ?>"
+                                                          style="width:120px;" placeholder="0,00">
+                                                <span style="color:#666;margin-left:8px;">na assinatura do contrato</span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:4px 12px 4px 0;font-weight:600;">2ª parcela</td>
+                                            <td>R$ <input type="number" name="pgto_pix_p2_valor" step="0.01" min="0"
+                                                          value="<?php echo esc_attr($pgto_pix_p2_valor); ?>"
+                                                          style="width:120px;" placeholder="0,00">
+                                                <span style="color:#666;margin-left:8px;">até</span>
+                                                <input type="date" name="pgto_pix_p2_data"
+                                                       value="<?php echo esc_attr($pgto_pix_p2_data); ?>"
+                                                       style="margin-left:6px;">
+                                                <span style="color:#888;font-size:12px;margin-left:6px;">(opcional)</span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:4px 12px 4px 0;font-weight:600;">3ª parcela</td>
+                                            <td><span style="color:#555;">Restante calculado automaticamente até a data do evento</span></td>
+                                        </tr>
+                                    </table>
+                                </div>
+
+                                <!-- CARTÃO -->
+                                <label style="font-weight:600;">
+                                    <input type="radio" name="pgto_forma" value="cartao"
+                                           <?php checked($pgto_forma, 'cartao'); ?>
+                                           onchange="pmPgtoToggle()">
+                                    💳 Cartão de crédito
+                                </label>
+                                <div id="pgto-cartao" style="margin-left:24px;<?php echo $pgto_forma !== 'cartao' ? 'display:none;' : ''; ?>">
+                                    <label>Parcelas:
+                                        <select name="pgto_cartao_parcelas" onchange="pmCartaoJuros(this.value)">
+                                            <?php for ($i = 1; $i <= 12; $i++): ?>
+                                                <option value="<?php echo $i; ?>" <?php selected($pgto_cartao_parcelas, $i); ?>>
+                                                    <?php echo $i; ?>x <?php echo $i <= 3 ? '(sem juros)' : '(com juros)'; ?>
+                                                </option>
+                                            <?php endfor; ?>
+                                        </select>
+                                    </label>
+                                    <span id="pgto-cartao-juros" style="margin-left:10px;color:#d63638;font-weight:600;<?php echo $pgto_cartao_parcelas <= 3 ? 'display:none;' : ''; ?>">
+                                        ⚠️ Parcelamento com juros — informe ao cliente
+                                    </span>
+                                </div>
+
+                                <!-- DINHEIRO -->
+                                <label style="font-weight:600;">
+                                    <input type="radio" name="pgto_forma" value="dinheiro"
+                                           <?php checked($pgto_forma, 'dinheiro'); ?>
+                                           onchange="pmPgtoToggle()">
+                                    💵 Dinheiro
+                                </label>
+
+                                <!-- TRANSFERÊNCIA -->
+                                <label style="font-weight:600;">
+                                    <input type="radio" name="pgto_forma" value="transferencia"
+                                           <?php checked($pgto_forma, 'transferencia'); ?>
+                                           onchange="pmPgtoToggle()">
+                                    🏦 Transferência bancária
+                                </label>
+
+                                <!-- MISTO -->
+                                <label style="font-weight:600;">
+                                    <input type="radio" name="pgto_forma" value="misto"
+                                           <?php checked($pgto_forma, 'misto'); ?>
+                                           onchange="pmPgtoToggle()">
+                                    🔀 Misto (dinheiro/PIX + cartão)
+                                </label>
+                                <div id="pgto-misto" style="margin-left:24px;<?php echo $pgto_forma !== 'misto' ? 'display:none;' : ''; ?>">
+                                    <p style="margin:6px 0 4px;">
+                                        <label style="font-weight:600;">Link PIX (Copia e Cola) <span style="font-weight:400;color:#777;">— opcional</span></label><br>
+                                        <textarea name="pgto_pix_payload" rows="3"
+                                                  style="width:100%;max-width:600px;font-family:monospace;font-size:0.85em;"
+                                                  placeholder="Cole aqui o código PIX Copia e Cola gerado pelo banco (opcional). Se em branco, o cliente verá só a chave PIX."><?php echo esc_textarea($pgto_pix_payload); ?></textarea>
+                                    </p>
+                                    <label>R$ <input type="number" name="pgto_misto_valor" step="0.01" min="0"
+                                                     value="<?php echo esc_attr($pgto_misto_valor); ?>"
+                                                     style="width:130px;" placeholder="0,00">
+                                        em dinheiro ou PIX
+                                    </label>
+                                    &nbsp;+&nbsp;
+                                    <label>restante em
+                                        <select name="pgto_misto_parcelas">
+                                            <?php for ($i = 1; $i <= 12; $i++): ?>
+                                                <option value="<?php echo $i; ?>" <?php selected($pgto_misto_parcelas, $i); ?>>
+                                                    <?php echo $i; ?>x <?php echo $i <= 3 ? '(sem juros)' : '(com juros)'; ?>
+                                                </option>
+                                            <?php endfor; ?>
+                                        </select>
+                                        no cartão
+                                    </label>
+                                </div>
+
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+
+                <h3>Link de Pagamento para o Cliente</h3>
+
+                <?php if ($id_evento > 0 && !empty($servicos_evento)):
+                    $rf_total          = array_sum(array_column($servicos_evento, 'valor_final'));
+                    $rf_desc_segundo   = $desc_segundo ? 100.00 : 0;
+                    $rf_desc_guestbook = ($desc_guestbook !== '') ? floatval($desc_guestbook) : 0;
+                    $rf_base_pix       = $rf_total - $rf_desc_segundo - $rf_desc_guestbook;
+                    $rf_desc_pix       = ($pgto_forma === 'pix_avista' && $pgto_pix_desconto > 0)
+                                            ? $rf_base_pix * ($pgto_pix_desconto / 100) : 0;
+                    $rf_desloc         = ($desc_deslocamento !== '') ? floatval($desc_deslocamento) : 0;
+                    $rf_total_final    = $rf_base_pix - $rf_desc_pix + $rf_desloc;
+                ?>
+                <div style="background:#f0f7ff;border:1px solid #90caf9;border-radius:6px;padding:14px 18px;margin-bottom:18px;max-width:540px;">
+                    <strong style="font-size:0.95em;display:block;margin-bottom:10px;color:#1565c0;">💰 Resumo Financeiro</strong>
+                    <table style="border-collapse:collapse;width:100%;font-size:0.92em;">
+                        <tr>
+                            <td style="padding:3px 0;">Total dos serviços</td>
+                            <td style="text-align:right;padding:3px 0;">R$ <?php echo number_format($rf_total, 2, ',', '.'); ?></td>
+                        </tr>
+                        <?php if ($rf_desc_segundo > 0): ?>
+                        <tr>
+                            <td style="padding:3px 0;color:#555;">− Desconto 2º Serviço</td>
+                            <td style="text-align:right;padding:3px 0;color:#555;">− R$ <?php echo number_format($rf_desc_segundo, 2, ',', '.'); ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php if ($rf_desc_guestbook > 0): ?>
+                        <tr>
+                            <td style="padding:3px 0;color:#555;">− Desconto Guestbook</td>
+                            <td style="text-align:right;padding:3px 0;color:#555;">− R$ <?php echo number_format($rf_desc_guestbook, 2, ',', '.'); ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php if ($rf_desc_pix > 0): ?>
+                        <tr>
+                            <td style="padding:3px 0;color:#555;">− Desconto PIX (<?php echo intval($pgto_pix_desconto); ?>%)</td>
+                            <td style="text-align:right;padding:3px 0;color:#555;">− R$ <?php echo number_format($rf_desc_pix, 2, ',', '.'); ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php if ($desc_deslocamento !== ''): ?>
+                        <tr>
+                            <td style="padding:3px 0;color:#555;"><?php echo $rf_desloc == 0.0 ? '🚗 Deslocamento' : '+ Deslocamento'; ?></td>
+                            <td style="text-align:right;padding:3px 0;color:#555;"><?php echo $rf_desloc == 0.0 ? 'Grátis' : 'R$ ' . number_format($rf_desloc, 2, ',', '.'); ?></td>
+                        </tr>
+                        <?php endif; ?>
+                        <tr style="border-top:2px solid #90caf9;">
+                            <td style="padding:8px 0 4px;font-weight:700;font-size:1.1em;">Valor Final</td>
+                            <td style="text-align:right;padding:8px 0 4px;font-weight:700;font-size:1.15em;color:#1565c0;">R$ <?php echo number_format($rf_total_final, 2, ',', '.'); ?></td>
+                        </tr>
+                    </table>
+                    <?php if ($rf_total_final > 0): ?>
+                    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <button type="button" class="button button-small"
+                                onclick="navigator.clipboard.writeText('<?php echo number_format($rf_total_final, 2, '.', ''); ?>').then(function(){ this.textContent='✅ Copiado!'; setTimeout(function(){ this.textContent='📋 Copiar valor'; }.bind(this),2500); }.bind(this))">
+                            📋 Copiar valor
+                        </button>
+                        <span style="color:#666;font-size:12px;">Use ao gerar o link de pagamento no cartão</span>
+                    </div>
+                    <?php endif; ?>
+                    <!-- Botão confirmar pagamento -->
+                    <?php
+                    $pgto_confirmado = intval($evento->pagamento_confirmado ?? 0);
+                    if ($pgto_confirmado):
+                    ?>
+                    <div style="margin-top:12px;padding:8px 12px;background:#e8f5e9;border-radius:4px;color:#2e7d32;font-weight:600;">
+                        ✅ Pagamento confirmado pelo operador
+                    </div>
+                    <?php else: ?>
+                    <div style="margin-top:12px;">
+                        <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=pm_confirmar_pagamento&id=' . $id_evento), 'pm_confirmar_pgto_' . $id_evento)); ?>"
+                           class="button button-primary"
+                           onclick="return confirm('Confirmar que o pagamento deste evento foi recebido? O cliente verá a tela de pagamento concluído.');">
+                            ✅ Confirmar Pagamento Recebido
+                        </a>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <table class="form-table">
+                    <tr id="pgto-row-link-cartao" style="<?php echo !in_array($pgto_forma, ['cartao','misto'], true) ? 'display:none;' : ''; ?>">
+                        <th><label>Link para Cartão</label></th>
+                        <td>
+                            <input type="url" name="link_pagamento_cartao" class="large-text"
+                                   value="<?php echo $link_pagamento_cartao; ?>"
+                                   placeholder="Cole aqui o link de pagamento gerado (ex: Pagar.me, Stripe, Mercado Pago…)">
+                            <p class="description">Aparece como botão "Pagar com Cartão" na página de pagamento do cliente.</p>
+                        </td>
+                    </tr>
+                    <?php if (!empty($token_evento)): ?>
+                    <tr>
+                        <td colspan="2">
+                            <?php
+                            $pgto_page_id = get_option('pm_pagamento_page_id');
+                            $pagamento_url = $pgto_page_id
+                                ? add_query_arg('t', $token_evento, get_permalink($pgto_page_id))
+                                : home_url('/pagamento/?t=' . $token_evento);
+                            ?>
+                            <strong>Link de pagamento para enviar ao cliente:</strong><br>
+                            <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                                <code style="background:#f0f0f0;padding:6px 10px;border-radius:4px;font-size:0.85em;word-break:break-all;flex:1;">
+                                    <?php echo esc_html($pagamento_url); ?>
+                                </code>
+                                <button type="button"
+                                        onclick="navigator.clipboard.writeText('<?php echo esc_js($pagamento_url); ?>').then(function(){ this.textContent='✅ Copiado!'; setTimeout(()=>{this.textContent='📋 Copiar link';},2500); }.bind(this))"
+                                        class="button">
+                                    📋 Copiar link
+                                </button>
+                                <a href="<?php echo esc_url($pagamento_url); ?>" target="_blank" class="button">
+                                    👁 Visualizar
+                                </a>
+                            </div>
+                            <p class="description">Crie uma página WordPress com o shortcode <code>[photomusic_pagamento_evento]</code> e configure o ID dela em <em>Configurações → PhotoMusic → ID da página de pagamento</em>.</p>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+
+                <script>
+                function pmPgtoToggle() {
+                    const forma = document.querySelector('[name="pgto_forma"]:checked')?.value;
+                    ['pix_avista','pix_parcelado','cartao','misto'].forEach(f => {
+                        // IDs dos divs usam hífen; valores do radio usam underscore
+                        const el = document.getElementById('pgto-' + f.replace(/_/g, '-'));
+                        if (el) el.style.display = (forma === f) ? '' : 'none';
+                    });
+                    // Mostra campo Link para Cartão só quando cartão ou misto
+                    const rowCartao = document.getElementById('pgto-row-link-cartao');
+                    if (rowCartao) rowCartao.style.display = (forma === 'cartao' || forma === 'misto') ? '' : 'none';
+                }
+                document.addEventListener('DOMContentLoaded', pmPgtoToggle);
+                function pmCartaoJuros(val) {
+                    const el = document.getElementById('pgto-cartao-juros');
+                    if (el) el.style.display = parseInt(val) > 3 ? '' : 'none';
+                }
+                </script>
+
+                <!-- ============================================
+                     DESCRIÇÃO DE PAGAMENTO (aparece no contrato)
+                ============================================ -->
+                <h2>Descrição de Pagamento</h2>
+                <table class="form-table">
+                    <tr>
+                        <th><label for="pgto_descricao_pagamento">Texto do Contrato</label></th>
+                        <td>
+                            <textarea name="pgto_descricao_pagamento" id="pgto_descricao_pagamento"
+                                      rows="5" class="large-text"
+                                      placeholder="Ex: O pagamento de 100% do valor do serviço será em duas parcelas, sendo a primeira no valor de R$600,00 até 20/06/2025 por PIX na conta da empresa (Banco Nubank – 55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ – CHAVE PIX CNPJ: 55.353.989/0001-09) e a segunda parcela no valor de R$1.400,00, que será paga até a data do serviço, no início do evento."><?php echo esc_textarea($pgto_descricao); ?></textarea>
+                            <p class="description">
+                                Descreva as condições de pagamento conforme aparecerá no contrato. Use a variável <code>{descricao_pagamento}</code> no modelo de contrato.<br>
+                                <strong>Conta atual:</strong> Banco Nubank – 55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ – CHAVE PIX CNPJ: 55.353.989/0001-09
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
                 <?php submit_button($acao === 'novo' ? 'Criar Evento' : 'Salvar Alterações'); ?>
             </form>
         </div>
@@ -684,17 +1137,17 @@ class PhotoMusic_Events {
         <script>
         // ── Campos por tipo de celebração
         var camposPorCelebracao = {
-            'aniversario': ['campo-tema','campo-cores','campo-aniversariante','campo-pais','campo-idade','campo-nascimento-aniversariante','campo-grau-aniversariante','campo-modelo-foto'],
-            'casamento':   ['campo-noivos','campo-grau-noivos','campo-cores','campo-modelo-foto'],
+            'aniversario': ['campo-tema','campo-cores','campo-aniversariante','campo-pais','campo-idade','campo-nascimento-aniversariante','row-grau-parentesco','campo-modelo-foto'],
+            'casamento':   ['campo-noivos','campo-grau-noivos','campo-cores','row-grau-parentesco','campo-modelo-foto'],
             'bodas':       ['campo-noivos','campo-grau-noivos','campo-cores','campo-modelo-foto'],
             'corporativo': ['campo-tema','campo-cores','campo-modelo-foto'],
             'formatura':   ['campo-tema','campo-cores','campo-aniversariante','campo-modelo-foto'],
-            '1eucaristia': ['campo-eucaristia-catequizandos','campo-catequista','campo-horario-catequese','campo-paroquia','campo-capela','campo-pagamento-eucaristia','campo-pais','campo-modelo-foto'],
+            '1eucaristia': ['campo-eucaristia-catequizandos','campo-catequista','campo-horario-catequese','campo-paroquia','campo-capela','campo-pagamento-eucaristia','campo-pais','row-grau-parentesco','campo-modelo-foto'],
             'outro':       ['campo-tema','campo-cores','campo-modelo-foto'],
         };
 
         function toggleCelebracao(val) {
-            var todos = ['campo-tema','campo-cores','campo-aniversariante','campo-pais','campo-idade','campo-nascimento-aniversariante','campo-grau-aniversariante','campo-noivos','campo-grau-noivos','campo-modelo-foto','campo-eucaristia-catequizandos','campo-catequista','campo-horario-catequese','campo-paroquia','campo-capela','campo-pagamento-eucaristia'];
+            var todos = ['campo-tema','campo-cores','campo-aniversariante','campo-pais','campo-idade','campo-nascimento-aniversariante','row-grau-parentesco','campo-noivos','campo-grau-noivos','campo-modelo-foto','campo-eucaristia-catequizandos','campo-catequista','campo-horario-catequese','campo-paroquia','campo-capela','campo-pagamento-eucaristia'];
             todos.forEach(function(id) {
                 var el = document.getElementById(id);
                 if (el) el.style.display = 'none';
@@ -730,9 +1183,23 @@ class PhotoMusic_Events {
 
         // ── Toggle PF/PJ
         function toggleTipo(tipo) {
-            document.getElementById('bloco-pf').style.display = tipo === 'PF' ? '' : 'none';
-            document.getElementById('bloco-pj').style.display = tipo === 'PJ' ? '' : 'none';
+            var pfBloco = document.getElementById('bloco-pf');
+            var pjBloco = document.getElementById('bloco-pj');
+            pfBloco.style.display = tipo === 'PF' ? '' : 'none';
+            pjBloco.style.display = tipo === 'PJ' ? '' : 'none';
+            // Desabilita campos do bloco oculto para não serem enviados pelo form
+            pfBloco.querySelectorAll('input,select,textarea').forEach(function(el) {
+                el.disabled = (tipo !== 'PF');
+            });
+            pjBloco.querySelectorAll('input,select,textarea').forEach(function(el) {
+                el.disabled = (tipo !== 'PJ');
+            });
         }
+        // Inicializa disabled corretamente ao carregar a página
+        document.addEventListener('DOMContentLoaded', function() {
+            var tipoChecked = document.querySelector('[name="tipo_evento"]:checked');
+            if (tipoChecked) toggleTipo(tipoChecked.value);
+        });
 
         // ── Máscaras
         function mascaraCPF(v) {
@@ -827,6 +1294,14 @@ class PhotoMusic_Events {
             const tipo = document.querySelector('[name="tipo_evento"]:checked')?.value;
             const erros = [];
 
+            // Telefone obrigatório — pega o campo visível (PF ou PJ)
+            const telCampos = document.querySelectorAll('[name="telefone_contratante"]');
+            let tel = '';
+            telCampos.forEach(el => {
+                if (el.offsetParent !== null) tel = el.value.trim(); // offsetParent null = oculto
+            });
+            if (!tel) erros.push('Telefone / WhatsApp é obrigatório.');
+
             if (tipo === 'PF') {
                 const cpf = document.getElementById('cpf')?.value.replace(/\D/g,'');
                 if (cpf && cpf.length > 0 && !validarCPF(cpf))
@@ -917,14 +1392,19 @@ class PhotoMusic_Events {
                     </select>
                 </td>
             </tr>
-            <?php if ($com_cep): ?>
+            <?php if ($com_cep):
+                // Para o endereço do local usa cep_evento; para contratante usa {prefixo}_cep
+                $cep_name  = ($prefixo === 'local') ? 'cep_evento' : $prefixo . '_cep';
+                $cep_value = ($prefixo === 'local')
+                    ? esc_attr($evento ? ($evento->cep_evento ?? '') : '')
+                    : esc_attr($evento ? ($evento->{$prefixo . '_cep'} ?? '') : '');
+            ?>
             <tr>
                 <th><label>CEP</label></th>
                 <td>
-                    <input type="text" name="cep_evento" class="regular-text"
-                           value="<?php echo esc_attr($cep); ?>"
+                    <input type="text" name="<?php echo $cep_name; ?>" class="regular-text"
+                           value="<?php echo $cep_value; ?>"
                            placeholder="00000-000" maxlength="9" style="max-width:120px;">
-                    <p class="description">Opcional — aparece no contrato somente se preenchido.</p>
                 </td>
             </tr>
             <?php endif; ?>
@@ -976,6 +1456,8 @@ class PhotoMusic_Events {
             'cnpj'                    => $cnpj ?: null,
             'responsavel'             => sanitize_text_field($_POST['responsavel'] ?? '') ?: null,
             'cpf_responsavel'         => $cpf_responsavel ?: null,
+            'rg'                      => sanitize_text_field($_POST['rg'] ?? '') ?: null,
+            'data_nascimento'         => sanitize_text_field($_POST['data_nascimento'] ?? '') ?: null,
             'email_contratante'       => sanitize_email($_POST['email_contratante'] ?? '') ?: null,
             'telefone_contratante'    => sanitize_text_field($_POST['telefone_contratante'] ?? '') ?: null,
             'instagram_contratante'   => sanitize_text_field($_POST['instagram_contratante'] ?? '') ?: null,
@@ -1013,9 +1495,8 @@ class PhotoMusic_Events {
                                             ? $_POST['forma_pagamento_eucaristia'] : null,
 
             'data_evento'            => sanitize_text_field($_POST['data_evento'] ?? ''),
-            'horario_inicio'         => sanitize_text_field($_POST['horario_inicio'] ?? ''),
-            'horario_fim'            => sanitize_text_field($_POST['horario_fim'] ?? ''),
-            'horario_servico'        => sanitize_text_field($_POST['horario_servico'] ?? '') ?: null,
+            'horario_inicio'         => sanitize_text_field($_POST['horario_inicio'] ?? '') ?: null,
+            'horario_fim'            => sanitize_text_field($_POST['horario_fim'] ?? '') ?: null,
 
             // Local
             'local_evento'           => sanitize_text_field($_POST['local_evento'] ?? ''),
@@ -1035,6 +1516,28 @@ class PhotoMusic_Events {
             'chatbot_ativo'          => isset($_POST['chatbot_ativo']) ? 1 : 0,
             'link_galeria_convidado' => esc_url_raw(trim($_POST['link_galeria_convidado'] ?? '')) ?: null,
         ];
+
+        // Montar pagamento_config JSON
+        $pgto_json = [
+            'forma'                  => sanitize_key($_POST['pgto_forma'] ?? ''),
+            'pix_payload'            => sanitize_textarea_field($_POST['pgto_pix_payload'] ?? ''),
+            'pix_desconto_pct'       => intval($_POST['pgto_pix_desconto'] ?? 0),
+            'cartao_parcelas'        => intval($_POST['pgto_cartao_parcelas'] ?? 3),
+            'misto_valor'            => sanitize_text_field($_POST['pgto_misto_valor'] ?? ''),
+            'misto_parcelas'         => intval($_POST['pgto_misto_parcelas'] ?? 3),
+            'pix_p_1_valor'          => sanitize_text_field($_POST['pgto_pix_p1_valor'] ?? ''),
+            'pix_p_2_valor'          => sanitize_text_field($_POST['pgto_pix_p2_valor'] ?? ''),
+            'pix_p_2_data'           => sanitize_text_field($_POST['pgto_pix_p2_data'] ?? ''),
+            'desc_segundo_servico'   => !empty($_POST['desc_segundo_servico']),
+            'desc_segundo_exibir'    => !empty($_POST['desc_segundo_exibir']),
+            'desc_deslocamento'      => sanitize_text_field($_POST['desc_deslocamento'] ?? ''),
+            'desc_deslocamento_exibir' => !empty($_POST['desc_deslocamento_exibir']),
+            'desc_guestbook'         => sanitize_text_field($_POST['desc_guestbook'] ?? ''),
+            'desc_guestbook_exibir'  => !empty($_POST['desc_guestbook_exibir']),
+            'descricao_pagamento'    => sanitize_textarea_field($_POST['pgto_descricao_pagamento'] ?? ''),
+        ];
+        $dados['pagamento_config']      = wp_json_encode($pgto_json);
+        $dados['link_pagamento_cartao'] = esc_url_raw($_POST['link_pagamento_cartao'] ?? '') ?: null;
 
         if ($id_evento > 0) {
             $dados['atualizado_em'] = current_time('mysql');
@@ -1093,7 +1596,8 @@ class PhotoMusic_Events {
             }
         }
 
-        wp_redirect(admin_url('admin.php?page=photomusic-eventos&saved=1'));
+        $redirect = admin_url('admin.php?page=photomusic-eventos&acao=editar&id=' . $id_evento . '&saved=1');
+        wp_redirect($redirect);
         exit;
     }
 
@@ -1277,7 +1781,41 @@ class PhotoMusic_Events {
             ['%d']
         );
 
-        wp_redirect(admin_url('admin.php?page=photomusic-eventos&concluido=1'));
+        // Se veio da tela de edição, volta para lá com mensagem
+        $redirect_id = intval($_GET['redirect_id'] ?? 0);
+        if ($redirect_id > 0) {
+            wp_redirect(admin_url('admin.php?page=photomusic-eventos&acao=editar&id=' . $redirect_id . '&concluido=1'));
+        } else {
+            wp_redirect(admin_url('admin.php?page=photomusic-eventos&concluido=1'));
+        }
+        exit;
+    }
+
+    /* ============================================================
+       HANDLER: CONFIRMAR PAGAMENTO
+    ============================================================ */
+    public static function handle_confirmar_pagamento() {
+
+        if (!current_user_can('pm_criar_eventos')) {
+            wp_die('Acesso negado.');
+        }
+
+        $id = intval($_GET['id'] ?? 0);
+
+        if (!$id || !wp_verify_nonce($_GET['_wpnonce'] ?? '', 'pm_confirmar_pgto_' . $id)) {
+            wp_die('Requisição inválida.');
+        }
+
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'pm_eventos',
+            ['pagamento_confirmado' => 1],
+            ['id' => $id],
+            ['%d'],
+            ['%d']
+        );
+
+        wp_redirect(admin_url('admin.php?page=photomusic-eventos&acao=editar&id=' . $id . '&pgto_confirmado=1'));
         exit;
     }
 }

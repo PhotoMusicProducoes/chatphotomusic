@@ -902,6 +902,29 @@ async function handleIncomingMessage(message) {
       }
 
       // ======================================================
+      // CAMADA A.1 — telefone inline no fim do comando
+      // Ex: #fotocabine 1,1,50,4,1 2199999-9888
+      //     #fotoeucaristia 1,1,15/06 +55 21 99999-9888
+      // ======================================================
+      if (!numeroCliente) {
+        for (const c of comandos) {
+          const matchInline = c.match(/[ \t](\+?\d[\d\s\-()]{6,}\d)\s*$/);
+          if (matchInline) {
+            const rawPhone = matchInline[1].trim();
+            const digits = rawPhone.replace(/\D/g, '');
+            if (digits.length >= 8 && digits.length <= 15) {
+              const alvo = normalizarNumero(rawPhone);
+              if (alvo && ehTelefoneValido(alvo) && alvo !== operador) {
+                numeroCliente = alvo;
+                console.log("📌 Cliente via inline phone:", numeroCliente);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // ======================================================
       // CAMADA 0 — #cliente (manual explícito)
       // ======================================================
       if (!numeroCliente && sessions["__cliente_manual__"]) {
@@ -935,27 +958,28 @@ async function handleIncomingMessage(message) {
       }
 
       // ======================================================
-      // CAMADA 3 — último cliente real (fallback seguro)
+      // CAMADA 3 — __ultimo_cliente__ DESATIVADO
+      // Evita envio acidental quando comando é digitado em grupo
+      // ou salvo em qualquer outro contexto que não o chat do cliente.
       // ======================================================
-      if (!numeroCliente && sessions["__ultimo_cliente__"]) {
-        const ultimo = normalizarNumero(sessions["__ultimo_cliente__"]);
-        if (ehTelefoneValido(ultimo) && ultimo !== operador) {
-          numeroCliente = ultimo;
-          console.log("📌 Cliente via __ultimo_cliente__:", numeroCliente);
-        }
-      }
 
       // ======================================================
-      // FALHA TOTAL
+      // FALHA TOTAL — nenhuma camada identificou o cliente
       // ======================================================
       if (!numeroCliente) {
         await sendText(
           OPERADOR_TELEFONE_ID,
-          "⚠ Não consegui identificar o cliente.\n\n" +
-          "Use uma das opções:\n" +
-          "1️⃣ Responda a mensagem do cliente com o comando\n" +
-          "2️⃣ Use:  *#cliente NUMERO*\n" +
-          "3️⃣ Ou envie assim:  *#fotocabine 0,8,120,6,1 -> 5521993290588*"
+          "⚠ Não consegui identificar o cliente destino.\n\n" +
+          "Escolha uma das formas abaixo:\n\n" +
+          "1️⃣ *Envie o comando no chat do cliente* (método principal)\n\n" +
+          "2️⃣ *Número inline no comando:*\n" +
+          "   `#fotocabine 0,1,50,4,1 2199999-9888`\n" +
+          "   `#fotocabine 0,1,50,4,1 +55 21 99999-9888`\n\n" +
+          "3️⃣ *Seta (->):*\n" +
+          "   `#fotocabine 0,1,50,4,1 -> 5521993290588`\n\n" +
+          "4️⃣ *Responda a mensagem do cliente* com o comando\n\n" +
+          "5️⃣ *#cliente NUMERO* antes do comando\n\n" +
+          "⚠ *Nunca envie comandos em grupos* — o bot não consegue identificar o cliente destino."
         );
         return;
       }

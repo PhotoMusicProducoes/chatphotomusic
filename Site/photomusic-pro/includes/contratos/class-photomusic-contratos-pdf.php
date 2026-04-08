@@ -33,11 +33,12 @@ class PhotoMusic_Contratos_PDF {
             wp_mkdir_p($dir);
         }
 
-        // Caminho físico do arquivo
-        $arquivo = $dir . '/contrato-' . $contrato->id . '.pdf';
+        // Caminho físico do arquivo (usa token para segurança — token é único e não previsível)
+        $token_pdf = !empty($contrato->token) ? $contrato->token : $contrato->id;
+        $arquivo   = $dir . '/contrato-' . $token_pdf . '.pdf';
 
         // URL pública do PDF
-        $url_publica = $upload_dir['baseurl'] . '/contratos/contrato-' . $contrato->id . '.pdf';
+        $url_publica = $upload_dir['baseurl'] . '/contratos/contrato-' . $token_pdf . '.pdf';
 
         /* ============================================================
            CRIAR INSTÂNCIA DO TCPDF
