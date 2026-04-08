@@ -131,12 +131,12 @@ const mensagemBoasVindas =
   "*É um prazer falar com você!*\n\n" +
   "Por favor, escolha a opção que melhor descreve o motivo do seu contato: *(Digite somente número)*\n" +
   "*1* - Solicitar um orçamento\n" +
-  "*2* - Estou em processo de contratação\n" +
-  "*3* - Tenho um serviço contratado e preciso de suporte\n" +
-  "*4* - Outros assuntos\n" +
-  "*5* - Não sou cliente, mas preciso falar com você\n" +
-  "*6* - Estou em um evento e desejo baixar minha foto\n" +
-  "*7* - Fotografia 1ª Eucaristia";
+  "*2* - Fotografia 1ª Eucaristia\n" +
+  "*3* - Estou em processo de contratação\n" +
+  "*4* - Tenho um serviço contratado e preciso de suporte\n" +
+  "*5* - Outros assuntos\n" +
+  "*6* - Não sou cliente, mas preciso falar com você\n" +
+  "*7* - Estou em um evento e desejo baixar minha foto";
 
   // FOTOGRAFIA 1ª EUCARISTIA — dados em services/eucaristia.js
 
@@ -1070,6 +1070,8 @@ async function handleIncomingMessage(message) {
           const dataEucaristia = parametros[2] || "a confirmar";
           try {
             await enviarEucaristiaManual(chatIdCliente, paroquiaId, capelaId, dataEucaristia);
+            // Finaliza o fluxo — cliente não recebe mais nada do bot
+            session.step = "aguardando_retorno";
             await sendText(OPERADOR_TELEFONE_ID, `✅ Informações de 1ª Eucaristia enviadas para *${chatIdCliente}*`);
           } catch (e) {
             await sendText(OPERADOR_TELEFONE_ID, `❌ Erro ao enviar Eucaristia: ${e.message}`);
@@ -1299,8 +1301,15 @@ async function handleIncomingMessage(message) {
     return;
   }
 
+  // ======================================================
+  // GUARD — fluxo finalizado, não processar mais mensagens
+  // ======================================================
+  if (session.step === "aguardando_retorno") {
+    console.log(`🔒 ${chatId} em aguardando_retorno. Mensagem ignorada.`);
+    return;
+  }
 
-    // ======================================================
+  // ======================================================
   // MENU INICIAL
   // ======================================================
   if (session.step === "aguardando_opcao") {
@@ -1333,43 +1342,42 @@ async function handleIncomingMessage(message) {
 
       case "2":
         await sendTyping(chatId);
-        await sendText(chatId, "Você está em processo de contratação.\nComo posso ajudar?");
-        clientesPausados.add(chatIdNormalizado);
-        return;
-
-      case "3":
-        await sendTyping(chatId);
-        await sendText(chatId, "Você já tem um serviço contratado.\nComo posso te ajudar?");
-        clientesPausados.add(chatIdNormalizado);
-        return;
-
-      case "4":
-        await sendTyping(chatId);
-        await sendText(chatId, "Claro! Me diga qual é o assunto.");
-        clientesPausados.add(chatIdNormalizado);
-        return;
-
-      case "5":
-        await sendTyping(chatId);
-        await sendText(chatId, "Sem problemas! Como posso te ajudar?");
-        clientesPausados.add(chatIdNormalizado);
-        return;
-
-      case "6":
-        await sendTyping(chatId);
-        await fluxoEventos(chatId, session);
-        return;
-      
-      case "7":
-        await sendTyping(chatId);
         await sendText(
           chatId,
           "Parabéns pelo(a) catequisando(a) está se preparando para receber Jesus Cristo na Santíssima Eucaristia. 😍\n\n" +
           "Perfeito! Vamos começar.\nQual o nome do Responsável?"
         );
-
         session.step = "eucaristia_nome";
         session.eucaristia = {};
+        return;
+
+      case "3":
+        await sendTyping(chatId);
+        await sendText(chatId, "Você está em processo de contratação.\nComo posso ajudar?");
+        clientesPausados.add(chatIdNormalizado);
+        return;
+
+      case "4":
+        await sendTyping(chatId);
+        await sendText(chatId, "Você já tem um serviço contratado.\nComo posso te ajudar?");
+        clientesPausados.add(chatIdNormalizado);
+        return;
+
+      case "5":
+        await sendTyping(chatId);
+        await sendText(chatId, "Claro! Me diga qual é o assunto.");
+        clientesPausados.add(chatIdNormalizado);
+        return;
+
+      case "6":
+        await sendTyping(chatId);
+        await sendText(chatId, "Sem problemas! Como posso te ajudar?");
+        clientesPausados.add(chatIdNormalizado);
+        return;
+
+      case "7":
+        await sendTyping(chatId);
+        await fluxoEventos(chatId, session);
         return;
 
       default:
@@ -1383,12 +1391,12 @@ async function handleIncomingMessage(message) {
             chatId,
             "*⚠ Opção inválida!* Escolha uma das opções do menu digitando apenas o número: *(Digite somente número)*\n\n" +
             "*1* - Solicitar um orçamento\n" +
-            "*2* - Estou em processo de contratação\n" +
-            "*3* - Tenho um serviço contratado e preciso de suporte\n" +
-            "*4* - Outros assuntos\n" +
-            "*5* - Não sou cliente, mas preciso falar com você\n" +
-            "*6* - Estou em um evento e desejo baixar minha foto\n" +
-            "*7* - Fotografia 1ª Eucaristia"
+            "*2* - Fotografia 1ª Eucaristia\n" +
+            "*3* - Estou em processo de contratação\n" +
+            "*4* - Tenho um serviço contratado e preciso de suporte\n" +
+            "*5* - Outros assuntos\n" +
+            "*6* - Não sou cliente, mas preciso falar com você\n" +
+            "*7* - Estou em um evento e desejo baixar minha foto"
           );
         }
         return;
@@ -1660,8 +1668,8 @@ const resumoEucaristia =
   await sendTyping(chatId);
   await sendText(chatId, "Deus abençoe você e sua família, grandiosamente!!!");
 
-  // finaliza fluxo sem pausar (se quiser pausar, eu te mostro o ponto certo)
-  session.step = "aguardando_opcao";
+  // Finaliza o fluxo — bot não responde mais mensagens deste cliente
+  session.step = "aguardando_retorno";
   return;
 }
 
