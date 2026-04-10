@@ -49,7 +49,7 @@ async function buscarEventos() {
     const url = `${PM_API_BASE}/eventos-chatbot`;
 
     console.log(`🔍 [eventos] Buscando: ${url}`);
-    console.log(`🔑 [eventos] PM_API_KEY configurada: ${PM_API_KEY ? "✅ SIM" : "❌ NÃO (vazia)"}`);
+    console.log(`🔑 [eventos] PM_API_KEY: ${PM_API_KEY ? PM_API_KEY.slice(0,6) + "..." : "❌ VAZIA"}`);
 
     const response = await fetch(url, {
       headers: {
@@ -58,18 +58,34 @@ async function buscarEventos() {
       },
     });
 
+    console.log(`📡 [eventos] Resposta HTTP: ${response.status} ${response.statusText}`);
+
     if (!response.ok) {
       const corpo = await response.text().catch(() => "");
-      console.error(`❌ [eventos] Erro HTTP ${response.status} ${response.statusText}. Resposta: ${corpo.slice(0, 300)}`);
+      console.error(`❌ [eventos] Erro HTTP ${response.status}. Body: ${corpo.slice(0, 500)}`);
+      if (response.status === 401) {
+        console.error(`🔑 [eventos] API Key inválida! Verifique PM_API_KEY no .env e a chave em PhotoMusic → Configurações → WhatsApp`);
+      }
       return [];
     }
 
-    const dados = await response.json();
+    const texto = await response.text();
+    console.log(`📦 [eventos] Body raw: ${texto.slice(0, 300)}`);
+
+    let dados;
+    try {
+      dados = JSON.parse(texto);
+    } catch(e) {
+      console.error(`❌ [eventos] Resposta não é JSON válido: ${texto.slice(0, 200)}`);
+      return [];
+    }
 
     if (!Array.isArray(dados) || dados.length === 0) {
-      console.log("ℹ️ [eventos] Nenhum evento ativo no ChatBot no momento.");
+      console.log("ℹ️ [eventos] API retornou array vazio — nenhum evento com chatbot_ativo=1 encontrado.");
       return [];
     }
+
+    console.log(`✅ [eventos] ${dados.length} evento(s) encontrado(s):`, dados.map(e => `#${e.id} ${e.nome}`));
 
     return dados.map((e) => ({
       numero: e.numero,       // "1", "2", "3"...

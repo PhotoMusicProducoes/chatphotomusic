@@ -11,6 +11,42 @@ class PhotoMusic_Events {
         add_action('admin_post_pm_excluir_evento',     [__CLASS__, 'handle_excluir_evento']);
         add_action('admin_post_pm_concluir_evento',    [__CLASS__, 'handle_concluir_evento']);
         add_action('admin_post_pm_confirmar_pagamento',[__CLASS__, 'handle_confirmar_pagamento']);
+        add_action('wp_ajax_pm_buscar_link_pagamento', [__CLASS__, 'ajax_buscar_link_pagamento']);
+    }
+
+    /* ============================================================
+       AJAX — BUSCAR LINK INFINITEPAY POR VALOR + FORMA + TIPO
+    ============================================================ */
+    public static function ajax_buscar_link_pagamento() {
+        check_ajax_referer('pm_buscar_link_pagamento', 'nonce');
+
+        if (!PhotoMusic_Users::current_user_can('pm_ver_eventos')) {
+            wp_send_json_error('Sem permissão.');
+        }
+
+        $valor      = floatval(str_replace(',', '.', $_POST['valor'] ?? 0));
+        $forma      = sanitize_key($_POST['forma'] ?? '');
+        $tipo_ev    = sanitize_key($_POST['tipo_evento'] ?? 'social');
+
+        if ($valor <= 0 || empty($forma)) {
+            wp_send_json_error('Valor ou forma inválidos.');
+        }
+
+        if (!class_exists('PhotoMusic_Links_Pagamento')) {
+            wp_send_json_error('Módulo de links não disponível.');
+        }
+
+        $link = PhotoMusic_Links_Pagamento::buscar($valor, $forma, $tipo_ev);
+
+        if ($link) {
+            wp_send_json_success([
+                'link'         => $link->link,
+                'parcelas_max' => $link->parcelas_max,
+                'descricao'    => $link->descricao,
+            ]);
+        } else {
+            wp_send_json_error('Nenhum link cadastrado para R$ ' . number_format($valor, 2, ',', '.') . ' em ' . $forma . '.');
+        }
     }
 
     /* ============================================================
@@ -212,6 +248,22 @@ class PhotoMusic_Events {
         $desc_guestbook         = $pgto['desc_guestbook'] ?? '';
         $desc_guestbook_exibir  = $pgto['desc_guestbook_exibir'] ?? false;
         $pgto_descricao         = $pgto['descricao_pagamento'] ?? '';
+
+        // Contas bancárias para auto-geração de descrição
+        $js_conta_pix    = '';
+        $js_conta_transf = '';
+        if (class_exists('PhotoMusic_Contas_Bancarias')) {
+            $cp = PhotoMusic_Contas_Bancarias::get_principal('pix');
+            if (!$cp) $cp = PhotoMusic_Contas_Bancarias::get_principal('ambos');
+            if ($cp) $js_conta_pix = PhotoMusic_Contas_Bancarias::texto_pix($cp);
+
+            $ct = PhotoMusic_Contas_Bancarias::get_principal('transferencia');
+            if (!$ct) $ct = PhotoMusic_Contas_Bancarias::get_principal('ambos');
+            if ($ct) $js_conta_transf = PhotoMusic_Contas_Bancarias::texto_transferencia($ct);
+        }
+        $js_tipo_evento     = ($evento->tipo_evento ?? 'PF') === 'PJ' ? 'corporativo' : 'social';
+        $nonce_link_busca   = wp_create_nonce('pm_buscar_link_pagamento');
+        $rf_total_final_js  = 0; // preenchido dentro do bloco de resumo financeiro
 
         ?>
         <div class="wrap">
@@ -987,6 +1039,7 @@ class PhotoMusic_Events {
                                             ? $rf_base_pix * ($pgto_pix_desconto / 100) : 0;
                     $rf_desloc         = ($desc_deslocamento !== '') ? floatval($desc_deslocamento) : 0;
                     $rf_total_final    = $rf_base_pix - $rf_desc_pix + $rf_desloc;
+                    $rf_total_final_js = $rf_total_final; // expor para JS
                 ?>
                 <div style="background:#f0f7ff;border:1px solid #90caf9;border-radius:6px;padding:14px 18px;margin-bottom:18px;max-width:540px;">
                     <strong style="font-size:0.95em;display:block;margin-bottom:10px;color:#1565c0;">💰 Resumo Financeiro</strong>
@@ -1057,9 +1110,17 @@ class PhotoMusic_Events {
                     <tr id="pgto-row-link-cartao" style="<?php echo !in_array($pgto_forma, ['cartao','misto'], true) ? 'display:none;' : ''; ?>">
                         <th><label>Link para Cartão</label></th>
                         <td>
-                            <input type="url" name="link_pagamento_cartao" class="large-text"
-                                   value="<?php echo $link_pagamento_cartao; ?>"
-                                   placeholder="Cole aqui o link de pagamento gerado (ex: Pagar.me, Stripe, Mercado Pago…)">
+                            <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+                                <input type="url" id="link_pagamento_cartao" name="link_pagamento_cartao" style="flex:1;min-width:260px;"
+                                       value="<?php echo $link_pagamento_cartao; ?>"
+                                       placeholder="Cole aqui o link InfinitePay ou outro link de pagamento…">
+                                <button type="button" id="pm-btn-buscar-link" class="button"
+                                        onclick="pmBuscarLinkInfinitePay()"
+                                        title="Busca automaticamente no banco de links InfinitePay pelo valor total do evento">
+                                    🔍 Buscar Link InfinitePay
+                                </button>
+                            </div>
+                            <p id="pm-link-status" style="margin-top:4px;font-size:12px;color:#555;"></p>
                             <p class="description">Aparece como botão "Pagar com Cartão" na página de pagamento do cliente.</p>
                         </td>
                     </tr>
@@ -1109,6 +1170,127 @@ class PhotoMusic_Events {
                     const el = document.getElementById('pgto-cartao-juros');
                     if (el) el.style.display = parseInt(val) > 3 ? '' : 'none';
                 }
+
+                // ── Dados do evento passados do PHP ──────────────────────
+                const pmTotalFinal  = <?php echo json_encode($rf_total_final_js); ?>;
+                const pmContaPix    = <?php echo json_encode($js_conta_pix); ?>;
+                const pmContaTransf = <?php echo json_encode($js_conta_transf); ?>;
+                const pmTipoEvento  = <?php echo json_encode($js_tipo_evento); ?>;
+                const pmNonceLinkBusca = <?php echo json_encode($nonce_link_busca); ?>;
+                const pmAjaxUrl     = <?php echo json_encode(admin_url('admin-ajax.php')); ?>;
+
+                // ── Formata número como R$ X.XXX,XX ─────────────────────
+                function pmFmt(v) {
+                    return 'R$ ' + parseFloat(v || 0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+                }
+                function pmFmtDate(y_m_d) {
+                    if (!y_m_d) return '';
+                    const p = y_m_d.split('-');
+                    return p[2] + '/' + p[1] + '/' + p[0];
+                }
+
+                // ── Gerar descrição automaticamente ──────────────────────
+                function pmGerarDescricaoPagamento() {
+                    const forma       = document.querySelector('[name="pgto_forma"]:checked')?.value || '';
+                    const total       = pmTotalFinal;
+                    const descPct     = parseFloat(document.querySelector('[name="pgto_pix_desconto"]')?.value || 0);
+                    const p1          = parseFloat(document.querySelector('[name="pgto_pix_p1_valor"]')?.value || 0);
+                    const p2          = parseFloat(document.querySelector('[name="pgto_pix_p2_valor"]')?.value || 0);
+                    const p2Data      = pmFmtDate(document.querySelector('[name="pgto_pix_p2_data"]')?.value || '');
+                    const cartParc    = parseInt(document.querySelector('[name="pgto_cartao_parcelas"]')?.value || 3);
+                    const mistoValor  = parseFloat(document.querySelector('[name="pgto_misto_valor"]')?.value || 0);
+                    const mistoParc   = parseInt(document.querySelector('[name="pgto_misto_parcelas"]')?.value || 3);
+
+                    let texto = '';
+                    const contaPix   = pmContaPix   ? ' – na conta da empresa (' + pmContaPix + ')' : '';
+                    const contaTransf= pmContaTransf? ' para a conta da empresa (' + pmContaTransf + ')' : '';
+
+                    if (forma === 'pix_avista') {
+                        const totalDesc = descPct > 0 ? total * (1 - descPct / 100) : total;
+                        texto  = 'O pagamento de ' + pmFmt(totalDesc);
+                        if (descPct > 0) texto += ' (com ' + descPct + '% de desconto à vista no PIX)';
+                        texto += ' será realizado à vista por PIX' + contaPix + '.';
+
+                    } else if (forma === 'pix_parcelado') {
+                        texto = 'O pagamento de ' + pmFmt(total) + ' será parcelado em PIX' + contaPix + ': ';
+                        const partes = [];
+                        if (p1 > 0) partes.push('1ª parcela de ' + pmFmt(p1) + ' na assinatura do contrato');
+                        if (p2 > 0) {
+                            let s2 = '2ª parcela de ' + pmFmt(p2);
+                            if (p2Data) s2 += ' até ' + p2Data;
+                            partes.push(s2);
+                        }
+                        partes.push('restante até a data do evento');
+                        texto += partes.join(', ') + '.';
+
+                    } else if (forma === 'cartao') {
+                        const semJuros = cartParc <= 3 ? ' sem juros' : ' com juros';
+                        const parcVal  = total > 0 && cartParc > 0 ? ' (' + pmFmt(total / cartParc) + '/parcela)' : '';
+                        texto = 'O pagamento de ' + pmFmt(total) + ' será realizado em ' + cartParc + 'x no cartão de crédito' + semJuros + parcVal + ' via link de pagamento.';
+
+                    } else if (forma === 'dinheiro') {
+                        texto = 'O pagamento de ' + pmFmt(total) + ' será realizado em dinheiro no dia do evento.';
+
+                    } else if (forma === 'transferencia') {
+                        texto = 'O pagamento de ' + pmFmt(total) + ' será realizado por transferência bancária' + contaTransf + '.';
+
+                    } else if (forma === 'misto') {
+                        const semJuros = mistoParc <= 3 ? ' sem juros' : ' com juros';
+                        texto  = 'O pagamento de ' + pmFmt(total) + ' será realizado sendo ' + pmFmt(mistoValor);
+                        texto += ' em dinheiro ou PIX' + (pmContaPix ? ' (' + pmContaPix + ')' : '');
+                        texto += ' e o restante em ' + mistoParc + 'x no cartão de crédito' + semJuros + ' via link de pagamento.';
+                    } else {
+                        alert('Selecione uma forma de pagamento primeiro.');
+                        return;
+                    }
+
+                    document.getElementById('pgto_descricao_pagamento').value = texto;
+                }
+
+                // ── Buscar link InfinitePay ───────────────────────────────
+                function pmBuscarLinkInfinitePay() {
+                    const forma  = document.querySelector('[name="pgto_forma"]:checked')?.value || '';
+                    const total  = pmTotalFinal;
+                    const status = document.getElementById('pm-link-status');
+
+                    if (total <= 0) {
+                        if (status) status.innerHTML = '<span style="color:#c00;">⚠️ Adicione serviços ao evento para calcular o valor total.</span>';
+                        return;
+                    }
+                    if (!forma || forma === 'pix_avista' || forma === 'pix_parcelado' || forma === 'dinheiro' || forma === 'transferencia') {
+                        if (status) status.innerHTML = '<span style="color:#c00;">⚠️ A busca de link InfinitePay só se aplica a Cartão ou Misto.</span>';
+                        return;
+                    }
+
+                    const formaApi = 'cartao'; // InfinitePay sempre cartão
+                    if (status) status.innerHTML = '⏳ Buscando link...';
+
+                    const btn = document.getElementById('pm-btn-buscar-link');
+                    if (btn) btn.disabled = true;
+
+                    const data = new FormData();
+                    data.append('action', 'pm_buscar_link_pagamento');
+                    data.append('nonce',  pmNonceLinkBusca);
+                    data.append('valor',  total.toFixed(2));
+                    data.append('forma',  formaApi);
+                    data.append('tipo_evento', pmTipoEvento);
+
+                    fetch(pmAjaxUrl, { method: 'POST', body: data })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (btn) btn.disabled = false;
+                            if (res.success) {
+                                document.getElementById('link_pagamento_cartao').value = res.data.link;
+                                if (status) status.innerHTML = '<span style="color:#2a7a2a;">✅ Link encontrado: até ' + res.data.parcelas_max + 'x' + (res.data.descricao ? ' — ' + res.data.descricao : '') + '</span>';
+                            } else {
+                                if (status) status.innerHTML = '<span style="color:#c00;">⚠️ ' + res.data + '</span>';
+                            }
+                        })
+                        .catch(() => {
+                            if (btn) btn.disabled = false;
+                            if (status) status.innerHTML = '<span style="color:#c00;">⚠️ Erro ao comunicar com o servidor.</span>';
+                        });
+                }
                 </script>
 
                 <!-- ============================================
@@ -1119,12 +1301,27 @@ class PhotoMusic_Events {
                     <tr>
                         <th><label for="pgto_descricao_pagamento">Texto do Contrato</label></th>
                         <td>
+                            <div style="margin-bottom:8px;">
+                                <button type="button" class="button" onclick="pmGerarDescricaoPagamento()"
+                                        title="Gera automaticamente o texto com base na forma de pagamento e contas cadastradas">
+                                    ⚡ Gerar Automaticamente
+                                </button>
+                                <span style="margin-left:8px;font-size:12px;color:#666;">Preenche o texto abaixo com base nas configurações de pagamento.</span>
+                            </div>
                             <textarea name="pgto_descricao_pagamento" id="pgto_descricao_pagamento"
                                       rows="5" class="large-text"
-                                      placeholder="Ex: O pagamento de 100% do valor do serviço será em duas parcelas, sendo a primeira no valor de R$600,00 até 20/06/2025 por PIX na conta da empresa (Banco Nubank – 55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ – CHAVE PIX CNPJ: 55.353.989/0001-09) e a segunda parcela no valor de R$1.400,00, que será paga até a data do serviço, no início do evento."><?php echo esc_textarea($pgto_descricao); ?></textarea>
+                                      placeholder="Ex: O pagamento de 100% do valor do serviço será realizado à vista por PIX com 5% de desconto na conta da empresa..."><?php echo esc_textarea($pgto_descricao); ?></textarea>
                             <p class="description">
-                                Descreva as condições de pagamento conforme aparecerá no contrato. Use a variável <code>{descricao_pagamento}</code> no modelo de contrato.<br>
-                                <strong>Conta atual:</strong> Banco Nubank – 55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ – CHAVE PIX CNPJ: 55.353.989/0001-09
+                                Descreva as condições de pagamento conforme aparecerá no contrato. Use a variável <code>{descricao_pagamento}</code> no modelo de contrato.
+                                <?php if ($js_conta_pix): ?>
+                                <br><strong>Conta PIX principal:</strong> <?php echo esc_html($js_conta_pix); ?>
+                                <?php endif; ?>
+                                <?php if ($js_conta_transf): ?>
+                                <br><strong>Conta Transferência principal:</strong> <?php echo esc_html($js_conta_transf); ?>
+                                <?php endif; ?>
+                                <?php if (!$js_conta_pix && !$js_conta_transf): ?>
+                                <br><span style="color:#c00;">⚠️ Nenhuma conta bancária cadastrada. <a href="<?php echo admin_url('admin.php?page=photomusic-contas-bancarias'); ?>">Cadastrar agora</a></span>
+                                <?php endif; ?>
                             </p>
                         </td>
                     </tr>

@@ -227,7 +227,11 @@ class PhotoMusic_Contratos_Actions {
         global $wpdb;
         $wpdb->update(
             $wpdb->prefix . 'pm_contratos',
-            ['status_contrato' => 'aguardando_assinatura_contratante', 'atualizado_em' => current_time('mysql')],
+            [
+                'status_contrato'        => 'aguardando_assinatura_contratante',
+                'enviado_contratante_em' => current_time('mysql'),
+                'atualizado_em'          => current_time('mysql'),
+            ],
             ['id' => $id]
         );
 

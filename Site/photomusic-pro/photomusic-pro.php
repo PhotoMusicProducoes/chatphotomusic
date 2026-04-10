@@ -84,6 +84,13 @@ function photomusic_pro_autoload_classes() {
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos-logs.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos-email.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos-whatsapp.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-contratos-lembrete.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/pagamento/class-photomusic-links-pagamento.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/pagamento/class-photomusic-links-pagamento-admin.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/pagamento/class-photomusic-contas-bancarias.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/pagamento/class-photomusic-contas-bancarias-admin.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/pagamento/class-photomusic-tabela-precos.php';
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/pagamento/class-photomusic-tabela-precos-admin.php';
     if (file_exists(PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-os.php')) {
         require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-os.php';
     }
@@ -170,11 +177,15 @@ function photomusic_pro_init_modules() {
    // WhatsApp
    new PhotoMusic_WhatsApp();
 
-   // Contratos (ações, permissões, rotas públicas e shortcode)
+   // Contratos (ações, permissões, rotas públicas, shortcode e lembrete)
    PhotoMusic_Contratos_Actions::init();
    PhotoMusic_Contratos_Permissoes::init();
    PhotoMusic_Contratos_Route::init();
    PhotoMusic_Contratos_Shortcode::init();
+   PhotoMusic_Contratos_Lembrete::init();
+   PhotoMusic_Links_Pagamento_Admin::init();
+   PhotoMusic_Contas_Bancarias_Admin::init();
+   PhotoMusic_Tabela_Precos_Admin::init();
 
    // Painel do contratante
    PhotoMusic_Painel_Contratante::init();

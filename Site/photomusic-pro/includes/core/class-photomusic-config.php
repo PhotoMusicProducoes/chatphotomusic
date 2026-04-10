@@ -76,6 +76,27 @@ class PhotoMusic_Config {
         $proximo = intval($_POST['pm_contrato_proximo_numero'] ?? 1);
         if ($proximo > 0) update_option('pm_contrato_proximo_numero', $proximo);
 
+        // Contas PIX — Nubank
+        update_option('pm_pix_nubank_nome',   sanitize_text_field($_POST['pm_pix_nubank_nome']   ?? ''));
+        update_option('pm_pix_nubank_chave',  sanitize_text_field($_POST['pm_pix_nubank_chave']  ?? ''));
+        update_option('pm_pix_nubank_banco',  sanitize_text_field($_POST['pm_pix_nubank_banco']  ?? ''));
+
+        // Contas PIX — InfinitePay
+        update_option('pm_pix_infinitepay_nome',  sanitize_text_field($_POST['pm_pix_infinitepay_nome']  ?? ''));
+        update_option('pm_pix_infinitepay_chave', sanitize_text_field($_POST['pm_pix_infinitepay_chave'] ?? ''));
+
+        // Contas PIX — PicPay
+        update_option('pm_pix_picpay_nome',  sanitize_text_field($_POST['pm_pix_picpay_nome']  ?? ''));
+        update_option('pm_pix_picpay_chave', sanitize_text_field($_POST['pm_pix_picpay_chave'] ?? ''));
+
+        // Transferência bancária
+        update_option('pm_transferencia_banco',      sanitize_text_field($_POST['pm_transferencia_banco']      ?? ''));
+        update_option('pm_transferencia_nome',       sanitize_text_field($_POST['pm_transferencia_nome']       ?? ''));
+        update_option('pm_transferencia_agencia',    sanitize_text_field($_POST['pm_transferencia_agencia']    ?? ''));
+        update_option('pm_transferencia_codigo',     sanitize_text_field($_POST['pm_transferencia_codigo']     ?? ''));
+        update_option('pm_transferencia_conta',      sanitize_text_field($_POST['pm_transferencia_conta']      ?? ''));
+        update_option('pm_transferencia_cnpj',       sanitize_text_field($_POST['pm_transferencia_cnpj']       ?? ''));
+
         wp_redirect(add_query_arg([
             'page'    => 'photomusic-config',
             'saved'   => 1,
@@ -368,6 +389,86 @@ class PhotoMusic_Config {
                             <p class="description">Número para onde o cliente envia o comprovante (PIX ou Cartão).</p></td>
                     </tr>
                 </table>
+
+                <!-- ── CONTAS PIX ─────────────────────────────────────── -->
+                <tr><td colspan="2"><hr><h3 style="margin:0;">🏦 Contas PIX da Empresa</h3>
+                <p class="description">Usadas para geração automática do texto de pagamento no contrato.</p></td></tr>
+
+                <tr><th colspan="2"><strong>PIX — Nubank</strong></th></tr>
+                <tr>
+                    <th><label>Nome / Beneficiário</label></th>
+                    <td><input type="text" name="pm_pix_nubank_nome" style="width:100%;max-width:420px;"
+                               value="<?php echo esc_attr(get_option('pm_pix_nubank_nome', '55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ')); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label>Chave PIX</label></th>
+                    <td><input type="text" name="pm_pix_nubank_chave" style="width:260px;"
+                               value="<?php echo esc_attr(get_option('pm_pix_nubank_chave', '55.353.989/0001-09')); ?>"
+                               placeholder="CNPJ, CPF, e-mail ou celular"></td>
+                </tr>
+                <tr>
+                    <th><label>Banco</label></th>
+                    <td><input type="text" name="pm_pix_nubank_banco" style="width:200px;"
+                               value="<?php echo esc_attr(get_option('pm_pix_nubank_banco', 'Nubank')); ?>"></td>
+                </tr>
+
+                <tr><th colspan="2"><strong>PIX — InfinitePay</strong></th></tr>
+                <tr>
+                    <th><label>Nome / Beneficiário</label></th>
+                    <td><input type="text" name="pm_pix_infinitepay_nome" style="width:100%;max-width:420px;"
+                               value="<?php echo esc_attr(get_option('pm_pix_infinitepay_nome', '')); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label>Chave PIX</label></th>
+                    <td><input type="text" name="pm_pix_infinitepay_chave" style="width:260px;"
+                               value="<?php echo esc_attr(get_option('pm_pix_infinitepay_chave', '')); ?>"></td>
+                </tr>
+
+                <tr><th colspan="2"><strong>PIX — PicPay</strong></th></tr>
+                <tr>
+                    <th><label>Nome / Beneficiário</label></th>
+                    <td><input type="text" name="pm_pix_picpay_nome" style="width:100%;max-width:420px;"
+                               value="<?php echo esc_attr(get_option('pm_pix_picpay_nome', '')); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label>Chave PIX</label></th>
+                    <td><input type="text" name="pm_pix_picpay_chave" style="width:260px;"
+                               value="<?php echo esc_attr(get_option('pm_pix_picpay_chave', '')); ?>"></td>
+                </tr>
+
+                <!-- ── TRANSFERÊNCIA BANCÁRIA ─────────────────────── -->
+                <tr><td colspan="2"><hr><h3 style="margin:0;">🏛️ Transferência Bancária (TED/DOC)</h3></td></tr>
+                <tr>
+                    <th><label>Nome do Banco</label></th>
+                    <td><input type="text" name="pm_transferencia_banco" style="width:300px;"
+                               value="<?php echo esc_attr(get_option('pm_transferencia_banco', 'Nu Pagamentos S.A. - Instituição de Pagamento')); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label>Nome / Beneficiário</label></th>
+                    <td><input type="text" name="pm_transferencia_nome" style="width:100%;max-width:420px;"
+                               value="<?php echo esc_attr(get_option('pm_transferencia_nome', '55.353.989 MARIO AUGUSTO NAZEANZE DA CRUZ')); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label>Código do Banco</label></th>
+                    <td><input type="text" name="pm_transferencia_codigo" style="width:100px;"
+                               value="<?php echo esc_attr(get_option('pm_transferencia_codigo', '0260')); ?>"
+                               placeholder="Ex: 0260"></td>
+                </tr>
+                <tr>
+                    <th><label>Agência</label></th>
+                    <td><input type="text" name="pm_transferencia_agencia" style="width:100px;"
+                               value="<?php echo esc_attr(get_option('pm_transferencia_agencia', '0001')); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label>Conta</label></th>
+                    <td><input type="text" name="pm_transferencia_conta" style="width:160px;"
+                               value="<?php echo esc_attr(get_option('pm_transferencia_conta', '787593852-9')); ?>"></td>
+                </tr>
+                <tr>
+                    <th><label>CNPJ</label></th>
+                    <td><input type="text" name="pm_transferencia_cnpj" style="width:200px;"
+                               value="<?php echo esc_attr(get_option('pm_transferencia_cnpj', '55.353.989/0001-09')); ?>"></td>
+                </tr>
 
                 <?php submit_button('Salvar Configurações'); ?>
 

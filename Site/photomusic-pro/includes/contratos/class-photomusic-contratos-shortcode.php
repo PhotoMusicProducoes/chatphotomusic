@@ -69,18 +69,18 @@ class PhotoMusic_Contratos_Shortcode {
             wp_die('Aguarde: este contrato ainda está em validação interna pela empresa.');
         }
 
+        // Já assinado pelo cliente — verifica ANTES do status para evitar erro em duplo envio
+        if (!empty($contrato->assinatura_contratante_data)) {
+            wp_redirect(home_url('/contrato/' . $token . '?assinatura=ok'));
+            exit;
+        }
+
         // Status incorreto
         if (!in_array($contrato->status_contrato, [
             'assinado_admin',
             'aguardando_assinatura_contratante'
         ])) {
             wp_die('Este contrato não está disponível para assinatura no momento.');
-        }
-
-        // Já assinado pelo cliente
-        if (!empty($contrato->assinatura_contratante_data)) {
-            wp_redirect(home_url('/contrato/' . $token . '?assinatura=ok'));
-            exit;
         }
 
         /* ============================================================
@@ -152,23 +152,60 @@ class PhotoMusic_Contratos_Shortcode {
         }
 
         // Envia contrato ao cliente via WhatsApp automaticamente
-        if (class_exists('PhotoMusic_Contratantes') && class_exists('PhotoMusic_WhatsApp')) {
-            $contratante = PhotoMusic_Contratantes::get_by_event($contrato->id_evento);
-            if ($contratante) {
-                $tel = preg_replace('/\D/', '', $contratante->telefone ?? '');
+        if (class_exists('PhotoMusic_WhatsApp')) {
+            $tel = '';
+
+            // 1ª tentativa: tabela contratantes
+            if (class_exists('PhotoMusic_Contratantes')) {
+                $contratante = PhotoMusic_Contratantes::get_by_event($contrato->id_evento);
+                if ($contratante) {
+                    $tel = preg_replace('/\D/', '', $contratante->telefone ?? '');
+                }
+            }
+
+            // 2ª tentativa: telefone direto no evento
+            if (empty($tel) && !empty($contrato->id_evento)) {
+                $tel_ev = $wpdb->get_var($wpdb->prepare(
+                    "SELECT telefone_contratante FROM {$wpdb->prefix}pm_eventos WHERE id = %d LIMIT 1",
+                    $contrato->id_evento
+                ));
+                $tel = preg_replace('/\D/', '', $tel_ev ?? '');
+            }
+
+            if ($tel) {
                 $contrato_final = PhotoMusic_Contratos::get($contrato->id);
 
                 // 1. Envia PDF do contrato assinado
-                if ($tel && !empty($contrato_final->pdf_final)) {
-                    PhotoMusic_WhatsApp::send_pdf_zapi(
+                if (!empty($contrato_final->pdf_final)) {
+                    $result_pdf = PhotoMusic_WhatsApp::send_pdf_zapi(
                         $tel,
                         "✅ Parabéns! Seu contrato foi assinado com sucesso. Segue uma cópia para seus registros.",
                         $contrato_final->pdf_final
                     );
+                    // Fallback: se send_pdf_zapi falhar, envia link do PDF via texto
+                    if (is_wp_error($result_pdf)) {
+                        PhotoMusic_WhatsApp::send(
+                            $tel,
+                            "✅ Seu contrato foi assinado com sucesso! Acesse a cópia em PDF:\n" . $contrato_final->pdf_final,
+                            ['id_evento' => $contrato->id_evento]
+                        );
+                    }
+                } else {
+                    // PDF não gerado — envia confirmação de texto
+                    PhotoMusic_WhatsApp::send(
+                        $tel,
+                        "✅ Parabéns! Seu contrato foi assinado com sucesso. Em breve você receberá o PDF.",
+                        ['id_evento' => $contrato->id_evento]
+                    );
                 }
 
-                // 2. Envia mensagem com instruções de pagamento
-                if ($tel && !empty($contrato->id_evento)) {
+                // 2. Envia instruções de pagamento apenas se não estiver confirmado
+                $pgto_confirmado = (bool) $wpdb->get_var($wpdb->prepare(
+                    "SELECT pagamento_confirmado FROM {$wpdb->prefix}pm_eventos WHERE id = %d LIMIT 1",
+                    $contrato->id_evento
+                ));
+
+                if (!$pgto_confirmado && $tel && !empty($contrato->id_evento)) {
                     try {
                         $ev = $wpdb->get_row($wpdb->prepare(
                             "SELECT pagamento_config, token_evento, motivo_evento FROM {$wpdb->prefix}pm_eventos WHERE id = %d",

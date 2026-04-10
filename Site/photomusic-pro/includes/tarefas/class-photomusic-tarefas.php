@@ -21,6 +21,8 @@ class PhotoMusic_Tarefas {
             'convite_arte'      => 'Enviar arte do convite',
             'moldura_aprovar'   => 'Aprovar molduras enviadas',
             'playlist_enviar'   => 'Enviar playlist das músicas',
+            // Financeiro
+            'aguardar_pagamento'=> 'Aguardar Confirmação de Pagamento',
             // Genérico
             'outro'             => 'Outro',
         ];
@@ -177,6 +179,20 @@ class PhotoMusic_Tarefas {
             "UPDATE {$wpdb->prefix}pm_tarefas SET notificacoes_enviadas = notificacoes_enviadas + 1, atualizado_em = %s WHERE id = %d",
             current_time('mysql'),
             intval($id)
+        ));
+    }
+
+    /* ============================================================
+       BUSCAR TAREFA PENDENTE POR TIPO E EVENTO
+    ============================================================ */
+    public static function get_pendente_por_tipo($id_evento, $tipo) {
+        global $wpdb;
+        return $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}pm_tarefas
+             WHERE id_evento = %d AND tipo = %s AND status = 'pendente'
+             LIMIT 1",
+            intval($id_evento),
+            sanitize_key($tipo)
         ));
     }
 

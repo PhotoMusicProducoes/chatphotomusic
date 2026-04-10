@@ -954,6 +954,52 @@ class PhotoMusic_Installer {
         dbDelta($sql_contratos);
         dbDelta($sql_contratos_logs);
 
+        /* ============================================================
+        TABELA: BANCO DE LINKS DE PAGAMENTO
+        ============================================================ */
+        $tbl_links_pgto = $wpdb->prefix . 'pm_links_pagamento';
+        $sql_links_pgto = "CREATE TABLE $tbl_links_pgto (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            forma ENUM('cartao','pix_infinitepay') NOT NULL,
+            tipo_evento ENUM('social','corporativo','ambos') NOT NULL DEFAULT 'ambos',
+            valor DECIMAL(10,2) NOT NULL,
+            link TEXT NOT NULL,
+            parcelas_max TINYINT UNSIGNED NOT NULL DEFAULT 1,
+            valor_parcela DECIMAL(10,2) NULL,
+            descricao VARCHAR(255) NULL,
+            ativo TINYINT(1) NOT NULL DEFAULT 1,
+            criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            atualizado_em DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_forma_valor (forma, valor),
+            INDEX idx_tipo_evento (tipo_evento)
+        ) $charset;";
+        dbDelta($sql_links_pgto);
+
+        /* ============================================================
+        TABELA: CONTAS BANCÁRIAS DA EMPRESA
+        ============================================================ */
+        $tbl_contas = $wpdb->prefix . 'pm_contas_bancarias';
+        $sql_contas = "CREATE TABLE $tbl_contas (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            nome VARCHAR(100) NOT NULL,
+            tipo ENUM('pix','transferencia','ambos') NOT NULL DEFAULT 'pix',
+            banco VARCHAR(100) NULL,
+            beneficiario VARCHAR(255) NULL,
+            chave_pix VARCHAR(255) NULL,
+            tipo_chave ENUM('cnpj','cpf','email','celular','aleatoria') NULL,
+            agencia VARCHAR(20) NULL,
+            codigo_banco VARCHAR(10) NULL,
+            conta VARCHAR(30) NULL,
+            cnpj VARCHAR(20) NULL,
+            principal TINYINT(1) NOT NULL DEFAULT 0,
+            ativo TINYINT(1) NOT NULL DEFAULT 1,
+            criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            atualizado_em DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_tipo (tipo),
+            INDEX idx_principal (principal)
+        ) $charset;";
+        dbDelta($sql_contas);
+
         dbDelta($sql_aceites_evento);
         dbDelta($sql_acessos_evento);
         dbDelta($sql_compartilhamentos);
@@ -1016,6 +1062,51 @@ class PhotoMusic_Installer {
             INDEX idx_data_prevista (data_prevista)
         ) $charset;";
         dbDelta($sql_tarefas);
+
+        /* ============================================================
+           TABELA: TABELA DE PREÇOS DOS SERVIÇOS
+        ============================================================ */
+        $tbl_precos = $wpdb->prefix . 'pm_tabela_precos';
+        $sql_precos = "CREATE TABLE $tbl_precos (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            id_servico INT UNSIGNED NOT NULL COMMENT 'FK para pm_servicos.id',
+            tipo_evento VARCHAR(50) NOT NULL DEFAULT 'social'
+                COMMENT 'social | corporativo_ate200 | corporativo_200mais',
+            horas TINYINT UNSIGNED NULL COMMENT '2-10 para servicos horarios, NULL para Lembranca',
+            qtd_fotos SMALLINT UNSIGNED NULL COMMENT 'Para Foto Lembranca: 60,100,150,200,300,400,500',
+            valor DECIMAL(10,2) NOT NULL DEFAULT 0,
+            gerado_automatico TINYINT(1) NOT NULL DEFAULT 1
+                COMMENT '0 = override manual (nao recalcular)',
+            descricao TEXT NULL,
+            ativo TINYINT(1) NOT NULL DEFAULT 1,
+            criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            atualizado_em DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_preco (id_servico, tipo_evento, horas, qtd_fotos),
+            INDEX idx_servico (id_servico),
+            INDEX idx_tipo_evento (tipo_evento)
+        ) $charset;";
+        dbDelta($sql_precos);
+
+        /* ============================================================
+           TABELA: HISTÓRICO DE PREÇOS
+        ============================================================ */
+        $tbl_precos_hist = $wpdb->prefix . 'pm_tabela_precos_historico';
+        $sql_precos_hist = "CREATE TABLE $tbl_precos_hist (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            id_preco INT UNSIGNED NOT NULL,
+            id_servico INT UNSIGNED NOT NULL,
+            tipo ENUM('servico','pacote') NOT NULL DEFAULT 'servico',
+            tipo_evento VARCHAR(50) NOT NULL DEFAULT 'ambos',
+            valor_anterior DECIMAL(10,2) NOT NULL,
+            valor_novo DECIMAL(10,2) NOT NULL,
+            alterado_por BIGINT UNSIGNED NULL,
+            alterado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            motivo VARCHAR(255) NULL,
+            INDEX idx_preco (id_preco),
+            INDEX idx_servico (id_servico),
+            INDEX idx_alterado_em (alterado_em)
+        ) $charset;";
+        dbDelta($sql_precos_hist);
 
     } // fim create_tables()
 
@@ -1203,11 +1294,36 @@ class PhotoMusic_Installer {
             $wpdb->query("ALTER TABLE `{$tbl_contratos}` ADD COLUMN `numero_contrato` INT UNSIGNED NULL AFTER `id`");
         }
 
+        // Adiciona coluna enviado_contratante_em se não existir (usado pelo lembrete automático)
+        $col_env = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_contratos}` LIKE 'enviado_contratante_em'");
+        if (empty($col_env)) {
+            $wpdb->query("ALTER TABLE `{$tbl_contratos}` ADD COLUMN `enviado_contratante_em` DATETIME NULL AFTER `atualizado_em`");
+        }
+
+        // Adiciona coluna usuario_id em pm_event_history se não existir
+        $tbl_hist = $wpdb->prefix . 'pm_event_history';
+        $col_uid = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_hist}` LIKE 'usuario_id'");
+        if (empty($col_uid)) {
+            $wpdb->query("ALTER TABLE `{$tbl_hist}` ADD COLUMN `usuario_id` BIGINT UNSIGNED NULL AFTER `detalhes`");
+        }
+
+        // Agenda cron de lembrete diário (7h BRT = 10h UTC)
+        if (class_exists('PhotoMusic_Contratos_Lembrete')) {
+            PhotoMusic_Contratos_Lembrete::agendar();
+        }
+
         // Adiciona coluna pagamento_config se não existir
         $tbl_eventos = $wpdb->prefix . 'pm_eventos';
         $col_pgto = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_eventos}` LIKE 'pagamento_config'");
         if (empty($col_pgto)) {
             $wpdb->query("ALTER TABLE `{$tbl_eventos}` ADD COLUMN `pagamento_config` LONGTEXT NULL");
+        }
+
+        // Adiciona colunas de confirmação de pagamento se não existirem
+        $col_pgto_conf = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_eventos}` LIKE 'pagamento_confirmado'");
+        if (empty($col_pgto_conf)) {
+            $wpdb->query("ALTER TABLE `{$tbl_eventos}` ADD COLUMN `pagamento_confirmado` TINYINT(1) NOT NULL DEFAULT 0 AFTER `pagamento_config`");
+            $wpdb->query("ALTER TABLE `{$tbl_eventos}` ADD COLUMN `pagamento_confirmado_em` DATETIME NULL AFTER `pagamento_confirmado`");
         }
 
         /* ============================================================
@@ -1487,6 +1603,70 @@ class PhotoMusic_Installer {
             if (empty($idx)) {
                 $wpdb->query("ALTER TABLE `{$tbl_views}` ADD INDEX `idx_token_aceite` (`token_aceite`)");
             }
+        }
+
+        /* ============================================================
+           PM_TABELA_PRECOS — cria se não existir (plugin já ativo)
+        ============================================================ */
+        $tbl_precos = $wpdb->prefix . 'pm_tabela_precos';
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$tbl_precos}'") !== $tbl_precos) {
+            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            $charset = $wpdb->get_charset_collate();
+            dbDelta("CREATE TABLE $tbl_precos (
+                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                id_servico INT UNSIGNED NOT NULL,
+                tipo_evento VARCHAR(50) NOT NULL DEFAULT 'social',
+                horas TINYINT UNSIGNED NULL,
+                qtd_fotos SMALLINT UNSIGNED NULL,
+                valor DECIMAL(10,2) NOT NULL DEFAULT 0,
+                gerado_automatico TINYINT(1) NOT NULL DEFAULT 1,
+                descricao TEXT NULL,
+                ativo TINYINT(1) NOT NULL DEFAULT 1,
+                criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uk_preco (id_servico, tipo_evento, horas, qtd_fotos),
+                INDEX idx_servico (id_servico),
+                INDEX idx_tipo_evento (tipo_evento)
+            ) $charset;");
+        } else {
+            // Tabela existe mas pode ter o schema antigo — adiciona colunas se faltar
+            $cols_precos = [
+                'horas'             => 'TINYINT UNSIGNED NULL AFTER tipo_evento',
+                'qtd_fotos'         => 'SMALLINT UNSIGNED NULL AFTER horas',
+                'gerado_automatico' => 'TINYINT(1) NOT NULL DEFAULT 1 AFTER valor',
+            ];
+            foreach ($cols_precos as $col => $def) {
+                $ex = $wpdb->get_results("SHOW COLUMNS FROM `{$tbl_precos}` LIKE '{$col}'");
+                if (empty($ex)) {
+                    $wpdb->query("ALTER TABLE `{$tbl_precos}` ADD COLUMN `{$col}` {$def}");
+                }
+            }
+            // Adiciona UNIQUE KEY se não existir
+            $uk = $wpdb->get_results("SHOW INDEX FROM `{$tbl_precos}` WHERE Key_name = 'uk_preco'");
+            if (empty($uk)) {
+                $wpdb->query("ALTER TABLE `{$tbl_precos}` ADD UNIQUE KEY `uk_preco` (`id_servico`, `tipo_evento`, `horas`, `qtd_fotos`)");
+            }
+        }
+
+        $tbl_precos_hist = $wpdb->prefix . 'pm_tabela_precos_historico';
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$tbl_precos_hist}'") !== $tbl_precos_hist) {
+            $charset = isset($charset) ? $charset : $wpdb->get_charset_collate();
+            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            dbDelta("CREATE TABLE $tbl_precos_hist (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                id_preco INT UNSIGNED NOT NULL,
+                id_servico INT UNSIGNED NOT NULL,
+                tipo ENUM('servico','pacote') NOT NULL DEFAULT 'servico',
+                tipo_evento VARCHAR(50) NOT NULL DEFAULT 'ambos',
+                valor_anterior DECIMAL(10,2) NOT NULL,
+                valor_novo DECIMAL(10,2) NOT NULL,
+                alterado_por BIGINT UNSIGNED NULL,
+                alterado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                motivo VARCHAR(255) NULL,
+                INDEX idx_preco (id_preco),
+                INDEX idx_servico (id_servico),
+                INDEX idx_alterado_em (alterado_em)
+            ) $charset;");
         }
     }
 

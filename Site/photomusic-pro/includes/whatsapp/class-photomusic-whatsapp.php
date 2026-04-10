@@ -252,7 +252,11 @@ class PhotoMusic_WhatsApp {
 
         $telefone = self::normalizar_telefone($telefone);
 
+        error_log('[PM WhatsApp] send_pdf_zapi → telefone=' . $telefone);
+        error_log('[PM WhatsApp] send_pdf_zapi → url_pdf=' . $url_pdf);
+
         if (!filter_var($url_pdf, FILTER_VALIDATE_URL)) {
+            error_log('[PM WhatsApp] send_pdf_zapi → ERRO: URL do PDF inválida: ' . $url_pdf);
             return new WP_Error('url_invalida', 'URL do PDF inválida.');
         }
 
@@ -260,11 +264,25 @@ class PhotoMusic_WhatsApp {
         $token        = get_option('pm_zapi_token');
         $client_token = get_option('pm_zapi_client_token');
 
+        error_log('[PM WhatsApp] send_pdf_zapi → instance=' . ($instance ?: 'VAZIO'));
+        error_log('[PM WhatsApp] send_pdf_zapi → token=' . ($token ? 'OK' : 'VAZIO'));
+        error_log('[PM WhatsApp] send_pdf_zapi → client_token=' . ($client_token ? 'OK' : 'VAZIO'));
+
         if (!$instance || !$token || !$client_token) {
+            error_log('[PM WhatsApp] send_pdf_zapi → ERRO: credenciais Z-API não configuradas.');
             return new WP_Error('config_invalida', 'Configuração Z-API ausente.');
         }
 
-        $endpoint = "https://api.z-api.io/instances/{$instance}/token/{$token}/send-document";
+        $endpoint = "https://api.z-api.io/instances/{$instance}/token/{$token}/send-document/pdf";
+        $body     = json_encode([
+            'phone'    => $telefone,
+            'document' => $url_pdf,
+            'fileName' => pathinfo(basename($url_pdf), PATHINFO_FILENAME),
+            'caption'  => $mensagem,
+        ]);
+
+        error_log('[PM WhatsApp] send_pdf_zapi → endpoint=' . $endpoint);
+        error_log('[PM WhatsApp] send_pdf_zapi → body=' . $body);
 
         $response = wp_remote_post($endpoint, [
             'timeout' => 20,
@@ -272,13 +290,17 @@ class PhotoMusic_WhatsApp {
                 'Content-Type' => 'application/json',
                 'client-token' => $client_token,
             ],
-            'body' => json_encode([
-                'phone'    => $telefone,
-                'document' => $url_pdf,
-                'filename' => basename($url_pdf),
-                'caption'  => $mensagem,
-            ])
+            'body' => $body,
         ]);
+
+        if (is_wp_error($response)) {
+            error_log('[PM WhatsApp] send_pdf_zapi → ERRO wp_remote_post: ' . $response->get_error_message());
+            return $response;
+        }
+
+        $code     = wp_remote_retrieve_response_code($response);
+        $respbody = wp_remote_retrieve_body($response);
+        error_log('[PM WhatsApp] send_pdf_zapi → HTTP ' . $code . ' resposta=' . $respbody);
 
         return self::handle_response($response);
     }

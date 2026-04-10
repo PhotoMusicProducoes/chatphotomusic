@@ -47,6 +47,19 @@ class PhotoMusic_Tarefas_Auto {
         $tem_som      = !empty(array_intersect($slugs, self::SLUGS_SOM));
         $eh_pj        = ($evento->tipo_evento === 'PJ');
 
+        // ── 0. AGUARDAR PAGAMENTO (se não confirmado) ──────────────
+        $pagamento_confirmado = !empty($evento->pagamento_confirmado) ? intval($evento->pagamento_confirmado) : 0;
+        if (!$pagamento_confirmado && !PhotoMusic_Tarefas::existe($id_evento, 'aguardar_pagamento')) {
+            PhotoMusic_Tarefas::criar([
+                'id_evento'    => $id_evento,
+                'id_contrato'  => $id_contrato,
+                'responsavel'  => 'photomusic',
+                'tipo'         => 'aguardar_pagamento',
+                'descricao'    => 'Confirmar recebimento do pagamento do cliente.',
+                'data_prevista'=> null,
+            ]);
+        }
+
         // ── 1. NOTA FISCAL (apenas PJ) ─────────────────────────────
         if ($eh_pj && !PhotoMusic_Tarefas::existe($id_evento, 'nota_fiscal')) {
             $data_nf = self::calcular_data_nf($evento->data_evento ?? null);

@@ -8,6 +8,7 @@ class PhotoMusic_Admin_Menu {
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'register_submenus']);
         add_action('admin_init', [__CLASS__, 'process_contrato_actions']);
+        add_action('admin_init', [__CLASS__, 'process_evento_actions']);
         add_action('admin_post_pm_salvar_galeria_links', [__CLASS__, 'handle_salvar_galeria_links']);
         add_action('admin_post_pm_add_galeria_servico',  [__CLASS__, 'handle_add_galeria_servico']);
         add_action('admin_post_pm_del_galeria_servico',  [__CLASS__, 'handle_del_galeria_servico']);
@@ -90,11 +91,28 @@ class PhotoMusic_Admin_Menu {
                     exit;
                 }
 
-                PhotoMusic_WhatsApp::send_pdf_zapi(
+                $result = PhotoMusic_WhatsApp::send_pdf_zapi(
                     $telefone,
-                    "Olá! Segue o contrato do seu evento. Para assinar acesse: " . home_url('/contrato/' . $contrato->token),
+                    "✅ Segue o PDF do contrato assinado do seu evento. Qualquer dúvida, estamos à disposição!",
                     $contrato->pdf_final
                 );
+
+                // Se send_pdf_zapi falhou (ex: Z-API não configurado), tenta fallback via texto com link
+                if (is_wp_error($result)) {
+                    if (class_exists('PhotoMusic_Logs')) {
+                        PhotoMusic_Logs::add('wpp_pdf_fallback', null, $contrato->id_evento ?? null, $enviar_whatsapp, 'send_pdf_zapi falhou: ' . $result->get_error_message() . ' — tentando fallback texto');
+                    }
+                    $result = PhotoMusic_WhatsApp::send(
+                        $telefone,
+                        "✅ Segue o PDF do contrato assinado do seu evento:\n" . $contrato->pdf_final,
+                        ['id_evento' => $contrato->id_evento ?? null]
+                    );
+                }
+
+                if (is_wp_error($result)) {
+                    wp_redirect($redirect_base . '&whatsapp_erro=' . urlencode('Erro ao enviar: ' . $result->get_error_message()));
+                    exit;
+                }
 
                 wp_redirect($redirect_base . '&whatsapp_ok=1');
                 exit;
@@ -653,6 +671,53 @@ class PhotoMusic_Admin_Menu {
         }
     }
 
+    /* ============================================================
+       PROCESSA AÇÕES DO EVENTO (admin_init — antes do HTML)
+    ============================================================ */
+    public static function process_evento_actions() {
+
+        if (!isset($_GET['page']) || $_GET['page'] !== 'photomusic-evento-detalhes') {
+            return;
+        }
+
+        if (!PhotoMusic_Users::current_user_can('pm_ver_eventos')) {
+            return;
+        }
+
+        $id_evento = isset($_GET['id']) ? intval($_GET['id']) : 0;
+        if ($id_evento <= 0) return;
+
+        /* ---- CONFIRMAR PAGAMENTO ---- */
+        if (!empty($_GET['confirmar_pagamento'])) {
+            check_admin_referer('pm_confirmar_pagamento_' . $id_evento);
+
+            global $wpdb;
+            $wpdb->update(
+                $wpdb->prefix . 'pm_eventos',
+                [
+                    'pagamento_confirmado'    => 1,
+                    'pagamento_confirmado_em' => current_time('mysql'),
+                ],
+                ['id' => $id_evento]
+            );
+
+            // Conclui tarefa de pagamento pendente
+            if (class_exists('PhotoMusic_Tarefas')) {
+                $tarefa_pgto = PhotoMusic_Tarefas::get_pendente_por_tipo($id_evento, 'aguardar_pagamento');
+                if ($tarefa_pgto) {
+                    PhotoMusic_Tarefas::concluir($tarefa_pgto->id, wp_get_current_user()->display_name);
+                }
+            }
+
+            if (class_exists('PhotoMusic_Logs')) {
+                PhotoMusic_Logs::add('pagamento_confirmado', null, $id_evento, null, 'Pagamento confirmado por ' . wp_get_current_user()->display_name);
+            }
+
+            wp_redirect(admin_url('admin.php?page=photomusic-evento-detalhes&id=' . $id_evento . '&pagamento_ok=1'));
+            exit;
+        }
+    }
+
     public static function register_submenus() {
 
         // Lista de contratos (página de retorno após excluir/cancelar)
@@ -663,6 +728,45 @@ class PhotoMusic_Admin_Menu {
             'pm_ver_eventos',
             'photomusic-contratos',
             [__CLASS__, 'render_contratos_page']
+        );
+
+        add_submenu_page(
+            'photomusic-eventos',
+            'Banco de Pagamentos',
+            '💳 Banco de Pagamentos',
+            'manage_options',
+            'photomusic-links-pagamento',
+            function() {
+                if (class_exists('PhotoMusic_Links_Pagamento_Admin')) {
+                    PhotoMusic_Links_Pagamento_Admin::render();
+                }
+            }
+        );
+
+        add_submenu_page(
+            'photomusic-eventos',
+            'Contas Bancárias',
+            '🏦 Contas Bancárias',
+            'manage_options',
+            'photomusic-contas-bancarias',
+            function() {
+                if (class_exists('PhotoMusic_Contas_Bancarias_Admin')) {
+                    PhotoMusic_Contas_Bancarias_Admin::render();
+                }
+            }
+        );
+
+        add_submenu_page(
+            'photomusic-eventos',
+            'Tabela de Preços',
+            '💰 Tabela de Preços',
+            'manage_options',
+            'photomusic-tabela-precos',
+            function() {
+                if (class_exists('PhotoMusic_Tabela_Precos_Admin')) {
+                    PhotoMusic_Tabela_Precos_Admin::render();
+                }
+            }
         );
 
         add_submenu_page(
@@ -681,6 +785,15 @@ class PhotoMusic_Admin_Menu {
             'pm_ver_eventos',
             'photomusic-contrato-detalhes',
             [__CLASS__, 'render_contrato_detalhes_page']
+        );
+
+        add_submenu_page(
+            null,
+            'Enviar WhatsApp — Contrato',
+            'Enviar WhatsApp',
+            'pm_ver_eventos',
+            'photomusic-wpp-contrato',
+            [__CLASS__, 'render_wpp_contrato_page']
         );
 
         add_submenu_page(
@@ -1032,6 +1145,7 @@ class PhotoMusic_Admin_Menu {
                     <a class="button" target="_blank" href="' . esc_url($link_publico) . '">Ver Contrato</a>
                     <a class="button button-secondary" href="' . admin_url('admin.php?page=photomusic-contrato-detalhes&id=' . $c->id) . '">Detalhes</a>
                     <a class="button button-secondary" href="' . admin_url('admin.php?page=photomusic-evento-detalhes&id=' . $c->id_evento) . '">Ver Evento</a>
+                    <a class="button" style="background:#25d366;border-color:#1da851;color:#fff;" href="' . admin_url('admin.php?page=photomusic-wpp-contrato&id=' . $c->id) . '">📲 WhatsApp</a>
                   </td>';
             echo '</tr>';
         }
@@ -1408,6 +1522,42 @@ class PhotoMusic_Admin_Menu {
                 admin_url('admin-post.php?action=pm_criar_contrato&id_evento=' . $id_evento),
                 'pm_criar_contrato'
             ) . '">📄 Criar Contrato</a>';
+        }
+
+        /* ============================================================
+           SEÇÃO: PAGAMENTO
+        ============================================================ */
+        echo '<hr>';
+        echo '<h2>💰 Pagamento</h2>';
+
+        if (!empty($_GET['pagamento_ok'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>✅ Pagamento confirmado com sucesso!</p></div>';
+        }
+
+        global $wpdb;
+        $pgto_confirmado    = (bool) ($wpdb->get_var($wpdb->prepare(
+            "SELECT pagamento_confirmado FROM {$wpdb->prefix}pm_eventos WHERE id = %d",
+            $id_evento
+        )) ?? 0);
+        $pgto_confirmado_em = $wpdb->get_var($wpdb->prepare(
+            "SELECT pagamento_confirmado_em FROM {$wpdb->prefix}pm_eventos WHERE id = %d",
+            $id_evento
+        ));
+
+        if ($pgto_confirmado) {
+            echo '<p><span style="color:#2a7a2a;font-weight:600;font-size:15px;">✅ Pagamento confirmado'
+               . ($pgto_confirmado_em ? ' em ' . date('d/m/Y \à\s H:i', strtotime($pgto_confirmado_em)) : '')
+               . '</span></p>';
+        } else {
+            echo '<p><span style="color:#c07000;font-weight:600;">⏳ Pagamento pendente</span></p>';
+            $url_confirmar = wp_nonce_url(
+                admin_url('admin.php?page=photomusic-evento-detalhes&id=' . $id_evento . '&confirmar_pagamento=1'),
+                'pm_confirmar_pagamento_' . $id_evento
+            );
+            echo '<a class="button button-primary" href="' . esc_url($url_confirmar) . '" '
+               . 'onclick="return confirm(\'Confirmar que o pagamento deste evento foi recebido?\');">'
+               . '✅ Confirmar Pagamento</a>';
+            echo '<p class="description" style="margin-top:6px;">Ao confirmar, a tarefa de pagamento será concluída automaticamente e o cliente não receberá instruções de pagamento ao assinar o contrato.</p>';
         }
 
         /* ============================================================
@@ -1810,6 +1960,130 @@ class PhotoMusic_Admin_Menu {
 
         // Aqui entra o HTML da tela
         include dirname(__FILE__) . '/../admin/views/evento-operador-view.php';
+
+        echo '</div>';
+    }
+
+    /* ============================================================
+       PÁGINA: ENVIAR WHATSAPP MANUAL — CONTRATO
+    ============================================================ */
+    public static function render_wpp_contrato_page() {
+
+        if (!PhotoMusic_Users::current_user_can('pm_ver_eventos')) {
+            wp_die('Sem permissão.');
+        }
+
+        $id = intval($_GET['id'] ?? 0);
+        if (!$id) {
+            echo '<div class="wrap"><p>Contrato não informado.</p></div>';
+            return;
+        }
+
+        $contrato = class_exists('PhotoMusic_Contratos') ? PhotoMusic_Contratos::get($id) : null;
+        if (!$contrato) {
+            echo '<div class="wrap"><p>Contrato não encontrado.</p></div>';
+            return;
+        }
+
+        // Busca telefone e nome do cliente
+        global $wpdb;
+        $telefone = '';
+        $nome     = '';
+
+        if (class_exists('PhotoMusic_Contratantes')) {
+            $contratante = PhotoMusic_Contratantes::get_by_event($contrato->id_evento);
+            if ($contratante) {
+                $telefone = preg_replace('/\D/', '', $contratante->telefone ?? '');
+                $nome     = trim(($contratante->nome ?? '') ?: ($contratante->nome_completo ?? ''));
+            }
+        }
+
+        if (empty($telefone) && !empty($contrato->id_evento)) {
+            $ev = $wpdb->get_row($wpdb->prepare(
+                "SELECT telefone_contratante, nome_contratante FROM {$wpdb->prefix}pm_eventos WHERE id = %d LIMIT 1",
+                $contrato->id_evento
+            ));
+            if ($ev) {
+                $telefone = preg_replace('/\D/', '', $ev->telefone_contratante ?? '');
+                if (empty($nome)) $nome = $ev->nome_contratante ?? '';
+            }
+        }
+
+        $link_assinatura = home_url('/contrato/' . $contrato->token);
+        $voltar_url      = admin_url('admin.php?page=photomusic-contratos');
+
+        // Mensagem padrão inteligente
+        $nao_assinou = empty($contrato->assinatura_contratante_data);
+        $default_msg = $nao_assinou
+            ? "📋 Olá" . ($nome ? ", {$nome}" : '') . "! Passando para lembrar que seu contrato ainda está aguardando sua assinatura.\n\nAcesse o link para visualizar e assinar:\n{$link_assinatura}"
+            : "Olá" . ($nome ? ", {$nome}" : '') . "! Tudo bem? Sou da PhotoMusic Produções. ";
+
+        // Processa envio
+        $sucesso = false;
+        $erro    = '';
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pm_wpp_nonce'])) {
+            if (!wp_verify_nonce($_POST['pm_wpp_nonce'], 'pm_wpp_contrato_' . $id)) {
+                $erro = 'Token de segurança inválido. Recarregue e tente novamente.';
+            } else {
+                $mensagem_envio = sanitize_textarea_field($_POST['mensagem'] ?? '');
+                if (empty($mensagem_envio)) {
+                    $erro = 'Digite uma mensagem antes de enviar.';
+                } elseif (empty($telefone)) {
+                    $erro = 'Telefone do cliente não encontrado neste contrato.';
+                } else {
+                    $result = PhotoMusic_WhatsApp::send($telefone, $mensagem_envio, ['id_evento' => $contrato->id_evento ?? null]);
+                    if (is_wp_error($result)) {
+                        $erro = 'Erro ao enviar: ' . $result->get_error_message();
+                    } else {
+                        $sucesso = true;
+                        if (class_exists('PhotoMusic_Contratos')) {
+                            PhotoMusic_Contratos::registrar_log($id, 'wpp_manual', "Mensagem manual enviada para {$telefone}");
+                        }
+                    }
+                }
+            }
+        }
+
+        echo '<div class="wrap">';
+        echo '<h1>📲 Enviar WhatsApp — Contrato #' . intval($id) . '</h1>';
+        echo '<p><a class="button" href="' . esc_url($voltar_url) . '">← Voltar</a></p>';
+
+        if ($sucesso) {
+            echo '<div class="notice notice-success"><p>✅ Mensagem enviada com sucesso para <strong>' . esc_html($nome ?: $telefone) . '</strong>!</p></div>';
+        }
+        if ($erro) {
+            echo '<div class="notice notice-error"><p>⚠️ ' . esc_html($erro) . '</p></div>';
+        }
+
+        // Info do contrato
+        echo '<table class="widefat" style="max-width:600px;margin-bottom:16px;">';
+        echo '<tr><th>Cliente</th><td>' . esc_html($nome ?: '—') . '</td></tr>';
+        echo '<tr><th>Telefone</th><td>' . esc_html($telefone ? '+55 ' . $telefone : '⚠️ Não encontrado') . '</td></tr>';
+        echo '<tr><th>Evento</th><td>' . esc_html($contrato->motivo_evento ?? '—') . '</td></tr>';
+        echo '<tr><th>Status</th><td>' . esc_html(self::label_status($contrato->status_contrato)) . '</td></tr>';
+        echo '<tr><th>Assinatura cliente</th><td>' . ($nao_assinou ? '⏳ Pendente' : '✅ Assinado em ' . esc_html($contrato->assinatura_contratante_data)) . '</td></tr>';
+        echo '</table>';
+
+        if (empty($telefone)) {
+            echo '<div class="notice notice-warning"><p>⚠️ Não foi possível encontrar o telefone deste cliente. Cadastre o telefone no evento para habilitar o envio.</p></div>';
+        } else {
+            // Formulário de envio
+            echo '<form method="post" style="max-width:600px;">';
+            wp_nonce_field('pm_wpp_contrato_' . $id, 'pm_wpp_nonce');
+            echo '<input type="hidden" name="id" value="' . intval($id) . '">';
+            echo '<table class="form-table">';
+            echo '<tr><th><label for="pm_wpp_mensagem">Mensagem</label></th>';
+            echo '<td>';
+            echo '<textarea id="pm_wpp_mensagem" name="mensagem" rows="8" style="width:100%;font-family:monospace;font-size:13px;">'
+               . esc_textarea($default_msg)
+               . '</textarea>';
+            echo '<p class="description">Use *texto* para negrito no WhatsApp. O link de assinatura já está na mensagem padrão.</p>';
+            echo '</td></tr>';
+            echo '</table>';
+            echo '<p><button type="submit" class="button button-primary" style="background:#25d366;border-color:#1da851;">📲 Enviar pelo WhatsApp</button></p>';
+            echo '</form>';
+        }
 
         echo '</div>';
     }

@@ -188,7 +188,7 @@ class PhotoMusic_Eventos_API {
             "SELECT id, motivo_evento, codigo_interno, data_evento, horario_inicio, token_evento
              FROM {$wpdb->prefix}pm_eventos
              WHERE chatbot_ativo = 1
-               AND status_evento != 'desativado'
+               AND (status_evento IS NULL OR status_evento != 'desativado')
              ORDER BY data_evento DESC, id DESC"
         );
 
