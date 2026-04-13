@@ -3,8 +3,9 @@
 const axios = require("axios");
 
 const URL_PAUSA_ESPECIAL = "https://photomusic.com.br/wp-content/dados/pausaEspecial.json";
+
 let pausadosEspeciais = [];
-let sessoesRetomadas = {};  // ✅ NOVO: Controlar ativoLocal por número em sessão
+let sessoesRetomadas = {};  // Controlar ativoLocal por número em sessão
 
 // ======================================================
 // NORMALIZAÇÃO DE NÚMEROS (MESMA DO index.js)
@@ -44,13 +45,12 @@ function normalizarNumero(numero) {
 // ================= CARREGAR JSON =================
 async function carregarPausadosEspeciais() {
   try {
-    const resposta = await axios.get(URL_PAUSA_ESPECIAL);
-    pausadosEspeciais = resposta.data || [];
-    
+    const resposta = await axios.get(URL_PAUSA_ESPECIAL, { timeout: 5000 });
+    pausadosEspeciais = Array.isArray(resposta.data) ? resposta.data : [];
     console.log(`✅ ${pausadosEspeciais.length} pausados carregados do JSON`);
     return pausadosEspeciais;
   } catch (erro) {
-    console.error(`⚠️ Erro ao carregar: ${erro.message}`);
+    console.error(`⚠️ Erro ao carregar pausaEspecial.json: ${erro.message}`);
     pausadosEspeciais = [];
     return pausadosEspeciais;
   }
@@ -105,6 +105,10 @@ function estaPausadoEspecial(chatId) {
 // Comando: retomarespecial 21 99999-8888
 // Cria SESSÃO para este número com ativoLocal = false
 async function retomarEspecial(telefone) {
+  // Se o array está vazio (ex: race condition no startup), recarrega antes
+  if (pausadosEspeciais.length === 0) {
+    await carregarPausadosEspeciais();
+  }
   const telefonNorm = normalizarTelefone(telefone);
   
   console.log(`\n✅ RETOMANDO: ${telefone}`);
@@ -133,6 +137,9 @@ async function retomarEspecial(telefone) {
 // Comando: pausarespecial 21 99999-8888
 // Deleta SESSÃO para este número (volta ao padrão: pausado)
 async function pausarEspecial(telefone) {
+  if (pausadosEspeciais.length === 0) {
+    await carregarPausadosEspeciais();
+  }
   const telefonNorm = normalizarTelefone(telefone);
   
   console.log(`\n🔒 PAUSANDO: ${telefone}`);
@@ -197,9 +204,9 @@ function exibirEstadoPausas() {
 // ================= INICIALIZAR =================
 async function inicializarPausaEspecial() {
   console.log(`\n🔒 Sistema de Pausa Especial inicializado`);
-  console.log(`📁 JSON: pausaEspecial.json (lista de pausados)`);
+  console.log(`📁 URL: ${URL_PAUSA_ESPECIAL}`);
   console.log(`💾 Sessões: sessoesRetomadas{} (ativoLocal por número)\n`);
-  
+
   await carregarPausadosEspeciais();
 }
 

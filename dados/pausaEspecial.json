@@ -248,5 +248,40 @@
     "telefone": "+55 21 96708-2501",
     "nome": "Mario Nazeanze",
     "ativo": true
+  },
+  {
+    "telefone": "+55 21 99943-2122",
+    "nome": "Portaria Arboredo",
+    "ativo": true
+  },
+  {
+    "telefone": "+55 21 99967-8843",
+    "nome": "Viviane Catequista",
+    "ativo": true
+  },
+  {
+    "telefone": "+55 21 97596-4744",
+    "nome": "Rita Capela da Fonte",
+    "ativo": true
+  },
+  {
+    "telefone": "+55 21 97312-7533",
+    "nome": "Pedrinho",
+    "ativo": true
+  },
+  {
+    "telefone": "+55 21 97724-8982",
+    "nome": "Fernanda Dinda",
+    "ativo": true
+  },
+  {
+    "telefone": "+55 21 99879-3604",
+    "nome": "Luiz Contador",
+    "ativo": true
+  },
+  {
+    "telefone": "+55 51 9400-6450",
+    "nome": "Ana cliente",
+    "ativo": true
   }
 ]
