@@ -66,12 +66,54 @@ class PhotoMusic_Galeria_Controller {
         }
 
         /* ============================================================
-           VALIDAR DEVICE
+           CONTROLE DE ACESSO (PhotoMusic Pro)
+           - Convidado: apenas mobile, máx. 10 acessos/dia
+           - Contratante: mobile + desktop, sem limite
         ============================================================ */
-        $device_hash = PhotoMusic_Helpers::device_hash();
+        $eh_contratante = (($aceite->tipo_aceite ?? 'convidado') === 'contratante');
 
-        if (!empty($aceite->device_hash) && $device_hash !== $aceite->device_hash) {
-            wp_die('Este link não pertence a este dispositivo.');
+        if (!$eh_contratante) {
+
+            // Bloquear desktop
+            $ua        = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
+            $is_mobile = (
+                strpos($ua, 'mobile')  !== false ||
+                strpos($ua, 'android') !== false ||
+                strpos($ua, 'iphone')  !== false ||
+                strpos($ua, 'ipad')    !== false
+            );
+
+            if (!$is_mobile) {
+                wp_die('<div style="text-align:center;padding:60px 20px;font-family:system-ui,sans-serif;">
+                    <p style="font-size:3rem;">📱</p>
+                    <h2 style="color:#1a1a1a;margin:0 0 12px;">Acesse pelo celular</h2>
+                    <p style="color:#555;max-width:380px;margin:0 auto;line-height:1.6;">
+                        A galeria para convidados está disponível apenas em dispositivos móveis.<br>
+                        Abra o link pelo seu celular para acessar suas fotos.
+                    </p>
+                </div>');
+            }
+
+            // Limite de 10 acessos por dia
+            $hoje       = current_time('Y-m-d');
+            $total_hoje = (int) $this->wpdb->get_var($this->wpdb->prepare(
+                "SELECT COUNT(*) FROM {$this->wpdb->prefix}pm_logs
+                 WHERE id_aceite = %d AND tipo = 'acesso_galeria'
+                   AND DATE(data) = %s",
+                $aceite->id,
+                $hoje
+            ));
+
+            if ($total_hoje >= 10) {
+                wp_die('<div style="text-align:center;padding:60px 20px;font-family:system-ui,sans-serif;">
+                    <p style="font-size:3rem;">⏳</p>
+                    <h2 style="color:#1a1a1a;margin:0 0 12px;">Limite diário atingido</h2>
+                    <p style="color:#555;max-width:380px;margin:0 auto;line-height:1.6;">
+                        Você atingiu o limite de 10 acessos por dia.<br>
+                        Tente novamente amanhã.
+                    </p>
+                </div>');
+            }
         }
 
         /* ============================================================
@@ -115,6 +157,7 @@ class PhotoMusic_Galeria_Controller {
         }
 
         // Variáveis disponíveis no template:
+        $eh_contratante = (($aceite->tipo_aceite ?? 'convidado') === 'contratante');
         $evento_nome    = $evento->motivo_evento ?? ($evento->nome_evento ?? '');
         $evento_data    = $evento->data_evento;
         $slug           = $evento->codigo_interno;
@@ -123,7 +166,7 @@ class PhotoMusic_Galeria_Controller {
         $aceite_nome    = $aceite->nome ?? '';
         $link_fotoshare = $evento->link_galeria_convidado ?? ''; // fallback único
 
-        // Carrega serviços com links individuais (um evento pode ter vários)
+        // 1ª tentativa: pm_eventos_servicos (campo link_galeria — serviços do plugin)
         $servicos_links = $this->wpdb->get_results($this->wpdb->prepare(
             "SELECT s.nome AS nome_servico, s.slug AS tipo, es.link_galeria AS link_convidado
              FROM {$this->wpdb->prefix}pm_eventos_servicos es
@@ -135,13 +178,27 @@ class PhotoMusic_Galeria_Controller {
             $evento->id
         ));
 
-        // Se não há serviços individuais mas há link único, usa o fallback
+        // 2ª tentativa: pm_event_services (tabela usada pela tela "Links por Serviço")
+        if (empty($servicos_links)) {
+            $servicos_links = $this->wpdb->get_results($this->wpdb->prepare(
+                "SELECT nome_servico, tipo, link_convidado
+                 FROM {$this->wpdb->prefix}pm_event_services
+                 WHERE id_evento = %d
+                   AND status_servico = 'ativo'
+                   AND link_convidado IS NOT NULL
+                   AND link_convidado != ''
+                 ORDER BY id ASC",
+                $evento->id
+            ));
+        }
+
+        // 3ª tentativa: link único no campo do evento (fallback legado)
         if (empty($servicos_links) && !empty($link_fotoshare)) {
-            $fallback        = new stdClass();
-            $fallback->nome_servico  = 'Galeria';
-            $fallback->tipo          = 'foto';
+            $fallback              = new stdClass();
+            $fallback->nome_servico = 'Galeria';
+            $fallback->tipo         = 'foto';
             $fallback->link_convidado = $link_fotoshare;
-            $servicos_links  = [$fallback];
+            $servicos_links        = [$fallback];
         }
 
         // ============================================================

@@ -289,20 +289,44 @@ class PhotoMusic_Installer {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             id_evento BIGINT UNSIGNED NOT NULL,
             id_aceite BIGINT UNSIGNED NOT NULL,
+            token_aceite VARCHAR(64) DEFAULT NULL,
             tipo_servico VARCHAR(50) DEFAULT NULL,
-            nome_servico VARCHAR(255) DEFAULT NULL,
-            total_views INT DEFAULT 1,
-            primeiro_acesso DATETIME DEFAULT CURRENT_TIMESTAMP,
-            ultimo_acesso DATETIME DEFAULT CURRENT_TIMESTAMP,
+            nome_servico VARCHAR(150) DEFAULT NULL,
+            total_views INT UNSIGNED NOT NULL DEFAULT 0,
+            total_cliques INT UNSIGNED NOT NULL DEFAULT 0,
             ip VARCHAR(45) DEFAULT NULL,
             user_agent TEXT DEFAULT NULL,
+            primeiro_acesso DATETIME DEFAULT NULL,
+            ultimo_acesso DATETIME DEFAULT NULL,
             PRIMARY KEY (id),
             KEY idx_evento (id_evento),
             KEY idx_aceite (id_aceite),
-            UNIQUE KEY uniq_view (id_evento, id_aceite, nome_servico)
+            KEY idx_token_aceite (token_aceite),
+            UNIQUE KEY uk_aceite_servico (id_aceite, tipo_servico)
         ) $charset;";
 
         dbDelta($sql_views);
+
+        /* ============================================================
+        GALERIA — LOG DE ACESSOS (auditoria)
+        ============================================================ */
+        $tbl_logs = $wpdb->prefix . 'pm_logs';
+
+        $sql_logs = "CREATE TABLE $tbl_logs (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            id_evento BIGINT UNSIGNED NOT NULL,
+            id_aceite BIGINT UNSIGNED DEFAULT NULL,
+            tipo VARCHAR(50) NOT NULL DEFAULT '',
+            ip VARCHAR(45) DEFAULT NULL,
+            user_agent TEXT DEFAULT NULL,
+            data DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            KEY idx_evento (id_evento),
+            KEY idx_aceite (id_aceite),
+            KEY idx_tipo (tipo)
+        ) $charset;";
+
+        dbDelta($sql_logs);
 
         /* ============================================================
            TABELA: ACEITE DO CONTRATANTE
@@ -1344,7 +1368,7 @@ class PhotoMusic_Installer {
         /* ============================================================
         GALERIA — GARANTE TABELA DE LOG DE VISUALIZAÇÃO
         ============================================================ */
-        $tbl_views      = $wpdb->prefix . 'pm_galeria_views';
+        $tbl_views       = $wpdb->prefix . 'pm_galeria_views';
         $charset_collate = $wpdb->get_charset_collate();
 
         $wpdb->query("
@@ -1352,16 +1376,41 @@ class PhotoMusic_Installer {
                 id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                 id_evento BIGINT UNSIGNED NOT NULL,
                 id_aceite BIGINT UNSIGNED NOT NULL,
+                token_aceite VARCHAR(64) DEFAULT NULL,
                 tipo_servico VARCHAR(50) DEFAULT NULL,
-                nome_servico VARCHAR(255) DEFAULT NULL,
-                total_views INT DEFAULT 1,
-                primeiro_acesso DATETIME DEFAULT CURRENT_TIMESTAMP,
-                ultimo_acesso DATETIME DEFAULT CURRENT_TIMESTAMP,
+                nome_servico VARCHAR(150) DEFAULT NULL,
+                total_views INT UNSIGNED NOT NULL DEFAULT 0,
+                total_cliques INT UNSIGNED NOT NULL DEFAULT 0,
                 ip VARCHAR(45) DEFAULT NULL,
                 user_agent TEXT DEFAULT NULL,
+                primeiro_acesso DATETIME DEFAULT NULL,
+                ultimo_acesso DATETIME DEFAULT NULL,
                 PRIMARY KEY (id),
                 KEY idx_evento (id_evento),
-                KEY idx_aceite (id_aceite)
+                KEY idx_aceite (id_aceite),
+                KEY idx_token_aceite (token_aceite),
+                UNIQUE KEY uk_aceite_servico (id_aceite, tipo_servico)
+            ) $charset_collate
+        ");
+
+        /* ============================================================
+        GALERIA — GARANTE TABELA DE LOG DE ACESSOS
+        ============================================================ */
+        $tbl_logs_acesso = $wpdb->prefix . 'pm_logs';
+
+        $wpdb->query("
+            CREATE TABLE IF NOT EXISTS $tbl_logs_acesso (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                id_evento BIGINT UNSIGNED NOT NULL,
+                id_aceite BIGINT UNSIGNED DEFAULT NULL,
+                tipo VARCHAR(50) NOT NULL DEFAULT '',
+                ip VARCHAR(45) DEFAULT NULL,
+                user_agent TEXT DEFAULT NULL,
+                data DATETIME NOT NULL,
+                PRIMARY KEY (id),
+                KEY idx_evento (id_evento),
+                KEY idx_aceite (id_aceite),
+                KEY idx_tipo (tipo)
             ) $charset_collate
         ");
 
@@ -1433,6 +1482,7 @@ class PhotoMusic_Installer {
             'versao_termo' => "VARCHAR(20) NOT NULL DEFAULT '1.0'",
             'origem'       => "VARCHAR(50) NULL",
             'idioma'       => "CHAR(2) NOT NULL DEFAULT 'pt'",
+            'tipo_aceite'  => "ENUM('convidado','contratante') NOT NULL DEFAULT 'convidado'",
         ];
 
         foreach ($cols as $col_name => $col_def) {

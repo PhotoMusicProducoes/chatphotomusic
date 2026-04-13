@@ -111,7 +111,7 @@ class PhotoMusic_Contratos_Lembrete {
             $contrato->id
         ));
 
-        $link    = home_url('/contrato/' . $contrato->token);
+        $link    = PhotoMusic_Contratos_Actions::get_link_assinatura($contrato->token);
         $mensagem = "📋 *Lembrete:* Seu contrato ainda está aguardando sua assinatura"
                   . " (enviado há {$dias} dia" . ($dias > 1 ? 's' : '') . ").\n\n"
                   . "Acesse o link abaixo para visualizar e assinar:\n{$link}";

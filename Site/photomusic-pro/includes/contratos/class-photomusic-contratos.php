@@ -87,10 +87,10 @@ class PhotoMusic_Contratos {
     /* ============================================================
        CRIAR CONTRATO COMPLETO
        ============================================================ */
-    public static function criar_contrato_completo($id_evento, $id_contratante, $conteudo_html) {
+    public static function criar_contrato_completo($id_evento, $id_contratante, $conteudo_html, $bypass_permissao = false) {
         global $wpdb;
 
-        if (!PhotoMusic_Contratos_Permissoes::pode_criar()) {
+        if (!$bypass_permissao && !PhotoMusic_Contratos_Permissoes::pode_criar()) {
             wp_die('Você não tem permissão para criar contratos.');
         }
 

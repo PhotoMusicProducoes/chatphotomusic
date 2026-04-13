@@ -1368,6 +1368,24 @@ class PhotoMusic_Admin_Menu {
 
         echo '</div>';
 
+        // ── Ordem de Serviço — disponível para qualquer status ───
+        echo '<div style="margin-top:10px;">';
+        $url_gerar_os = wp_nonce_url(
+            admin_url('admin-post.php?action=pm_gerar_os&contrato_id=' . $contrato->id),
+            'pm_gerar_os'
+        );
+        if (!empty($contrato->os_path)) {
+            // OS já gerada: botão baixar + botão regenerar
+            echo '<a class="button button-primary" target="_blank" href="' . esc_url($contrato->os_path) . '">📋 Baixar Ordem de Serviço</a>';
+            echo ' &nbsp; <a class="button button-secondary" target="_blank" href="' . esc_url($url_gerar_os) . '" title="Regera o PDF com os dados atuais">🔄 Regenerar OS</a>';
+        } else {
+            echo '<a class="button button-secondary" target="_blank" href="' . esc_url($url_gerar_os) . '">📋 Gerar Ordem de Serviço</a>';
+        }
+        if (!empty($_GET['os_erro'])) {
+            echo ' <span style="color:#a00; margin-left:8px;">⚠ Erro ao gerar OS. Verifique se a biblioteca TCPDF está instalada.</span>';
+        }
+        echo '</div>';
+
         // Botões de edição de conteúdo — disponíveis para quem pode editar, em qualquer status antes de assinado
         $status_editaveis = ['rascunho', 'aguardando_assinatura_admin', 'aguardando_assinatura_contratante'];
         if (in_array($status, $status_editaveis) && PhotoMusic_Contratos_Permissoes::pode_editar()) {
@@ -1667,37 +1685,51 @@ class PhotoMusic_Admin_Menu {
                 . 'O bot substitui <strong>TELEFONE</strong> pelo número do convidado. '
                 . 'O sistema verifica automaticamente se já fez aceite e redireciona para a galeria.'
                 . '</p>';
+
+            // --- Link do contratante (token gerado ou aceite inicial) ---
+            if ($codigo_interno) {
+                global $wpdb;
+
+                // Busca o token mais recente do contratante para este evento
+                $token_cont = $wpdb->get_var($wpdb->prepare(
+                    "SELECT token_acesso FROM {$wpdb->prefix}pm_aceites_evento
+                     WHERE id_evento = %d AND tipo_aceite = 'contratante'
+                       AND token_acesso IS NOT NULL AND token_acesso != ''
+                     ORDER BY id DESC LIMIT 1",
+                    $id_evento
+                ));
+
+                if ($token_cont) {
+                    // Contratante já aceitou → mostra link direto da galeria com token
+                    $url_cont = home_url('/galeria/' . $codigo_interno . '/?token=' . $token_cont);
+                    echo '<p><strong>🔑 Link da galeria para o contratante:</strong><br>';
+                    echo '<code style="background:#e8f5e9;padding:3px 8px;border-radius:4px;font-size:13px;">'
+                        . esc_html($url_cont) . '</code> ';
+                    echo '<button type="button" class="button button-small" '
+                        . 'onclick="navigator.clipboard.writeText(\'' . esc_js($url_cont) . '\').then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
+                        . '📋 Copiar</button></p>';
+                    echo '<p style="color:#666;font-size:0.85em;margin-top:-8px;">'
+                        . 'Contratante já aceitou os termos. Este link abre a galeria diretamente (celular e computador, sem limite de acessos).'
+                        . '</p>';
+                } else {
+                    // Contratante ainda não aceitou → mostra link de primeiro acesso
+                    $url_aceite_cont = home_url('/galeria/' . $codigo_interno . '/aceite/?tipo=contratante');
+                    echo '<p><strong>🔑 Link de primeiro acesso do contratante:</strong><br>';
+                    echo '<code style="background:#fff8e1;padding:3px 8px;border-radius:4px;font-size:13px;">'
+                        . esc_html($url_aceite_cont) . '</code> ';
+                    echo '<button type="button" class="button button-small" '
+                        . 'onclick="navigator.clipboard.writeText(\'' . esc_js($url_aceite_cont) . '\').then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
+                        . '📋 Copiar</button></p>';
+                    echo '<p style="color:#666;font-size:0.85em;margin-top:-8px;">'
+                        . 'Contratante ainda não aceitou os termos. Após o aceite, este painel exibirá o link definitivo com token.'
+                        . '</p>';
+                }
+            }
         } elseif ($codigo_interno) {
             echo '<div class="notice notice-warning inline"><p>⚠️ Token do evento não gerado. Acesse <strong>Configurações → Ferramentas → Executar Atualizações</strong> para gerar.</p></div>';
         } else {
             echo '<div class="notice notice-warning inline"><p>⚠️ Evento sem <em>código interno</em>. Salve o evento novamente para gerar o código.</p></div>';
         }
-
-        // --- Link direto para o contratante ---
-        $link_cont = $evento['link_galeria_contratante'] ?? '';
-
-        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin-top:12px;">';
-        echo '<input type="hidden" name="action" value="pm_salvar_galeria_links">';
-        echo '<input type="hidden" name="id_evento" value="' . intval($id_evento) . '">';
-        wp_nonce_field('pm_salvar_galeria_links', 'pm_galeria_nonce');
-        echo '<table class="form-table" style="max-width:680px;">';
-        echo '<tr>';
-        echo '<th scope="row"><label for="pm_link_cont">🔑 Link do contratante (acesso completo):</label></th>';
-        echo '<td>';
-        echo '<input type="url" id="pm_link_cont" name="link_galeria_contratante" '
-            . 'value="' . esc_attr($link_cont) . '" class="regular-text" style="width:100%;" placeholder="https://...">';
-        echo '<p class="description">Link com acesso total à galeria (download, PC). Diferente do link para convidados.</p>';
-        echo '</td>';
-        echo '</tr>';
-        echo '</table>';
-        echo '<p><button type="submit" class="button button-primary">💾 Salvar</button>';
-        if ($link_cont) {
-            echo ' &nbsp;<button type="button" class="button button-small" '
-                . 'onclick="navigator.clipboard.writeText(\'' . esc_js($link_cont) . '\').then(()=>this.textContent=\'✅ Copiado!\').catch(()=>{})">'
-                . '📋 Copiar link contratante</button>';
-        }
-        echo '</p>';
-        echo '</form>';
 
         // --- CRUD de links por serviço ---
         echo '<hr style="margin:20px 0;">';
@@ -1730,7 +1762,7 @@ class PhotoMusic_Admin_Menu {
 
         if (!empty($servicos_cadastrados)) {
             echo '<table class="widefat striped" style="max-width:900px;">';
-            echo '<thead><tr><th>Tipo</th><th>Nome</th><th>Link para convidados (Fotoshare)</th><th>Status</th><th></th></tr></thead><tbody>';
+            echo '<thead><tr><th>Tipo</th><th>Nome</th><th>Link Fotoshare (convidados/contratante)</th><th>Status</th><th></th></tr></thead><tbody>';
 
             foreach ($servicos_cadastrados as $sv) {
                 $tipo_label = $tipo_labels[$sv->tipo] ?? $sv->tipo;
@@ -1794,15 +1826,9 @@ class PhotoMusic_Admin_Menu {
         echo '</tr>';
 
         echo '<tr>';
-        echo '<th scope="row"><label for="pm_sv_link">Link Fotoshare (convidados):</label></th>';
+        echo '<th scope="row"><label for="pm_sv_link">Link Fotoshare (convidados/contratante):</label></th>';
         echo '<td><input type="url" id="pm_sv_link" name="link_convidado" required '
             . 'class="regular-text" style="width:100%;" placeholder="https://fotoshare.co/e/..."></td>';
-        echo '</tr>';
-
-        echo '<tr>';
-        echo '<th scope="row"><label for="pm_sv_link_cont">Link completo (contratante):</label></th>';
-        echo '<td><input type="url" id="pm_sv_link_cont" name="link_contratante" '
-            . 'class="regular-text" style="width:100%;" placeholder="https://... (opcional)"></td>';
         echo '</tr>';
 
         echo '</table>';
@@ -2009,7 +2035,7 @@ class PhotoMusic_Admin_Menu {
             }
         }
 
-        $link_assinatura = home_url('/contrato/' . $contrato->token);
+        $link_assinatura = PhotoMusic_Contratos_Actions::get_link_assinatura($contrato->token);
         $voltar_url      = admin_url('admin.php?page=photomusic-contratos');
 
         // Mensagem padrão inteligente

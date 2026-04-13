@@ -7,11 +7,14 @@ class PhotoMusic_Events {
 
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'register_menu']);
-        add_action('admin_post_pm_salvar_evento',      [__CLASS__, 'handle_salvar_evento']);
-        add_action('admin_post_pm_excluir_evento',     [__CLASS__, 'handle_excluir_evento']);
-        add_action('admin_post_pm_concluir_evento',    [__CLASS__, 'handle_concluir_evento']);
-        add_action('admin_post_pm_confirmar_pagamento',[__CLASS__, 'handle_confirmar_pagamento']);
-        add_action('wp_ajax_pm_buscar_link_pagamento', [__CLASS__, 'ajax_buscar_link_pagamento']);
+        add_action('admin_post_pm_salvar_evento',           [__CLASS__, 'handle_salvar_evento']);
+        add_action('admin_post_pm_excluir_evento',          [__CLASS__, 'handle_excluir_evento']);
+        add_action('admin_post_pm_concluir_evento',         [__CLASS__, 'handle_concluir_evento']);
+        add_action('admin_post_pm_confirmar_pagamento',     [__CLASS__, 'handle_confirmar_pagamento']);
+        add_action('admin_post_pm_desativar_chatbot_todos', [__CLASS__, 'handle_desativar_chatbot_todos']);
+        add_action('admin_post_pm_chatbot_on',              [__CLASS__, 'handle_chatbot_on']);
+        add_action('admin_post_pm_chatbot_off',             [__CLASS__, 'handle_chatbot_off']);
+        add_action('wp_ajax_pm_buscar_link_pagamento',      [__CLASS__, 'ajax_buscar_link_pagamento']);
     }
 
     /* ============================================================
@@ -117,7 +120,25 @@ class PhotoMusic_Events {
             echo '<div class="notice notice-success is-dismissible"><p>✅ Evento marcado como concluído.</p></div>';
         }
 
+        // Conta quantos eventos estão ativos no ChatBot
+        $ativos_chatbot = array_filter((array)$eventos, fn($e) => !empty($e->chatbot_ativo));
+
         echo '<a href="' . esc_url(add_query_arg(['page' => 'photomusic-eventos', 'acao' => 'novo'], admin_url('admin.php'))) . '" class="button button-primary">+ Criar Novo Evento</a>';
+
+        if (!empty($ativos_chatbot)) {
+            $url_desativar = wp_nonce_url(
+                admin_url('admin-post.php?action=pm_desativar_chatbot_todos'),
+                'pm_desativar_chatbot_todos'
+            );
+            echo ' <a href="' . esc_url($url_desativar) . '" class="button" style="background:#c0392b; color:#fff; border-color:#a93226;"'
+               . ' onclick="return confirm(\'Desativar visibilidade no ChatBot de TODOS os ' . count($ativos_chatbot) . ' evento(s) ativos?\nEsta ação não remove os eventos, apenas os oculta do ChatBot.\');">'
+               . '🤖 Desativar todos no ChatBot (' . count($ativos_chatbot) . ')</a>';
+        }
+
+        if (isset($_GET['chatbot_desativados'])) {
+            $n = intval($_GET['chatbot_desativados']);
+            echo '<div class="notice notice-success is-dismissible" style="margin-top:10px;"><p>✅ ' . $n . ' evento(s) desativado(s) no ChatBot.</p></div>';
+        }
 
         if (empty($eventos)) {
             echo '<p style="margin-top:20px;">Nenhum evento encontrado.</p></div>';
@@ -134,6 +155,7 @@ class PhotoMusic_Events {
                 <th>Contratante</th>
                 <th>Tipo</th>
                 <th>Status</th>
+                <th style="text-align:center;">ChatBot</th>
                 <th>Ações</th>
             </tr></thead><tbody>';
 
@@ -165,6 +187,20 @@ class PhotoMusic_Events {
                 $status_label = '<span style="color:#2271b1;">Ativo</span>';
             }
             echo '<td>' . $status_label . '</td>';
+
+            // Coluna ChatBot — toggle individual
+            $chatbot_on  = !empty($e->chatbot_ativo);
+            $toggle_acao = $chatbot_on ? 'pm_chatbot_off' : 'pm_chatbot_on';
+            $toggle_url  = wp_nonce_url(
+                admin_url('admin-post.php?action=' . $toggle_acao . '&id=' . $e->id),
+                $toggle_acao . '_' . $e->id
+            );
+            if ($chatbot_on) {
+                echo '<td style="text-align:center;"><a href="' . esc_url($toggle_url) . '" title="Clique para ocultar do ChatBot" style="text-decoration:none; font-size:18px;">✅</a></td>';
+            } else {
+                echo '<td style="text-align:center;"><a href="' . esc_url($toggle_url) . '" title="Clique para ativar no ChatBot" style="text-decoration:none; font-size:18px; opacity:0.3;">🤖</a></td>';
+            }
+
             $excluir_url = wp_nonce_url(
                 admin_url('admin-post.php?action=pm_excluir_evento&id=' . $e->id),
                 'pm_excluir_evento_' . $e->id
@@ -286,6 +322,16 @@ class PhotoMusic_Events {
                class="button">Detalhes</a>
             <a href="<?php echo esc_url(add_query_arg(['page' => 'photomusic-add-servico', 'id' => $id_evento], admin_url('admin.php'))); ?>"
                class="button button-primary">Serviços</a>
+            <?php
+            // Botão Ver Contrato — busca o contrato vinculado ao evento
+            if (class_exists('PhotoMusic_Contratos')) {
+                $contrato_evento = PhotoMusic_Contratos::get_by_event($id_evento);
+                if ($contrato_evento) {
+                    $url_contrato = add_query_arg(['page' => 'photomusic-contrato-detalhes', 'id' => $contrato_evento->id], admin_url('admin.php'));
+                    echo '<a href="' . esc_url($url_contrato) . '" class="button" style="background:#1565c0; color:#fff; border-color:#1565c0;">📄 Ver Contrato</a>';
+                }
+            }
+            ?>
             <?php if (($evento->status_evento ?? '') === 'ativo'):
                 $concluir_url = wp_nonce_url(
                     admin_url('admin-post.php?action=pm_concluir_evento&id=' . $id_evento . '&redirect_id=' . $id_evento),
@@ -1987,6 +2033,61 @@ class PhotoMusic_Events {
         }
         exit;
     }
+
+    /* ============================================================
+       HANDLER: DESATIVAR CHATBOT EM TODOS OS EVENTOS
+    ============================================================ */
+    public static function handle_desativar_chatbot_todos() {
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Acesso negado.');
+        }
+
+        if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', 'pm_desativar_chatbot_todos')) {
+            wp_die('Requisição inválida.');
+        }
+
+        global $wpdb;
+        $n = $wpdb->query(
+            "UPDATE {$wpdb->prefix}pm_eventos SET chatbot_ativo = 0 WHERE chatbot_ativo = 1"
+        );
+
+        wp_redirect(admin_url('admin.php?page=photomusic-eventos&chatbot_desativados=' . intval($n)));
+        exit;
+    }
+
+    /* ============================================================
+       HANDLER: TOGGLE CHATBOT — LIGAR / DESLIGAR POR EVENTO
+    ============================================================ */
+    public static function handle_chatbot_toggle($novo_valor) {
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Acesso negado.');
+        }
+
+        $id   = intval($_GET['id'] ?? 0);
+        $acao = $novo_valor ? 'pm_chatbot_on' : 'pm_chatbot_off';
+
+        if (!$id || !wp_verify_nonce($_GET['_wpnonce'] ?? '', $acao . '_' . $id)) {
+            wp_die('Requisição inválida.');
+        }
+
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'pm_eventos',
+            ['chatbot_ativo' => $novo_valor],
+            ['id' => $id],
+            ['%d'],
+            ['%d']
+        );
+
+        wp_redirect(admin_url('admin.php?page=photomusic-eventos'));
+        exit;
+    }
+
+    /* Wrappers registrados no init() */
+    public static function handle_chatbot_on()  { self::handle_chatbot_toggle(1); }
+    public static function handle_chatbot_off() { self::handle_chatbot_toggle(0); }
 
     /* ============================================================
        HANDLER: CONFIRMAR PAGAMENTO

@@ -775,7 +775,7 @@ class PhotoMusic_Precadastro_Evento {
         if (class_exists('PhotoMusic_Contratos')) {
             $existente = PhotoMusic_Contratos::get_by_event($evento->id);
             if (!$existente) {
-                PhotoMusic_Contratos::criar_contrato_simplificado($evento->id);
+                PhotoMusic_Contratos::criar_contrato_simplificado($evento->id, null, true);
             }
         }
 

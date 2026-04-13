@@ -17,7 +17,7 @@ const {
   listarPausadosEspeciais,
   inicializarPausaEspecial
 } = require("./utils/index.js");
-const { estaPausado, pausarCliente, retomarCliente } = require("./utils/pauseControl.js");
+const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require("./utils/pauseControl.js");
 
 const { sessions } = require("./utils/sessions");
 const { resetSession } = require("./utils/resetSession");
@@ -94,9 +94,8 @@ function normalizarNumero(numero) {
 }
 
 // ======================================================
-// CONTROLE DE PAUSA
+// CONTROLE DE PAUSA  (estado persistido em utils/pauseControl.js)
 // ======================================================
-const clientesPausados = new Set();
 
 // ======================================================
 // CONFIGURAÇÃO DO OPERADOR
@@ -804,7 +803,7 @@ async function handleIncomingMessage(message) {
     // ======================================================
     if (corpoNormalizado.startsWith("pausar")) {
       const normalizado = normalizarNumero(numero);
-      clientesPausados.add(normalizado);
+      pausarCliente(normalizado);
       await sendText(OPERADOR_TELEFONE_ID, `⏸ Atendimento pausado para ${normalizado}`);
       return;
     }
@@ -815,8 +814,8 @@ async function handleIncomingMessage(message) {
     // ======================================================
     if (corpoNormalizado.startsWith("retomar")) {
       const normalizado = normalizarNumero(numero);
-      clientesPausados.delete(normalizado);
-      
+      retomarCliente(normalizado);
+
       // 📌 AVISAR O CLIENTE QUE RETOMOU
       await sendTyping(normalizado);
       await new Promise(r => setTimeout(r, 500));
@@ -849,7 +848,7 @@ async function handleIncomingMessage(message) {
     // ======================================================
     if (corpoNormalizado.startsWith("resetar")) {
       const normalizado = normalizarNumero(numero);
-      clientesPausados.delete(normalizado);
+      retomarCliente(normalizado);
       delete sessions[normalizado];
       await mostrarMenuInicial(normalizado);
       await sendText(OPERADOR_TELEFONE_ID, `🔄 Atendimento resetado para ${normalizado}`);
@@ -986,8 +985,8 @@ async function handleIncomingMessage(message) {
 
       const chatIdCliente = numeroCliente;
 
-      const estavaPausado = clientesPausados.has(chatIdCliente);
-      if (estavaPausado) clientesPausados.delete(chatIdCliente);
+      const estavaPausado = estaPausado(chatIdCliente);
+      if (estavaPausado) retomarCliente(chatIdCliente);
 
       if (!sessions[chatIdCliente]) {
         sessions[chatIdCliente] = {
@@ -1169,7 +1168,7 @@ async function handleIncomingMessage(message) {
         await enviarResumoOperador(OPERADOR_TELEFONE_ID, session);
 
         // 📌 REPAUSAR SE ESTAVA PAUSADO
-        if (estavaPausado) clientesPausados.add(chatIdCliente);
+        if (estavaPausado) pausarCliente(chatIdCliente);
 
         await sendText(
           OPERADOR_TELEFONE_ID,
@@ -1247,7 +1246,7 @@ async function handleIncomingMessage(message) {
   // ======================================================
   // BLOQUEIO DO CLIENTE PAUSADO
   // ======================================================
-  if (clientesPausados.has(chatIdNormalizado)) {
+  if (estaPausado(chatIdNormalizado)) {
     console.log(`⏸ Cliente ${chatIdNormalizado} está pausado. Mensagem ignorada.`);
     return;
   }
@@ -1354,25 +1353,25 @@ async function handleIncomingMessage(message) {
       case "3":
         await sendTyping(chatId);
         await sendText(chatId, "Você está em processo de contratação.\nComo posso ajudar?");
-        clientesPausados.add(chatIdNormalizado);
+        pausarCliente(chatIdNormalizado);
         return;
 
       case "4":
         await sendTyping(chatId);
         await sendText(chatId, "Você já tem um serviço contratado.\nComo posso te ajudar?");
-        clientesPausados.add(chatIdNormalizado);
+        pausarCliente(chatIdNormalizado);
         return;
 
       case "5":
         await sendTyping(chatId);
         await sendText(chatId, "Claro! Me diga qual é o assunto.");
-        clientesPausados.add(chatIdNormalizado);
+        pausarCliente(chatIdNormalizado);
         return;
 
       case "6":
         await sendTyping(chatId);
         await sendText(chatId, "Sem problemas! Como posso te ajudar?");
-        clientesPausados.add(chatIdNormalizado);
+        pausarCliente(chatIdNormalizado);
         return;
 
       case "7":
@@ -2161,7 +2160,7 @@ const resumoEucaristia =
   if (session.step === "orcamento_mais_servicos") {
 
     if (corpoMensagem !== "1" && corpoMensagem !== "2") {
-      clientesPausados.add(chatIdNormalizado);
+      pausarCliente(chatIdNormalizado);
       return;
     }
 
@@ -2170,7 +2169,7 @@ const resumoEucaristia =
       await sendTyping(chatId);
       await sendText(chatId, "Perfeito! Qualquer dúvida é só me chamar 😊");
       session.step = "finalizado";
-      clientesPausados.add(chatIdNormalizado);
+      pausarCliente(chatIdNormalizado);
       return;
     }
 
@@ -2185,7 +2184,7 @@ const resumoEucaristia =
       await sendTyping(chatId);
       await sendText(chatId, "Você já recebeu orçamento de todos os serviços disponíveis 😊");
       session.step = "finalizado";
-      clientesPausados.add(chatIdNormalizado);
+      pausarCliente(chatIdNormalizado);
       return;
     }
 

@@ -43,6 +43,41 @@ class PhotoMusic_Contratos_Actions {
         add_action('admin_post_pm_cancelar_encaminhamento',         [__CLASS__, 'cancelar_encaminhamento']);
         add_action('admin_post_pm_excluir_contrato',                [__CLASS__, 'excluir_contrato']);
         add_action('admin_post_pm_criar_contrato',                  [__CLASS__, 'criar_contrato']);
+        add_action('admin_post_pm_gerar_os',                        [__CLASS__, 'gerar_os']);
+    }
+
+    /* ============================================================
+       GERAR ORDEM DE SERVIÇO MANUALMENTE
+       ============================================================ */
+    public static function gerar_os() {
+
+        if (!current_user_can('administrator')) {
+            wp_die('Acesso negado.');
+        }
+
+        $contrato_id = intval($_GET['contrato_id'] ?? 0);
+        if (!$contrato_id || !check_admin_referer('pm_gerar_os')) {
+            wp_die('Requisição inválida.');
+        }
+
+        $contrato = PhotoMusic_Contratos::get($contrato_id);
+        if (!$contrato) {
+            wp_die('Contrato não encontrado.');
+        }
+
+        require_once PHOTOMUSIC_PRO_PATH . 'includes/contratos/class-photomusic-os.php';
+        $url_os = PhotoMusic_OS::gerar_os($contrato);
+
+        if ($url_os) {
+            // Redireciona direto para o PDF gerado
+            wp_redirect($url_os);
+        } else {
+            wp_redirect(add_query_arg(
+                ['page' => 'photomusic-contrato-detalhes', 'id' => $contrato_id, 'os_erro' => 1],
+                admin_url('admin.php')
+            ));
+        }
+        exit;
     }
 
     /* ============================================================
