@@ -130,9 +130,13 @@ Se quiser, posso:
 
 Você escolhe o próximo passo.
 
-crir cadastro para colaboradores
+crir cadastro para colaboradores 
+Incluir colaboradores que vão trabalhar no evento e imprimir na Ordem de serviço
 quem vai trabalha ou trabalhou no evento
-equipamento utilizado
+ cadastro de equipamentos 
+ equipamentos que será usado no evento imprimir um check list junto com o Ordem de serviço
 
 controle de papel fotográfico para impressora dnp
+Criar a tabela de controle financeiro, para cada pagamento os valore que serão transferidos
+Criar conta de investimentos da photomusic produções
 

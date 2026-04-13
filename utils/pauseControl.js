@@ -5,7 +5,8 @@
 const fs   = require('fs');
 const path = require('path');
 
-const PAUSADOS_FILE = path.join(__dirname, '../pausados.json');
+const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, '..');
+const PAUSADOS_FILE = path.join(DATA_DIR, 'pausados.json');
 
 const clientesPausados = new Set();
 
