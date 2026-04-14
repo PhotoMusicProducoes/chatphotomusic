@@ -475,7 +475,20 @@ class PhotoMusic_Comemoracao {
                     <?php foreach ( $registros as $row ) : ?>
                         <tr>
                             <td>
-                                <?php echo esc_html( $row['nome_celebrado'] ?: '—' ); ?>
+                                <?php
+                                $tipo_r = $row['tipo'] ?? '';
+                                if ( in_array( $tipo_r, [ 'aniversario_casamento', 'dia_casamento', 'bodas' ] ) ) {
+                                    $noiva = trim( $row['nome_noiva'] ?? '' );
+                                    $noivo = trim( $row['nome_noivo'] ?? '' );
+                                    if ( $noiva || $noivo ) {
+                                        echo esc_html( implode( ' & ', array_filter( [ $noiva, $noivo ] ) ) );
+                                    } else {
+                                        echo '—';
+                                    }
+                                } else {
+                                    echo esc_html( $row['nome_celebrado'] ?: '—' );
+                                }
+                                ?>
                                 <?php if ( ! $row['data_valida'] ) : ?>
                                     <span style="color:#cc6b00;font-size:11px;display:block;">⚠️ Data a confirmar</span>
                                 <?php endif; ?>

@@ -49,11 +49,14 @@ const {
   calcularDuracaoEvento
 } = require("./services/fluxoOrcamento");
 
-// ======== LIMPA TODAS AS SESSÕES AO REINICIAR ========
+// Ao reiniciar, resetar apenas flags de estado transitório que não fazem
+// sentido após um restart (ex: enviandoOrcamentos travado em true).
 Object.keys(sessions).forEach(chatId => {
-  delete sessions[chatId];
+  if (sessions[chatId]?.enviandoOrcamentos) {
+    sessions[chatId].enviandoOrcamentos = false;
+  }
 });
-console.log("✅ Todas as sessões foram zeradas ao iniciar o servidor");
+console.log(`✅ Servidor iniciado. ${Object.keys(sessions).length} sessão(ões) restaurada(s) do disco.`);
 
 // ======================================================
 // CONTROLE DE MENSAGENS DUPLICADAS
