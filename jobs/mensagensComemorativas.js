@@ -40,9 +40,7 @@ function normalizarNumero(numero) {
 // ================= CONFIGURAÇÕES =================
 // Endpoint unificado: DB + pm_eventos + pm_eucaristia_catequizandos
 const URL_ENDPOINT = "https://photomusic.com.br/wp-json/photomusic/v1/comemoracao-contatos";
-// JSON legado mantido como fonte complementar
-const URL_DADOS = "https://photomusic.com.br/wp-content/dados/comemoracoes.json";
-const URL_CONFIG = "https://photomusic.com.br/wp-content/dados/comemoracoes-config.json";
+const URL_CONFIG   = "https://photomusic.com.br/wp-content/dados/comemoracoes-config.json";
 
 // Timezone padrão para fallback
 const TIMEZONE_PADRAO = "America/Sao_Paulo";
@@ -325,32 +323,14 @@ async function executarEnvioComemoracoes() {
       console.warn(`⚠️ Endpoint indisponível (${errEndpoint.message}) — usando apenas JSON legado`);
     }
 
-    // ── Busca JSON legado (complemento) ─────────────────────────────────────
-    let registrosJson = [];
-    try {
-      console.log(`📥 Buscando JSON legado: ${URL_DADOS}`);
-      const respJson = await axios.get(URL_DADOS, { timeout: 5000 });
-      if (Array.isArray(respJson.data)) {
-        registrosJson = respJson.data;
-        console.log(`✅ JSON legado: ${registrosJson.length} registro(s)`);
-      } else {
-        console.warn("⚠️ JSON legado com estrutura inválida — ignorado");
-      }
-    } catch (errJson) {
-      console.warn(`⚠️ JSON legado indisponível (${errJson.message})`);
-    }
-
-    // ── Mescla as duas fontes ────────────────────────────────────────────────
-    // Endpoint tem prioridade (vem primeiro); duplicatas são barradas pelo
-    // Map 'mensagensEnviadas' (chave: telefone|tipo|destinatario) já existente.
-    const registros = [...registrosEndpoint, ...registrosJson];
+    const registros = registrosEndpoint;
 
     if (registros.length === 0) {
-      console.warn("⚠️ Nenhuma fonte disponível. Encerrando sem envios.");
+      console.warn("⚠️ Endpoint sem registros ou indisponível. Encerrando sem envios.");
       return;
     }
 
-    console.log(`📊 Total combinado: ${registros.length} registro(s)`);
+    console.log(`📊 Total de registros: ${registros.length}`);
 
     const { dia, mes } = hoje();
     const anoAtual = new Date().getFullYear();
