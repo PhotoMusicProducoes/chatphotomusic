@@ -44,6 +44,7 @@ class PhotoMusic_Contratos_Actions {
         add_action('admin_post_pm_excluir_contrato',                [__CLASS__, 'excluir_contrato']);
         add_action('admin_post_pm_criar_contrato',                  [__CLASS__, 'criar_contrato']);
         add_action('admin_post_pm_gerar_os',                        [__CLASS__, 'gerar_os']);
+        add_action('admin_post_pm_retirar_contrato_cliente',        [__CLASS__, 'retirar_contrato_cliente']);
     }
 
     /* ============================================================
@@ -517,6 +518,43 @@ class PhotoMusic_Contratos_Actions {
         PhotoMusic_Contratos::registrar_log($id, 'encaminhamento_cancelado', 'Encaminhamento cancelado pelo admin. Contrato voltou para rascunho.');
 
         wp_redirect(admin_url('admin.php?page=photomusic-contrato-detalhes&id=' . $id . '&encaminhamento_cancelado=1'));
+        exit;
+    }
+
+    /* ============================================================
+       RETIRAR CONTRATO DO CLIENTE (volta para assinado_admin)
+       Cliente para de receber mensagens para assinar.
+       A assinatura do representante é preservada.
+       ============================================================ */
+    public static function retirar_contrato_cliente() {
+        check_admin_referer('pm_retirar_contrato_cliente');
+
+        if (!PhotoMusic_Contratos_Permissoes::pode_editar()) {
+            wp_die('Sem permissão.');
+        }
+
+        $id = intval($_GET['contrato_id']);
+        $contrato = PhotoMusic_Contratos::get($id);
+        if (!$contrato) wp_die('Contrato não encontrado.');
+
+        if ($contrato->status_contrato !== 'aguardando_assinatura_contratante') {
+            wp_die('O contrato não está aguardando assinatura do cliente.');
+        }
+
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'pm_contratos',
+            [
+                'status_contrato'        => 'assinado_admin',
+                'enviado_contratante_em' => null,
+                'atualizado_em'          => current_time('mysql'),
+            ],
+            ['id' => $id]
+        );
+
+        PhotoMusic_Contratos::registrar_log($id, 'retirado_cliente', 'Contrato retirado do cliente pelo admin. Voltou para Assinado pelo Representante.');
+
+        wp_redirect(admin_url('admin.php?page=photomusic-contrato-detalhes&id=' . $id . '&retirado_cliente=1'));
         exit;
     }
 

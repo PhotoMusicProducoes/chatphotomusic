@@ -5,7 +5,8 @@
 // IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS
 // ======================================================
 const { fluxoEventos, apresentarEvento } = require("./services/eventos.js");
-const { INSTANCE_ID, TOKEN, API_URL } = require("./utils/config.js");
+const { INSTANCE_ID, TOKEN, API_URL, PM_API_BASE, PM_API_KEY } = require("./utils/config.js");
+const axios = require("axios");
 
 const {
   sendText,
@@ -91,6 +92,101 @@ function normalizarNumero(numero) {
     return "55" + numero;
 
   return numero;
+}
+
+// ======================================================
+// CAPTURA DE CLIENTE — COMEMORAÇÕES
+// ======================================================
+
+/**
+ * Normaliza uma string de data de nascimento digitada pelo cliente
+ * (formatos aceitos pelo bot: DD/MM/YYYY, DD/MM/YY, DD-MM-YYYY, DD.MM.YYYY, etc.)
+ * e retorna { dia, mes, ano } com tipos numéricos prontos para o banco.
+ *
+ * Ano com 2 dígitos:
+ *   - > ano atual (2 dígitos) → século XX  (ex: "90" → 1990)
+ *   - ≤ ano atual (2 dígitos) → século XXI (ex: "05" → 2005)
+ *
+ * Retorna null se a data for inválida ou não puder ser parseada.
+ */
+function normalizarDataNascimento(str) {
+  if (!str) return null;
+
+  const texto = String(str).trim();
+  const partes = texto.split(/[\/\-\.]/);
+  if (partes.length < 2) return null;
+
+  const dia = parseInt(partes[0], 10);
+  const mes = parseInt(partes[1], 10);
+  if (!dia || !mes || dia < 1 || dia > 31 || mes < 1 || mes > 12) return null;
+
+  let ano = null;
+  if (partes[2]) {
+    const anoRaw = parseInt(partes[2], 10);
+    if (!isNaN(anoRaw)) {
+      if (partes[2].length <= 2) {
+        // 2 dígitos → determina século pelo ano atual
+        const anoAtual2d = new Date().getFullYear() % 100; // ex: 26
+        ano = anoRaw > anoAtual2d ? 1900 + anoRaw : 2000 + anoRaw;
+      } else {
+        ano = anoRaw;
+      }
+      // Sanidade: ano de nascimento fora do intervalo razoável → descarta
+      const anoCorrente = new Date().getFullYear();
+      if (ano < 1900 || ano > anoCorrente) ano = null;
+    }
+  }
+
+  return { dia, mes, ano };
+}
+
+/**
+ * Salva o aniversário do cliente (coletado no fluxo de orçamento) em
+ * pm_comemoracao_contatos via REST do PhotoMusic Pro.
+ * Fire-and-forget: não bloqueia o fluxo do bot.
+ *
+ * Pré-requisito: session.orcamento.dataNascimento preenchido (DD/MM/YYYY ou variante).
+ */
+async function capturarClienteOrcamento(chatId, session) {
+  try {
+    const orc = session.orcamento;
+    if (!orc || !orc.dataNascimento) return; // sem data de nascimento → nada a salvar
+
+    const tel = normalizarNumero(chatId);
+    if (!tel) return;
+
+    const data = normalizarDataNascimento(orc.dataNascimento);
+    if (!data) {
+      console.warn(`⚠️ capturarClienteOrcamento: data inválida "${orc.dataNascimento}"`);
+      return;
+    }
+
+    const payload = {
+      telefone:       tel,
+      nome:           orc.nome       || "",
+      email:          orc.email      || "",
+      dia:            data.dia,
+      mes:            data.mes,
+      ano:            data.ano,       // null se não foi possível determinar
+      dataEvento:     orc.data       || "",
+      tipoCelebracao: orc.celebracao || "",
+    };
+
+    const resp = await axios.post(
+      `${PM_API_BASE}/comemoracao-capturar`,
+      payload,
+      { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 6000 }
+    );
+
+    const status = resp.data?.status;
+    if (status === "salvo") {
+      console.log(`🎂 Aniversário capturado para ${tel} (id: ${resp.data.id})`);
+    } else if (status === "ignorado") {
+      console.log(`ℹ️ Captura ignorada para ${tel}: ${resp.data.motivo}`);
+    }
+  } catch (e) {
+    console.warn(`⚠️ capturarClienteOrcamento: ${e.message}`);
+  }
 }
 
 // ======================================================
@@ -455,8 +551,14 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
       await sendText(chatId, "Deus abençoe você e sua família, grandiosamente!!!");
 
       session.step = "orcamento_mais_servicos";
-      await perguntarMaisOrcamentos(chatId);     
-    
+      // Captura aniversário do cliente para sistema de comemorações (fire and forget)
+      if (!session.orcamento?.capturado) {
+        session.orcamento = session.orcamento || {};
+        session.orcamento.capturado = true;
+        capturarClienteOrcamento(chatId, session).catch(() => {});
+      }
+      await perguntarMaisOrcamentos(chatId);
+
     return;
 
   } finally {
@@ -1267,7 +1369,7 @@ async function handleIncomingMessage(message) {
 
     sessions[chatId] = {
       step: "aguardando_opcao",
-      menuInicialEnviado: false, // ✅ NOVO
+      menuInicialEnviado: false,
 
       enviouAvaliacao: false,
       enviouApresentacao: false,
@@ -1280,10 +1382,19 @@ async function handleIncomingMessage(message) {
       enviandoOrcamentos: false,
       ultimaInteracao: Date.now(),
       lembreteOrcamentoEnviado: false,
-      ultimaPerguntaNaoRespondida: null // 🚨 NOVO - salvar última pergunta para retomar
+      ultimaPerguntaNaoRespondida: null
     };
 
     await mostrarMenuInicial(chatId);
+    return;
+  }
+
+  // ======================================================
+  // SESSÃO FINALIZADA — ignora silenciosamente
+  // (evita reenvio do menu inicial após término do orçamento)
+  // ======================================================
+  if (sessions[chatId]?.step === "finalizado") {
+    console.log(`ℹ️ Sessão finalizada para ${chatId}. Mensagem ignorada.`);
     return;
   }
 
@@ -2047,7 +2158,13 @@ const resumoEucaristia =
     const texto = corpoMensagem.trim();
     const regexData = /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
 
-    if (texto.toLowerCase() === "pular") {
+    // Palavras aceitas para pular (case-insensitive, ignora acentos)
+    const textoNorm = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const isPular = ["pular", "nao", "n", "nao tenho", "nao quero", "nao sei",
+                     "sem data", "nenhuma", "ok", "pass", "skip"].includes(textoNorm)
+                  || textoNorm.startsWith("nao ");
+
+    if (isPular) {
       session.orcamento.dataNascimento = null;
       await sendTyping(chatId);
     } else if (regexData.test(texto)) {
@@ -2056,7 +2173,7 @@ const resumoEucaristia =
     } else {
       // Entrada inválida → solicitar novamente
       await sendTyping(chatId);
-      await sendText(chatId, "*⚠ Formato inválido.* Use o formato DD/MM/AAAA (ex: 01/02/1985) ou digite *pular*.");
+      await sendText(chatId, "*⚠ Formato inválido.* Use o formato DD/MM/AAAA (ex: 01/02/1985) ou responda *pular*.");
       return;
     }
 
@@ -2151,6 +2268,12 @@ const resumoEucaristia =
 
     session.primeiraRodadaFinalizada = true;
     session.step = "orcamento_mais_servicos";
+    // Captura aniversário do cliente para sistema de comemorações (fire and forget)
+    if (!session.orcamento?.capturado) {
+      session.orcamento = session.orcamento || {};
+      session.orcamento.capturado = true;
+      capturarClienteOrcamento(chatId, session).catch(() => {});
+    }
     return;
   }
 
@@ -2160,16 +2283,25 @@ const resumoEucaristia =
   if (session.step === "orcamento_mais_servicos") {
 
     if (corpoMensagem !== "1" && corpoMensagem !== "2") {
-      pausarCliente(chatIdNormalizado);
+      // Conta tentativas inválidas — após 3 ignora silenciosamente (sem pausar)
+      session.tentativasInvalidasMaisServicos = (session.tentativasInvalidasMaisServicos || 0) + 1;
+      if (session.tentativasInvalidasMaisServicos >= 3) {
+        console.log(`ℹ️ ${chatId} excedeu tentativas em orcamento_mais_servicos. Ignorando.`);
+        return;
+      }
+      await sendTyping(chatId);
+      await sendText(chatId, "Por favor, responda apenas *1* para mais orçamentos ou *2* para encerrar.");
       return;
     }
 
-    // Cliente NÃO quer mais orçamentos
+    // Reseta contador ao responder corretamente
+    session.tentativasInvalidasMaisServicos = 0;
+
+    // Cliente NÃO quer mais orçamentos — sessão permanece ativa (step finalizado)
     if (corpoMensagem === "2") {
       await sendTyping(chatId);
       await sendText(chatId, "Perfeito! Qualquer dúvida é só me chamar 😊");
       session.step = "finalizado";
-      pausarCliente(chatIdNormalizado);
       return;
     }
 
@@ -2184,7 +2316,6 @@ const resumoEucaristia =
       await sendTyping(chatId);
       await sendText(chatId, "Você já recebeu orçamento de todos os serviços disponíveis 😊");
       session.step = "finalizado";
-      pausarCliente(chatIdNormalizado);
       return;
     }
 

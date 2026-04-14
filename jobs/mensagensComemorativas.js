@@ -38,6 +38,9 @@ function normalizarNumero(numero) {
 }
 
 // ================= CONFIGURAÇÕES =================
+// Endpoint unificado: DB + pm_eventos + pm_eucaristia_catequizandos
+const URL_ENDPOINT = "https://photomusic.com.br/wp-json/photomusic/v1/comemoracao-contatos";
+// JSON legado mantido como fonte complementar
 const URL_DADOS = "https://photomusic.com.br/wp-content/dados/comemoracoes.json";
 const URL_CONFIG = "https://photomusic.com.br/wp-content/dados/comemoracoes-config.json";
 
@@ -307,16 +310,47 @@ async function executarEnvioComemoracoes() {
   console.log(`⏰ Horário: ${new Date().toLocaleString("pt-BR", { timeZone: configAtual.timezone })}`);
 
   try {
-    console.log(`📥 Buscando dados de: ${URL_DADOS}`);
-    const resposta = await axios.get(URL_DADOS);
-    const registros = resposta.data;
+    // ── Busca endpoint unificado (DB + pm_eventos + pm_eucaristia) ──────────
+    let registrosEndpoint = [];
+    try {
+      console.log(`📥 Buscando endpoint: ${URL_ENDPOINT}`);
+      const respEndpoint = await axios.get(URL_ENDPOINT, { timeout: 8000 });
+      if (Array.isArray(respEndpoint.data)) {
+        registrosEndpoint = respEndpoint.data;
+        console.log(`✅ Endpoint: ${registrosEndpoint.length} registro(s)`);
+      } else {
+        console.warn("⚠️ Endpoint retornou estrutura inválida — ignorado");
+      }
+    } catch (errEndpoint) {
+      console.warn(`⚠️ Endpoint indisponível (${errEndpoint.message}) — usando apenas JSON legado`);
+    }
 
-    if (!Array.isArray(registros)) {
-      console.error("❌ Estrutura inválida no JSON de comemorações.");
+    // ── Busca JSON legado (complemento) ─────────────────────────────────────
+    let registrosJson = [];
+    try {
+      console.log(`📥 Buscando JSON legado: ${URL_DADOS}`);
+      const respJson = await axios.get(URL_DADOS, { timeout: 5000 });
+      if (Array.isArray(respJson.data)) {
+        registrosJson = respJson.data;
+        console.log(`✅ JSON legado: ${registrosJson.length} registro(s)`);
+      } else {
+        console.warn("⚠️ JSON legado com estrutura inválida — ignorado");
+      }
+    } catch (errJson) {
+      console.warn(`⚠️ JSON legado indisponível (${errJson.message})`);
+    }
+
+    // ── Mescla as duas fontes ────────────────────────────────────────────────
+    // Endpoint tem prioridade (vem primeiro); duplicatas são barradas pelo
+    // Map 'mensagensEnviadas' (chave: telefone|tipo|destinatario) já existente.
+    const registros = [...registrosEndpoint, ...registrosJson];
+
+    if (registros.length === 0) {
+      console.warn("⚠️ Nenhuma fonte disponível. Encerrando sem envios.");
       return;
     }
 
-    console.log(`📊 Total de registros encontrados: ${registros.length}`);
+    console.log(`📊 Total combinado: ${registros.length} registro(s)`);
 
     const { dia, mes } = hoje();
     const anoAtual = new Date().getFullYear();

@@ -1,11 +1,40 @@
 // utils/pausaEspecialControl.js — Com SESSÕES por número
 
+const fs   = require("fs");
+const path = require("path");
 const axios = require("axios");
 
 const URL_PAUSA_ESPECIAL = "https://photomusic.com.br/wp-content/dados/pausaEspecial.json";
 
+// Persiste sessoesRetomadas no volume do Fly.io (sobrevive a restarts e deploys)
+const DATA_DIR = fs.existsSync("/data") ? "/data" : path.join(__dirname, "..");
+const RETOMADAS_FILE = path.join(DATA_DIR, "sessoesRetomadas.json");
+
 let pausadosEspeciais = [];
-let sessoesRetomadas = {};  // Controlar ativoLocal por número em sessão
+let sessoesRetomadas = {};
+
+// Carrega sessoesRetomadas do disco ao iniciar
+try {
+  if (fs.existsSync(RETOMADAS_FILE)) {
+    const data = JSON.parse(fs.readFileSync(RETOMADAS_FILE, "utf8"));
+    if (data && typeof data === "object") {
+      sessoesRetomadas = data;
+      const qtd = Object.keys(sessoesRetomadas).length;
+      if (qtd > 0) console.log(`✅ ${qtd} sessões retomadas carregadas do arquivo`);
+    }
+  }
+} catch (e) {
+  console.error("⚠️ Erro ao carregar sessoesRetomadas.json:", e.message);
+  sessoesRetomadas = {};
+}
+
+function salvarSessoesRetomadas() {
+  try {
+    fs.writeFileSync(RETOMADAS_FILE, JSON.stringify(sessoesRetomadas), "utf8");
+  } catch (e) {
+    console.error("⚠️ Erro ao salvar sessoesRetomadas.json:", e.message);
+  }
+}
 
 // ======================================================
 // NORMALIZAÇÃO DE NÚMEROS (MESMA DO index.js)
@@ -123,12 +152,13 @@ async function retomarEspecial(telefone) {
     return false;
   }
   
-  // 2️⃣ Criar SESSÃO para este número
-  sessoesRetomadas[telefonNorm] = true;  // ✅ ativoLocal = false (implícito)
-  
+  // 2️⃣ Criar SESSÃO para este número e persistir
+  sessoesRetomadas[telefonNorm] = true;
+  salvarSessoesRetomadas();
+
   console.log(`✅ ${registro.nome} (${registro.telefone}) RETOMADO`);
   console.log(`   Sessão criada: sessoesRetomadas[${telefonNorm}] = true\n`);
-  
+
   exibirEstadoPausas();
   return true;
 }
@@ -154,9 +184,10 @@ async function pausarEspecial(telefone) {
     return false;
   }
   
-  // 2️⃣ Deletar SESSÃO (volta ao padrão: pausado)
+  // 2️⃣ Deletar SESSÃO e persistir
   if (sessoesRetomadas[telefonNorm]) {
     delete sessoesRetomadas[telefonNorm];
+    salvarSessoesRetomadas();
     console.log(`✅ ${registro.nome} (${registro.telefone}) PAUSADO`);
     console.log(`   Sessão deletada: sessoesRetomadas[${telefonNorm}] removido\n`);
   } else {

@@ -129,7 +129,8 @@ Se quiser, posso:
 - ou tudo isso em paralelo
 
 Você escolhe o próximo passo.
-
+===================================================================================================
+===================================================================================================
 crir cadastro para colaboradores 
 Incluir colaboradores que vão trabalhar no evento e imprimir na Ordem de serviço
 quem vai trabalha ou trabalhou no evento

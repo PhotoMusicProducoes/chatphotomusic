@@ -1208,6 +1208,10 @@ class PhotoMusic_Admin_Menu {
             $notice_msg = '<div class="notice notice-warning is-dismissible"><p>🚫 Encaminhamento cancelado. Contrato voltou para Rascunho.</p></div>';
         }
 
+        if (!empty($_GET['retirado_cliente'])) {
+            $notice_msg = '<div class="notice notice-warning is-dismissible"><p>↩️ Contrato retirado do cliente. Voltou para <strong>Assinado pelo Representante</strong>. O cliente não receberá mais mensagens para assinar.</p></div>';
+        }
+
         if (!empty($_GET['limpo'])) {
             $notice_msg = '<div class="updated notice is-dismissible"><p>🗑️ Conteúdo apagado com sucesso!</p></div>';
         }
@@ -1340,6 +1344,12 @@ class PhotoMusic_Admin_Menu {
                 admin_url('admin-post.php?action=pm_reenviar_contrato&contrato_id=' . $contrato->id),
                 'pm_reenviar_contrato'
             ) . '">🔄 Reenviar para o Cliente</a>';
+            if (PhotoMusic_Contratos_Permissoes::pode_editar()) {
+                echo ' &nbsp; <a class="button button-secondary" style="color:#a00;" href="' . wp_nonce_url(
+                    admin_url('admin-post.php?action=pm_retirar_contrato_cliente&contrato_id=' . $contrato->id),
+                    'pm_retirar_contrato_cliente'
+                ) . '" onclick="return confirm(\'Retirar o contrato do cliente e voltar para Assinado pelo Representante?\nO cliente não receberá mais mensagens para assinar.\')">↩️ Retirar do Cliente</a>';
+            }
         }
 
         elseif ($status === 'assinado') {

@@ -61,6 +61,9 @@ function photomusic_pro_autoload_classes() {
     require_once PHOTOMUSIC_PRO_PATH . 'includes/tarefas/class-photomusic-tarefas-admin.php';
     require_once PHOTOMUSIC_PRO_PATH . 'includes/tarefas/class-photomusic-tarefas-api.php';
 
+    /* ---------------- COMEMORAÇÕES ---------------- */
+    require_once PHOTOMUSIC_PRO_PATH . 'includes/comemoracao/class-photomusic-comemoracao.php';
+
     /* ---------------- PRÉ-CADASTRO EVENTO ---------------- */
     if (file_exists(PHOTOMUSIC_PRO_PATH . 'includes/precadastro/class-photomusic-precadastro-evento.php')) {
         require_once PHOTOMUSIC_PRO_PATH . 'includes/precadastro/class-photomusic-precadastro-evento.php';
@@ -229,6 +232,9 @@ function photomusic_pro_init_modules() {
    // Tarefas
    PhotoMusic_Tarefas_Admin::init();
    PhotoMusic_Tarefas_API::init();
+
+   // Comemorações
+   PhotoMusic_Comemoracao::init();
 
    // API REST para o ChatBot
    PhotoMusic_Eventos_API::init();

@@ -1757,6 +1757,41 @@ class PhotoMusic_Installer {
         ) $charset;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+        /* ============================================================
+           TABELA: CONTATOS PARA COMEMORAÇÕES (aniversários, eventos)
+        ============================================================ */
+        $tbl_comemoracao = $wpdb->prefix . 'pm_comemoracao_contatos';
+        $sql_comemoracao = "CREATE TABLE $tbl_comemoracao (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            telefone VARCHAR(30) NOT NULL,
+            nome_celebrado VARCHAR(150) NULL,
+            nome_responsavel VARCHAR(150) NULL,
+            relacao VARCHAR(80) NULL,
+            genero_celebrado ENUM('feminino','masculino') NOT NULL DEFAULT 'masculino',
+            tipo ENUM('aniversario_pessoal','aniversario_casamento','dia_casamento','quinze_anos','bodas') NOT NULL DEFAULT 'aniversario_pessoal',
+            destinatario ENUM('celebrado','responsavel','casal','debutante','pais') NOT NULL DEFAULT 'responsavel',
+            dia TINYINT UNSIGNED NOT NULL,
+            mes TINYINT UNSIGNED NOT NULL,
+            ano SMALLINT UNSIGNED NULL,
+            nome_noiva VARCHAR(150) NULL,
+            nome_noivo VARCHAR(150) NULL,
+            nome_bodas VARCHAR(100) NULL,
+            email VARCHAR(150) NULL,
+            origem ENUM('manual','orcamento','evento','eucaristia') NOT NULL DEFAULT 'manual',
+            data_valida TINYINT(1) NOT NULL DEFAULT 1,
+            ativo TINYINT(1) NOT NULL DEFAULT 1,
+            observacao TEXT NULL,
+            id_evento INT UNSIGNED NULL,
+            criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            atualizado_em DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_dia_mes (dia, mes),
+            INDEX idx_ativo (ativo),
+            INDEX idx_origem (origem),
+            INDEX idx_telefone (telefone(20))
+        ) $charset;";
+        dbDelta($sql_comemoracao);
+
         dbDelta($sql);
     }
 
