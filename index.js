@@ -861,12 +861,12 @@ async function handleIncomingMessage(message) {
       
       if (sucesso) {
         // ✅ NÃO deletar sessions global!
-        // A pausa é controlada por sessoesRetomadas[telefonNorm]
-        // Sessions global é para fluxo de orçamento/menu
-        
+        // A pausa é controlada por sessoesRetomadas[telefonNorm] (JSON)
+        // ou por pausado=1 no DB — Sessions global é para fluxo de orçamento/menu
+
         await sendText(OPERADOR_TELEFONE_ID, `✅ Cliente PAUSADO!`);
       } else {
-        await sendText(OPERADOR_TELEFONE_ID, `❌ Número não encontrado no JSON`);
+        await sendText(OPERADOR_TELEFONE_ID, `❌ Falha ao pausar — verifique a conexão com o servidor`);
       }
       return;
     }
@@ -877,17 +877,17 @@ async function handleIncomingMessage(message) {
     // ======================================================
     if (corpoNormalizado.startsWith("retomarespecial")) {
       const telefone = corpoMensagem.slice(16).trim();
-      
+
       const sucesso = await retomarEspecial(telefone);
-      
+
       if (sucesso) {
         // ✅ NÃO deletar sessions global!
-        // A retomada é controlada por sessoesRetomadas[telefonNorm] = true
-        // Sessions global é para fluxo de orçamento/menu
-        
+        // A retomada é controlada por sessoesRetomadas[telefonNorm] (JSON)
+        // ou por pausado=0 no DB — Sessions global é para fluxo de orçamento/menu
+
         await sendText(OPERADOR_TELEFONE_ID, `✅ Cliente RETOMADO!`);
       } else {
-        await sendText(OPERADOR_TELEFONE_ID, `❌ Número não encontrado no JSON`);
+        await sendText(OPERADOR_TELEFONE_ID, `❌ Número não encontrado (JSON nem DB)`);
       }
       return;
     }

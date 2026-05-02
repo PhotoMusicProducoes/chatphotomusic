@@ -53,3 +53,16 @@ build/
 # FLY.IO
 # ============================
 .fly/
+
+# ============================
+# PASTAS FORA DO PROJETO
+# ============================
+Site/
+dados/
+Logs/
+Testes/
+Código ante da Alteração/
+PhotoMusic Local Server (PMLS)/
+GUIA RÁPIDO*/
+PAROQUIAS_CAPELAS.md
+Documento*.log
