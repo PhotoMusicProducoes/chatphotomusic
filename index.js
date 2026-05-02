@@ -2494,39 +2494,3 @@ async function enviarResumoOperador(chatIdCliente, session) {
   }
 }
 
-// ⚠️ REMOVIDO - Exportação duplicada causava conflito
-// Use apenas o module.exports na linha 2043
-
-
-// ======================================================
-// SERVIDOR HTTP PARA O FLY.IO
-// ======================================================
-const express = require("express");
-const app = express();
-
-app.use(express.json());
-
-// ======================================================
-// WEBHOOK DA Z-API
-// ======================================================
-app.post("/message", async (req, res) => {
-  try {
-    const message = req.body;
-    await handleIncomingMessage(message);
-    res.sendStatus(200);
-  } catch (err) {
-    console.error("Erro ao processar mensagem:", err);
-    res.sendStatus(500);
-  }
-});
-
-// ======================================================
-// INICIALIZAR E SUBIR SERVIDOR
-// ======================================================
-const PORT = process.env.PORT || 8080;
-
-inicializarPausaEspecial().then(() => {
-  app.listen(PORT, () => {
-    console.log("Servidor iniciado na porta " + PORT);
-  });
-});
