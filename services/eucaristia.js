@@ -16,7 +16,7 @@ const paroquiasEucaristia = {
       4: "Capela Nossa Senhora da Penha",
       5: "Capela Santo Antônio"
     },
-    prazo: "05/05/2026"
+    prazo: "15/05/2026"
   },
   2: {
     nome: "Paróquia São Sebastião",

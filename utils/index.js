@@ -1,7 +1,11 @@
 // ✅ CORRETO — utils/index.js
 // Centraliza TODAS as funções que os services precisam
 
-const { sendText } = require("./sendText.js");
+const {
+  sendText,
+  ativarModoSombra, desativarModoSombra, estaEmModoSombra,
+  ativarModoSilencioso, desativarModoSilencioso, estaEmModoSilencioso
+} = require("./sendText.js");
 const { sendTyping } = require("./sendTyping.js");
 const { sendFileByUrl } = require("./sendFileByUrl.js");
 const { sendFileFromUrl } = require("./sendFileFromUrl.js");
@@ -42,6 +46,8 @@ module.exports = {
   // Z-API send functions
   sendText,
   sendTyping,
+  ativarModoSombra, desativarModoSombra, estaEmModoSombra,
+  ativarModoSilencioso, desativarModoSilencioso, estaEmModoSilencioso,
   sendFileByUrl,
   sendFileFromUrl,
   enviarPdfComLink,

@@ -16,7 +16,9 @@ const {
   pausarEspecial,
   retomarEspecial,
   listarPausadosEspeciais,
-  inicializarPausaEspecial
+  inicializarPausaEspecial,
+  ativarModoSombra, desativarModoSombra, estaEmModoSombra,
+  ativarModoSilencioso, desativarModoSilencioso
 } = require("./utils/index.js");
 const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require("./utils/pauseControl.js");
 
@@ -69,8 +71,9 @@ const mensagensProcessadas = new Set();
 function normalizarNumero(numero) {
   if (!numero) return null;
 
+  numero = String(numero); // garante string mesmo se vier número/objeto
   numero = numero.replace("@c.us", "");
-  numero = numero.replace(/\D+/g, "");
+  numero = numero.replace(/\D+/g, ""); // remove +, espaços, hífen, parênteses etc.
   numero = numero.replace(/^0+/, "");
 
   if (numero.startsWith("55") && numero.length === 13) return numero;
@@ -88,8 +91,14 @@ function normalizarNumero(numero) {
   if (numero.length === 13 && !numero.startsWith("55"))
     return "55" + numero;
 
-  if (numero.length === 11)
-    return "55" + numero;
+  // 11 dígitos: celular brasileiro tem o 3º dígito (índice 2) = '9'
+  // (DDD 2 dígitos + dígito 9 + 8 dígitos do número)
+  // Se o 3º dígito NÃO for '9', provavelmente é número internacional sem prefixo +
+  // Exemplo EUA: +1 (561) 710-1530 → 15617101530 → 3º dígito = '6' → não adiciona 55
+  if (numero.length === 11) {
+    if (numero[2] === '9') return "55" + numero; // celular BR confirmado
+    return numero; // internacional — retorna como veio, sem adicionar 55
+  }
 
   if (numero.length === 10)
     return "55" + numero;
@@ -144,48 +153,56 @@ function normalizarDataNascimento(str) {
 }
 
 /**
- * Salva o aniversário do cliente (coletado no fluxo de orçamento) em
- * pm_comemoracao_contatos via REST do PhotoMusic Pro.
+ * Registra o cliente (coletado no fluxo de orçamento) em pm_leads via REST
+ * do PhotoMusic Pro. Se tiver data de nascimento válida, sincroniza também
+ * com pm_comemoracao_contatos.
  * Fire-and-forget: não bloqueia o fluxo do bot.
  *
- * Pré-requisito: session.orcamento.dataNascimento preenchido (DD/MM/YYYY ou variante).
+ * Dispara quando o cliente forneceu ao menos e-mail OU data de nascimento.
  */
 async function capturarClienteOrcamento(chatId, session) {
   try {
     const orc = session.orcamento;
-    if (!orc || !orc.dataNascimento) return; // sem data de nascimento → nada a salvar
+    // Exige ao menos e-mail ou data de nascimento para salvar
+    if (!orc || (!orc.dataNascimento && !orc.email)) return;
 
     const tel = normalizarNumero(chatId);
     if (!tel) return;
 
-    const data = normalizarDataNascimento(orc.dataNascimento);
-    if (!data) {
-      console.warn(`⚠️ capturarClienteOrcamento: data inválida "${orc.dataNascimento}"`);
-      return;
+    // Analisa a data de nascimento somente se foi informada
+    let dia = null, mes = null, ano = null;
+    if (orc.dataNascimento) {
+      const data = normalizarDataNascimento(orc.dataNascimento);
+      if (!data) {
+        console.warn(`⚠️ capturarClienteOrcamento: data inválida "${orc.dataNascimento}"`);
+      } else {
+        dia = data.dia;
+        mes = data.mes;
+        ano = data.ano; // null se não foi possível determinar
+      }
     }
 
     const payload = {
       telefone:       tel,
       nome:           orc.nome       || "",
       email:          orc.email      || "",
-      dia:            data.dia,
-      mes:            data.mes,
-      ano:            data.ano,       // null se não foi possível determinar
+      dia,
+      mes,
+      ano,
       dataEvento:     orc.data       || "",
       tipoCelebracao: orc.celebracao || "",
     };
 
     const resp = await axios.post(
-      `${PM_API_BASE}/comemoracao-capturar`,
+      `${PM_API_BASE}/lead-capturar`,
       payload,
       { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 6000 }
     );
 
     const status = resp.data?.status;
-    if (status === "salvo") {
-      console.log(`🎂 Aniversário capturado para ${tel} (id: ${resp.data.id})`);
-    } else if (status === "ignorado") {
-      console.log(`ℹ️ Captura ignorada para ${tel}: ${resp.data.motivo}`);
+    if (status === "salvo" || status === "atualizado") {
+      const comemFlag = resp.data?.comem === "sincronizado" ? " 🎂" : "";
+      console.log(`📋 Lead ${status} para ${tel} (id: ${resp.data.id})${comemFlag}`);
     }
   } catch (e) {
     console.warn(`⚠️ capturarClienteOrcamento: ${e.message}`);
@@ -611,23 +628,15 @@ async function enviarMsgAguardeOrcamento(chatId, quantidade) {
 async function handleIncomingMessage(message) {
   console.log("🔔 Nova mensagem recebida (raw):", JSON.stringify(message, null, 2));
 
-  // 🚨 VERIFICAR SE JÁ FOI PROCESSADA (deduplicador)
+  // ✅ Extrair messageId para uso no deduplicador (ainda não adicionar ao set)
   const messageId = message.messageId || message.id;
-  
-  if (!messageId) {
-    console.log("⚠️ AVISO: Mensagem sem ID único, processando mesmo assim");
-  } else {
-    if (mensagensProcessadas.has(messageId)) {
-      console.log(`⏭ Mensagem já processada: ${messageId}. Ignorando duplicata.`);
-      return;
-    }
-    // Adicionar à lista de processadas
-    mensagensProcessadas.add(messageId);
-    // Limpar mensagens antigas (manter últimas 1000)
-    if (mensagensProcessadas.size > 1000) {
-      const firstKey = mensagensProcessadas.values().next().value;
-      mensagensProcessadas.delete(firstKey);
-    }
+
+  // 🚨 VERIFICAR DUPLICATA — apenas leitura aqui, sem adicionar ao set ainda
+  // (Adicionar ao set só depois de validar chatId, para evitar que eventos
+  //  sem "phone" da Z-API bloqueiem a mensagem real com o mesmo messageId)
+  if (messageId && mensagensProcessadas.has(messageId)) {
+    console.log(`⏭ Mensagem já processada: ${messageId}. Ignorando duplicata.`);
+    return;
   }
 
   const corpoMensagem =
@@ -646,6 +655,19 @@ async function handleIncomingMessage(message) {
   if (!chatIdRaw) {
     console.log("⚠️ ERRO: mensagem recebida sem identificador de remetente.");
     return;
+  }
+
+  // 🚨 REGISTRAR NO DEDUPLICADOR — só após validar que tem chatId
+  // Garante que eventos sem "phone" (status/ack da Z-API) não poluem o set
+  if (messageId) {
+    mensagensProcessadas.add(messageId);
+    // Limpar mensagens antigas (manter últimas 1000)
+    if (mensagensProcessadas.size > 1000) {
+      const firstKey = mensagensProcessadas.values().next().value;
+      mensagensProcessadas.delete(firstKey);
+    }
+  } else {
+    console.log("⚠️ AVISO: Mensagem sem ID único, processando mesmo assim");
   }
 
   console.log("🔔 chatId detectado (raw):", chatIdRaw);
@@ -752,6 +774,8 @@ async function handleIncomingMessage(message) {
       corpoNormalizado.startsWith("pausar") ||
       corpoNormalizado.startsWith("retomar") ||
       corpoNormalizado.startsWith("resetar") ||
+      corpoNormalizado.startsWith("respondercliente") ||
+      corpoNormalizado.startsWith("responder") ||
       corpoNormalizado.startsWith("#")
     );
 
@@ -957,6 +981,248 @@ async function handleIncomingMessage(message) {
       delete sessions[normalizado];
       await mostrarMenuInicial(normalizado);
       await sendText(OPERADOR_TELEFONE_ID, `🔄 Atendimento resetado para ${normalizado}`);
+      return;
+    }
+
+    // ======================================================
+    // REPLAY DE CONVERSA — RECONSTRUIR SESSÃO DO CLIENTE
+    // COMANDO: respondercliente NUMERO
+    //          [colar a conversa exportada do WhatsApp]
+    //
+    // O sistema extrai só as respostas do cliente, faz replay
+    // silencioso de todas exceto a última, e processa a última
+    // normalmente — o cliente recebe a próxima pergunta.
+    // ======================================================
+    if (corpoNormalizado.startsWith("respondercliente")) {
+
+      // --- Parsear cabeçalho e corpo ---
+      const linhasCmd = corpoMensagem.split("\n");
+      const primeiraLinha = linhasCmd[0] || "";
+      const partesCmd = primeiraLinha.split(/\s+/);
+      const numeroRaw = partesCmd[1] || "";
+      const corpoConversa = linhasCmd.slice(1).join("\n");
+
+      if (!numeroRaw) {
+        await sendText(OPERADOR_TELEFONE_ID,
+          "⚠ Formato:\n*respondercliente NUMERO*\n[cole a conversa exportada do WhatsApp abaixo]"
+        );
+        return;
+      }
+
+      const numeroCliente = normalizarNumero(numeroRaw);
+      if (!numeroCliente || numeroCliente.length < 10) {
+        await sendText(OPERADOR_TELEFONE_ID,
+          `⚠ Número inválido: *${numeroRaw}*\n\n` +
+          "Formatos aceitos:\n" +
+          "  +5521995021656\n  5521995021656\n  21995021656\n  995021656"
+        );
+        return;
+      }
+
+      // --- Detectar se veio conversa para replay ---
+      const temConversa = /\[[\d:,\/ ]+\]/.test(corpoConversa);
+
+      if (!temConversa) {
+        await sendText(OPERADOR_TELEFONE_ID,
+          "⚠ Nenhuma conversa detectada.\n\n" +
+          "Cole a conversa exportada do WhatsApp logo abaixo do número:\n\n" +
+          "*respondercliente 5521995021656*\n" +
+          "[01:37] +55 21 995...: 1\n" +
+          "[01:37] Foto Cabine: Perfeito!...\n" +
+          "..."
+        );
+        return;
+      }
+
+      // --- Extrair só as mensagens do CLIENTE ---
+      function parsearConversa(texto, clienteNum) {
+        const clienteDigits = clienteNum.replace(/\D/g, "");
+        const msgs = [];
+        for (const linha of texto.split("\n")) {
+          // Formato: [HH:MM, DD/MM/YYYY] Speaker: conteudo
+          //      ou  [HH:MM] Speaker: conteudo
+          const match = linha.match(/^\[[\d:,\/ ]+\]\s+(.+?):\s*(.+)$/);
+          if (!match) continue;
+          const speaker = match[1].trim();
+          const conteudo = match[2].trim();
+          if (!conteudo) continue;
+          // Verifica se o speaker é o cliente comparando dígitos finais
+          const speakerDigits = speaker.replace(/\D/g, "");
+          if (speakerDigits.length < 6) continue; // nome do bot sem números
+          const isCliente =
+            speakerDigits === clienteDigits ||
+            clienteDigits.endsWith(speakerDigits.slice(-10)) ||
+            speakerDigits.endsWith(clienteDigits.slice(-10));
+          if (isCliente) msgs.push(conteudo);
+        }
+        return msgs;
+      }
+
+      const mensagensCliente = parsearConversa(corpoConversa, numeroCliente);
+
+      if (mensagensCliente.length === 0) {
+        await sendText(OPERADOR_TELEFONE_ID,
+          `⚠ Nenhuma mensagem do cliente *${numeroCliente}* encontrada na conversa.\n\n` +
+          "Verifique se o número está correto e se a conversa foi exportada corretamente."
+        );
+        return;
+      }
+
+      // --- Helper: criar mensagem simulada ---
+      function criarSimulada(numero, texto) {
+        const ts = Date.now() + Math.random();
+        return {
+          from: numero + "@c.us", phone: numero, to: null,
+          body: texto, text: { message: texto },
+          isGroup: false, isGroupMsg: false,
+          fromMe: false, fromApi: false,
+          messageId: "replay-" + ts, id: "replay-" + ts,
+          type: "text", isNewsletter: false, isEdit: false,
+          chatName: null, senderName: null,
+          quotedMsg: null, quotedMessage: null
+        };
+      }
+
+      // --- Reconstruir sessão do zero ---
+      // Cria sessão já com menuInicialEnviado=true (menu já foi exibido ao cliente)
+      delete sessions[numeroCliente];
+      sessions[numeroCliente] = {
+        step: "aguardando_opcao",
+        menuInicialEnviado: true,
+        enviouAvaliacao: false,
+        enviouApresentacao: false,
+        primeiraRodadaFinalizada: false,
+        segundaRodadaFinalizada: false,
+        orcamento: { servicosEnviados: [] },
+        servicosEnviados: [],
+        enviandoAvaliacao: false,
+        processandoServico: false,
+        enviandoOrcamentos: false,
+        enviandoOrcamentosManualmente: false,
+        ultimaInteracao: Date.now(),
+        lembreteOrcamentoEnviado: false,
+        ultimaPerguntaNaoRespondida: null
+      };
+
+      await sendText(OPERADOR_TELEFONE_ID,
+        `🔄 Reconstruindo sessão de *${numeroCliente}*...\n` +
+        `📋 ${mensagensCliente.length} mensagens encontradas:\n` +
+        mensagensCliente.map((m, i) => `${i + 1}. "${m}"`).join("\n")
+      );
+
+      // --- Replay silencioso (N-1 mensagens) ---
+      ativarModoSilencioso(numeroCliente);
+      let replayOk = true;
+      try {
+        for (let i = 0; i < mensagensCliente.length - 1; i++) {
+          const msg = mensagensCliente[i];
+          const stepAntes = sessions[numeroCliente]?.step;
+          console.log(`🔇 [Replay ${i + 1}/${mensagensCliente.length - 1}] step=${stepAntes} msg="${msg}"`);
+          await handleIncomingMessage(criarSimulada(numeroCliente, msg));
+          await new Promise(r => setTimeout(r, 80)); // pequena pausa anti-race
+        }
+      } catch (e) {
+        replayOk = false;
+        console.error("🚨 [Replay] Erro durante replay silencioso:", e.message);
+        await sendText(OPERADOR_TELEFONE_ID, `❌ Erro no replay: ${e.message}`);
+      } finally {
+        desativarModoSilencioso(numeroCliente);
+      }
+
+      if (!replayOk) return;
+
+      // --- Última mensagem em modo normal (cliente recebe a próxima pergunta) ---
+      const ultima = mensagensCliente[mensagensCliente.length - 1];
+      const stepFinal = sessions[numeroCliente]?.step || "?";
+      console.log(`▶️ [Replay FINAL] step=${stepFinal} msg="${ultima}"`);
+
+      await handleIncomingMessage(criarSimulada(numeroCliente, ultima));
+
+      await sendText(OPERADOR_TELEFONE_ID,
+        `✅ Sessão reconstruída com sucesso!\n\n` +
+        `👤 Cliente: *${numeroCliente}*\n` +
+        `📩 Última resposta reproduzida: *"${ultima}"*\n` +
+        `📍 Step final: *${sessions[numeroCliente]?.step || "?"}*\n\n` +
+        `O cliente acabou de receber a próxima pergunta e pode continuar normalmente.`
+      );
+      return;
+    }
+
+    // ======================================================
+    // RESPONDER NO LUGAR DO CLIENTE
+    // COMANDO: responder NUMERO RESPOSTA
+    // Ex: responder 5521995021656 pular
+    //     responder 5521995021656 2
+    // ======================================================
+    if (corpoNormalizado.startsWith("responder")) {
+      // Extrai as partes: ["responder", "NUMERO", "resposta", "texto", ...]
+      const partes = corpoMensagem.trim().split(/\s+/);
+      const numeroRaw  = partes[1] || "";
+      const respostaTexto = partes.slice(2).join(" ").trim();
+
+      if (!numeroRaw || !respostaTexto) {
+        await sendText(
+          OPERADOR_TELEFONE_ID,
+          "⚠ Formato correto:\n*responder NUMERO RESPOSTA*\n\n" +
+          "Exemplos:\n" +
+          "  `responder 5521995021656 pular`\n" +
+          "  `responder 5521995021656 2`\n" +
+          "  `responder 5521995021656 nome@email.com`"
+        );
+        return;
+      }
+
+      const numeroCliente = normalizarNumero(numeroRaw);
+
+      if (!numeroCliente || numeroCliente.length < 10) {
+        await sendText(OPERADOR_TELEFONE_ID,
+          `⚠ Número inválido: *${numeroRaw}*\n\n` +
+          "Formatos aceitos:\n" +
+          "  +5521995021656\n  5521995021656\n  21995021656\n  995021656"
+        );
+        return;
+      }
+
+      const sessaoCliente = sessions[numeroCliente];
+      if (!sessaoCliente) {
+        await sendText(
+          OPERADOR_TELEFONE_ID,
+          `⚠ Nenhuma sessão ativa para *${numeroCliente}*.\n` +
+          `Use *resetar ${numeroCliente}* para reiniciar o atendimento.`
+        );
+        return;
+      }
+
+      console.log(`🎭 [OPERADOR] Injetando resposta "${respostaTexto}" para ${numeroCliente} (step: ${sessaoCliente.step})`);
+
+      // Monta uma mensagem simulada no mesmo formato que a Z-API envia
+      const mensagemSimulada = {
+        from:           numeroCliente + "@c.us",
+        phone:          numeroCliente,
+        to:             null,
+        body:           respostaTexto,
+        text:           { message: respostaTexto },
+        isGroup:        false,
+        isGroupMsg:     false,
+        fromMe:         false,
+        fromApi:        false,
+        messageId:      "op-inject-" + Date.now(),
+        id:             "op-inject-" + Date.now(),
+        type:           "text",
+        isNewsletter:   false,
+        isEdit:         false,
+        chatName:       null,
+        senderName:     null,
+        quotedMsg:      null,
+        quotedMessage:  null
+      };
+
+      await handleIncomingMessage(mensagemSimulada);
+      await sendText(
+        OPERADOR_TELEFONE_ID,
+        `✅ Resposta *"${respostaTexto}"* injetada para *${numeroCliente}*\n` +
+        `Step anterior: ${sessaoCliente.step} → Step atual: ${sessions[numeroCliente]?.step || "?"}`
+      );
       return;
     }
 

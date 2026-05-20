@@ -14,8 +14,8 @@ console.log("\n🚀 Iniciando sistema integrado (ChatBot + Comemorações + Paus
 inicializarPausaEspecial();
 inicializarScheduler();
 
-// Rota principal do webhook
-app.post("/webhook", async (req, res) => {
+// Função central de processamento do webhook Z-API
+async function processarWebhook(req, res) {
   try {
     // Log detalhado do payload bruto recebido da Z-API
     console.log("📩 Payload recebido da Z-API:", JSON.stringify(req.body, null, 2));
@@ -26,18 +26,33 @@ app.post("/webhook", async (req, res) => {
     const message = {
       // Número de quem enviou a mensagem
       from: payload.phone ? payload.phone + "@c.us" : null,
+      phone: payload.phone || null,
 
       // Número da instância (bot)
       to: payload.connectedPhone ? payload.connectedPhone + "@c.us" : null,
 
       // Texto da mensagem
       body: payload.text?.message || payload.body || "",
+      text: payload.text || null,
 
       // Indica se é grupo
+      isGroup: payload.isGroup || false,
       isGroupMsg: payload.isGroup || payload.isGroupMsg || false,
 
-      // ESSENCIAL: identifica se a mensagem foi enviada pelo próprio bot
+      // ESSENCIAL: distingue bot (fromApi=true) de operador (fromApi=false/undefined)
       fromMe: payload.fromMe || false,
+      fromApi: payload.fromApi || false,
+
+      // ID único da mensagem (deduplicador)
+      messageId: payload.messageId || payload.id || null,
+      id: payload.messageId || payload.id || null,
+
+      // Tipo e metadados
+      type: payload.type || null,
+      isNewsletter: payload.isNewsletter || false,
+      isEdit: payload.isEdit || false,
+      chatName: payload.chatName || null,
+      senderName: payload.senderName || null,
 
       // ESSENCIAL: captura mensagens citadas (para pegar o cliente automaticamente)
       quotedMsg: payload.quotedMsg || payload.quotedMessage || null,
@@ -55,11 +70,15 @@ app.post("/webhook", async (req, res) => {
     console.error("🚨 Erro ao processar mensagem:", error);
     res.sendStatus(500);
   }
-});
+}
 
-// Porta configurável via variável de ambiente
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+// Rotas do webhook — /webhook e /message são equivalentes
+app.post("/webhook", processarWebhook);
+app.post("/message", processarWebhook);
+
+// Porta configurável via variável de ambiente (Fly.io injeta PORT=8080)
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Servidor rodando na porta ${PORT}`);
   console.log(`✅ ChatBot + Comemorações rodando juntos em 1 processo\n`);
 });
