@@ -28,8 +28,14 @@ function normalizarNumero(numero) {
   if (numero.length === 13 && !numero.startsWith("55"))
     return "55" + numero;
 
-  if (numero.length === 11)
-    return "55" + numero;
+  // 11 dígitos: celular brasileiro tem o 3º dígito (índice 2) = '9'
+  // (DDD 2 dígitos + dígito 9 + 8 dígitos do número)
+  // Se o 3º dígito NÃO for '9', é número internacional sem prefixo +
+  // Exemplo EUA: +1 (561) 710-1530 → 15617101530 → [2]='6' → não adiciona 55
+  if (numero.length === 11) {
+    if (numero[2] === '9') return "55" + numero; // celular BR confirmado
+    return numero; // internacional — retorna como veio, sem adicionar 55
+  }
 
   if (numero.length === 10)
     return "55" + numero;

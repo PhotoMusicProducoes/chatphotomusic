@@ -717,51 +717,44 @@ async function handleIncomingMessage(message) {
   }
 
   function extrairNumero(msg) {
-    // Extrai apenas números da mensagem
+    // ✅ Detecta número internacional (começa com +) ANTES de remover não-dígitos.
+    // Ex: "resetar +1 (561) 710-1530"  →  match = "+1 (561) 710-1530"
+    // Ex: "pausar +49 30 1234-5678"    →  match = "+49 30 1234-5678"
+    // Passa pelo normalizarNumero que já trata DDI corretamente.
+    const matchIntl = msg.match(/\+\d[\d\s\-\(\)\.]{6,20}/);
+    if (matchIntl) {
+      return normalizarNumero(matchIntl[0]);
+    }
+
+    // Extrai apenas números da mensagem (comportamento original para BR)
     const apenasNumeros = msg.replace(/\D+/g, "");
-    
+
     if (!apenasNumeros) return "";
-    
-    // Casos:
-    // 1. "5521967082501" (11 dígitos sem código país) → adicionar "55"
-    // 2. "21967082501" (10 dígitos sem código país) → adicionar "5521"
-    // 3. "967082501" (9 dígitos) → adicionar "5521"
-    // 4. "5521967082501" (13 dígitos com 55) → já está ok
-    // 5. "55 21 96708-2501" → remove espaços/hífens, fica "5521967082501"
-    
-    if (apenasNumeros.length === 13 && apenasNumeros.startsWith("55")) {
-      // ✅ Já está completo: 55 + DDD + número
-      return apenasNumeros;
-    }
-    
-    if (apenasNumeros.length === 12 && apenasNumeros.startsWith("55")) {
-      // ✅ Completo sem o último dígito? Manter como está
-      return apenasNumeros;
-    }
-    
+
+    // Casos BR:
+    // 1. "5521967082501" (13 dígitos com 55) → já está ok
+    // 2. "5521967082501" (12 dígitos com 55) → já está ok
+    // 3. "21967082501"   (11 dígitos com DDD)  → adicionar "55"
+    // 4. "967082501"     (10 dígitos)           → adicionar "5521"
+    // 5. "67082501"      (9 dígitos)            → adicionar "5521"
+    // 6. "55 21 96708-2501" → remove espaços/hífens, fica "5521967082501"
+
+    if (apenasNumeros.length === 13 && apenasNumeros.startsWith("55")) return apenasNumeros;
+    if (apenasNumeros.length === 12 && apenasNumeros.startsWith("55")) return apenasNumeros;
+
     if (apenasNumeros.length === 11) {
-      // DDD + número (ex: 21967082501)
-      // → adicionar "55" na frente
-      return "55" + apenasNumeros;
+      // Celular BR: DDD(2) + dígito 9 + número(8) → 3º dígito (índice 2) = '9'
+      // Internacional sem '+': não adicionar 55 (já sem o '9')
+      if (apenasNumeros[2] === '9') return "55" + apenasNumeros;
+      return apenasNumeros; // internacional digitado sem '+'
     }
-    
-    if (apenasNumeros.length === 10) {
-      // Só número (ex: 967082501)
-      // → adicionar "5521" na frente (padrão Rio)
-      return "5521" + apenasNumeros;
-    }
-    
-    if (apenasNumeros.length === 9) {
-      // Sem o primeiro dígito do DDD (ex: 67082501)
-      // → adicionar "5521" na frente (padrão Rio)
-      return "5521" + apenasNumeros;
-    }
-    
-    // Se nenhum caso acima, tentar adicionar "55" se não tiver
-    if (!apenasNumeros.startsWith("55")) {
-      return "55" + apenasNumeros;
-    }
-    
+
+    if (apenasNumeros.length === 10) return "5521" + apenasNumeros;
+    if (apenasNumeros.length === 9)  return "5521" + apenasNumeros;
+
+    // Qualquer outro tamanho: adicionar "55" se não tiver
+    if (!apenasNumeros.startsWith("55")) return "55" + apenasNumeros;
+
     return apenasNumeros;
   }
 
