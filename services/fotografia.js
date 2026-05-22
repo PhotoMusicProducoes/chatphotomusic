@@ -181,7 +181,8 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
         "Orcamento-Cobertura-Fotografica",
         sendTyping,
         sendText,
-        sendFileByUrl
+        sendFileByUrl,
+        { session: sessions[chatId], servicoId: 6 }
       );
 
       await sendTyping(chatId);

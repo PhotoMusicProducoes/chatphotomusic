@@ -9,11 +9,17 @@ async function enviarPdfComLink(
   nomeArquivo,
   sendTyping,
   sendText,
-  sendFileByUrl
-  // ❌ REMOVIDO: clientesPausados como parâmetro
-  // ✅ AGORA: usa estaPausado() importado direto
+  sendFileByUrl,
+  servicoSession = null  // { session, servicoId } — armazena link no resumo
 ) {
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  // ✅ Armazena o link do orçamento na sessão (usado no resumo final)
+  if (servicoSession && servicoSession.session && servicoSession.servicoId && pdfUrl) {
+    if (!servicoSession.session.orcamento) servicoSession.session.orcamento = {};
+    if (!servicoSession.session.orcamento.linksOrcamento) servicoSession.session.orcamento.linksOrcamento = {};
+    servicoSession.session.orcamento.linksOrcamento[servicoSession.servicoId] = pdfUrl;
+  }
   
   try {
     console.log(`📄 [enviarPdfComLink] Iniciando envio de PDF para ${chatId}`);

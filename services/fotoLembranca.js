@@ -365,7 +365,8 @@ async function enviarFotoLembranca(chatId, clb, convidados, sessionsRef, operato
       "Orcamento-Foto-Lembranca",
       sendTyping,
       sendText,
-      sendFileByUrl
+      sendFileByUrl,
+      { session: sessions[chatId], servicoId: 5 }
     );
     await delay(600);
 

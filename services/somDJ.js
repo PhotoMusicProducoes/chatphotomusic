@@ -219,7 +219,8 @@ async function enviarSomDJ(chatId, clb, convidados, sessionsRef, operatorPaused)
       "Orcamento-Som-DJ",
       sendTyping,
       sendText,
-      sendFileByUrl
+      sendFileByUrl,
+      { session: sessions[chatId], servicoId: 7 }
     );
 
     // ======================================================

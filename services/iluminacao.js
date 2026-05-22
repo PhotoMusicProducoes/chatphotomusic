@@ -124,7 +124,8 @@ async function enviarIluminacao(chatId, clb, convidados, sessionsRef, operatorPa
       "Orcamento-Iluminacao-para-pista-de-danca",
       sendTyping,
       sendText,
-      sendFileByUrl
+      sendFileByUrl,
+      { session: sessions[chatId], servicoId: 8 }
     );
 
   } catch (error) {

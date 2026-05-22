@@ -2665,7 +2665,7 @@ async function enviarResumoCliente(chatId, session) {
     // ✅ Corrigido: usar `orc.detalhes` em vez de `orc.observacoes`
     if (orc.detalhes) linhas.push(`${index++}. Detalhes do Evento: *${orc.detalhes}*`);
 
-    // 🎯 MOSTRAR SERVIÇOS ENVIADOS
+    // 🎯 MOSTRAR SERVIÇOS ENVIADOS COM LINKS DOS ORÇAMENTOS
     const servicosMap = {
       1: "Foto Cabine",
       2: "Totem Fotográfico",
@@ -2677,16 +2677,28 @@ async function enviarResumoCliente(chatId, session) {
       8: "Iluminação para Pista de Dança"
     };
 
-    const servicos = (orc.servicosEnviados || [])
-      .map(id => servicosMap[id])
-      .filter(Boolean)
-      .map(s => `*${s}*`)
-      .join("\n   • ");
+    const linksOrcamento = orc.linksOrcamento || {};
+    const servicosIds = orc.servicosEnviados || [];
 
-    if (servicos) {
+    if (servicosIds.length > 0) {
       linhas.push(`\n${index++}. Serviço(s) Contratado(s):`);
-      linhas.push(`   • ${servicos}`);
+      for (const id of servicosIds) {
+        const nome = servicosMap[id];
+        if (!nome) continue;
+        linhas.push(`   • *${nome}*`);
+        const link = linksOrcamento[id];
+        if (link) {
+          linhas.push(`     🔗 ${link}`);
+        }
+      }
     }
+
+    // 🚗 Deslocamento — após todos os serviços
+    linhas.push(
+      "\n🚗 *Observação importante sobre deslocamento*\n" +
+      "O custo de deslocamento *não está incluso* neste orçamento.\n" +
+      "Ele será calculado e enviado posteriormente de acordo com o local informado."
+    );
 
     linhas.push(`\n${index++}. Origem: *PhotoMusic Produções*`);
     linhas.push(`${index++}. Enviado em: *${new Date().toLocaleString("pt-BR")}*`);

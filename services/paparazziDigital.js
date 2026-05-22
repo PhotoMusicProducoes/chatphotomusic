@@ -356,6 +356,7 @@ async function enviarOrcamentoPaparazzi(chatId, clb, convidados, duracao, diasCo
       sendTyping,
       sendText,
       sendFileByUrl,
+      { session: sessions[chatId], servicoId: 4 }
     );
 
     // Deslocamento
@@ -404,6 +405,7 @@ async function enviarOrcamentoPaparazzi(chatId, clb, convidados, duracao, diasCo
       sendTyping,
       sendText,
       sendFileByUrl,
+      { session: sessions[chatId], servicoId: 4 }
     );
 
     // Deslocamento

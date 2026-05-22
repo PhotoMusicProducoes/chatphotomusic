@@ -564,7 +564,8 @@ async function enviarOrcamentoTotem(chatId, clb, convidados, duracao, diasCorpor
       "Orcamento-Totem-Fotografico",
       sendTyping,
       sendText,
-      sendFileByUrl
+      sendFileByUrl,
+      { session: sessions[chatId], servicoId: 2 }
     );       
 
     await sendTyping(chatId);
@@ -610,7 +611,8 @@ async function enviarOrcamentoTotem(chatId, clb, convidados, duracao, diasCorpor
       "Orcamento-Totem-Fotografico",
       sendTyping,
       sendText,
-      sendFileByUrl
+      sendFileByUrl,
+      { session: sessions[chatId], servicoId: 2 }
     );  
 
     await delay(500);
