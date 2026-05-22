@@ -1385,6 +1385,7 @@ async function handleIncomingMessage(message) {
 
       let controlaMsgManual = 0;
       let controlaMsgManual2 = 0;
+      let avaliacaoEnviadaNesteLote = false; // flag local — ignora session.enviouAvaliacao do fluxo automático
 
       for (const cmd of comandos) {
         controlaMsgManual++;
@@ -1469,16 +1470,18 @@ async function handleIncomingMessage(message) {
           servicosEnviados: session.orcamento.servicosEnviados || []
         };
 
-        // ✅ NOVO: Enviar avaliação UMA VEZ se solicitado
-        if (enviarAvaliacao && !session.enviouAvaliacao) {
-          console.log(`📊 Enviando avaliação da empresa (solicitado)...`);
+        // ✅ Enviar avaliação UMA VEZ por lote se o operador solicitou (parâmetro 1)
+        // Usa flag LOCAL para não depender do session.enviouAvaliacao do fluxo automático
+        if (enviarAvaliacao && !avaliacaoEnviadaNesteLote) {
+          console.log(`📊 Enviando avaliação da empresa (solicitado pelo operador)...`);
           await enviarAvaliacaoEmpresa(chatIdCliente, sessions);
-          
+
           // Aguardar avaliação terminar
           while (session.enviandoAvaliacao) {
             await new Promise(r => setTimeout(r, 300));
           }
-          
+
+          avaliacaoEnviadaNesteLote = true;
           session.enviouAvaliacao = true;
         }
 
