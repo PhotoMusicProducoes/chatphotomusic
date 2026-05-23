@@ -241,9 +241,18 @@ const celebracoes = {
   9: "Outros"
 };
 
-const mensagemBoasVindas =
+// Mensagem de boas-vindas dividida em 3 bolhas para maior impacto
+const mensagemBoasVindas1 =
   "*Olá! Seja bem-vindo(a) à PhotoMusic Produções!* 🎉🎊😍\n" +
-  "*É um prazer falar com você!*\n\n" +
+  "*É um prazer falar com você!*";
+
+const mensagemBoasVindas2 =
+  "⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐\n" +
+  "*Somos a empresa de experiências fotográficas mais bem avaliada do Brasil, com mais de 1.400 avaliações 5 estrelas ⭐ e 14 anos transformando eventos em memórias inesquecíveis.*\n" +
+  "⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐";
+
+const mensagemBoasVindas3 =
+  "*Como posso te ajudar hoje?*\n\n" +
   "Por favor, escolha a opção que melhor descreve o motivo do seu contato: *(Digite somente número)*\n" +
   "*1* - Solicitar um orçamento\n" +
   "*2* - Fotografia 1ª Eucaristia\n" +
@@ -344,7 +353,13 @@ function validarEmail(texto) {
 // ======================================================
 async function mostrarMenuInicial(chatId) {
   await sendTyping(chatId);
-  await sendText(chatId, mensagemBoasVindas);
+  await sendText(chatId, mensagemBoasVindas1);
+
+  await sendTyping(chatId);
+  await sendText(chatId, mensagemBoasVindas2);
+
+  await sendTyping(chatId);
+  await sendText(chatId, mensagemBoasVindas3);
 
   // ✅ Não zera a sessão inteira; só garante os campos necessários
   if (!sessions[chatId]) sessions[chatId] = {};
