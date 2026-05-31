@@ -14,6 +14,32 @@ console.log("\n🚀 Iniciando sistema integrado (ChatBot + Comemorações + Paus
 inicializarPausaEspecial();
 inicializarScheduler();
 
+// ================= FILA SEQUENCIAL POR USUÁRIO =================
+// Garante que duas mensagens do mesmo número nunca sejam processadas
+// ao mesmo tempo — a segunda sempre espera a primeira terminar.
+// Isso evita race conditions quando o usuário digita rápido
+// (ex: "7" e "1" antes do bot responder com as opções de evento).
+const userQueues = new Map(); // Map<telefone, Promise>
+
+function processarComFila(telefone, fn) {
+  const atual = userQueues.get(telefone) || Promise.resolve();
+
+  const proxima = atual
+    .then(() => fn())
+    .catch(err => console.error(`🚨 Erro na fila [${telefone}]:`, err));
+
+  userQueues.set(telefone, proxima);
+
+  // Auto-limpeza: remove da Map quando a fila deste usuário esvazia
+  proxima.finally(() => {
+    if (userQueues.get(telefone) === proxima) {
+      userQueues.delete(telefone);
+    }
+  });
+
+  return proxima;
+}
+
 // Função central de processamento do webhook Z-API
 async function processarWebhook(req, res) {
   try {
@@ -62,13 +88,19 @@ async function processarWebhook(req, res) {
     // Log do objeto message já normalizado
     console.log("📩 Objeto message montado:", JSON.stringify(message, null, 2));
 
-    // Passa para o fluxo principal
-    await handleIncomingMessage(message);
-
+    // ✅ Responde ao webhook IMEDIATAMENTE para não dar timeout na Z-API.
+    // O processamento real acontece de forma assíncrona na fila do usuário.
     res.sendStatus(200);
+
+    // Chave da fila: telefone do remetente (ou "desconhecido" como fallback)
+    const chaveFilai = payload.phone || payload.from || "desconhecido";
+
+    // Enfileira o processamento desta mensagem — garante ordem FIFO por usuário
+    processarComFila(chaveFilai, () => handleIncomingMessage(message));
+
   } catch (error) {
     console.error("🚨 Erro ao processar mensagem:", error);
-    res.sendStatus(500);
+    // res.sendStatus já foi chamado — não chamar novamente
   }
 }
 
