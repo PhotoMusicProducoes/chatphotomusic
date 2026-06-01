@@ -119,12 +119,17 @@ async function enviarFluxoFotografia(chatId, clb) {
   if (estaPausado(chatId)) return;
   await sendText(chatId, "Se desejar, também podemos montar um álbum digital ou físico. Basta solicitar após o evento. 📘✨");
 
-  // Como contratar
-  await sendTyping(chatId);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "💼 Como contratar nossos serviços:");
-  if (estaPausado(chatId)) return;
-  await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  // Como contratar — suprimido quando não for o último serviço
+  const _mp6 = sessions[chatId]?._envioMultiplo || {};
+  const _ultimo6 = _mp6.ehUltimo ?? true;
+
+  if (_ultimo6) {
+    await sendTyping(chatId);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, "💼 Como contratar nossos serviços:");
+    if (estaPausado(chatId)) return;
+    await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  }
 }
 
 // ======================================================
@@ -183,15 +188,6 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
         sendText,
         sendFileByUrl,
         { session: sessions[chatId], servicoId: 6 }
-      );
-
-      await sendTyping(chatId);
-      if (estaPausado(chatId)) return;
-      await sendText(
-        chatId,
-        "🚗 *Observação importante sobre deslocamento*\n" +
-        "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-        "Ele será calculado e enviado posteriormente de acordo com o local informado."
       );
 
       return;

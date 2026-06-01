@@ -151,12 +151,16 @@ async function enviarFluxoSomDJ(chatId, clb) {
     await sendFileByUrl(chatId, video, "VIDEO", "");
   }
 
-  // Como contratar
-  await sendTyping(chatId);
-  if (estaPausado(chatId)) return;
+  // Como contratar — suprimido quando não for o último serviço
+  const _mp7 = sessions[chatId]?._envioMultiplo || {};
+  const _ultimo7 = _mp7.ehUltimo ?? true;
 
-  await sendText(chatId, "💼 Como contratar nossos serviços:");
-  await sendFileByUrl(chatId, arquivosSomDJ.contratar, "AUDIO", "");
+  if (_ultimo7) {
+    await sendTyping(chatId);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, "💼 Como contratar nossos serviços:");
+    await sendFileByUrl(chatId, arquivosSomDJ.contratar, "AUDIO", "");
+  }
 }
 
 // ======================================================
@@ -221,19 +225,6 @@ async function enviarSomDJ(chatId, clb, convidados, sessionsRef, operatorPaused)
       sendText,
       sendFileByUrl,
       { session: sessions[chatId], servicoId: 7 }
-    );
-
-    // ======================================================
-    // DESLOCAMENTO
-    // ======================================================
-    await sendTyping(chatId);
-    if (estaPausado(chatId)) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
     );
 
   } catch (error) {

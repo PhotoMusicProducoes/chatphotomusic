@@ -556,27 +556,34 @@ async function enviarFluxoPadrao(chatId, evento, clb) {
     }
   }
 
-  // 15) Moldura
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "🖼️ Moldura da Foto (Arte):");
+  // 15) Moldura + 16) Como contratar — suprimidos quando não for o último serviço
+  const _mp1 = sessions[chatId]?._envioMultiplo || {};
+  const _moldura1 = _mp1.ehUltimoComMoldura ?? true;
+  const _ultimo1  = _mp1.ehUltimo ?? true;
 
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendFileByUrl(chatId, urlBase + "molduradasfotos.mp3", "AUDIO", "");
+  if (_moldura1) {
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, "🖼️ Moldura da Foto (Arte):");
 
-  // 16) Como contratar
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "💼 Como contratar nossos serviços:");
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendFileByUrl(chatId, urlBase + "molduradasfotos.mp3", "AUDIO", "");
+  }
 
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  if (_ultimo1) {
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, "💼 Como contratar nossos serviços:");
+
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  }
 }
 
 // ======================================================
@@ -665,18 +672,6 @@ async function enviarOrcamento(chatId, evento, clb, convidados, duracao, diasCor
       { session: sessions[chatId], servicoId: 1 }
     );
 
-    // Deslocamento
-    await sendTyping(chatId);
-    await delay(300);
-    if (estaPausado(chatId)) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
-    );
-
     return;
   }
 
@@ -734,18 +729,6 @@ async function enviarOrcamento(chatId, evento, clb, convidados, duracao, diasCor
       { session: sessions[chatId], servicoId: 1 }
     );
 
-    // Deslocamento
-    await sendTyping(chatId);
-    await delay(300);
-    if (estaPausado(chatId)) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
-    );
-
     return;
   }
 
@@ -773,18 +756,6 @@ async function enviarOrcamento(chatId, evento, clb, convidados, duracao, diasCor
     sendText,
     sendFileByUrl,
     { session: sessions[chatId], servicoId: 1 }
-  );
-
-  // Deslocamento
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-
-  await sendText(
-    chatId,
-    "🚗 *Observação importante sobre deslocamento*\n" +
-    "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-    "Ele será calculado e enviado posteriormente de acordo com o local informado."
   );
 }
 

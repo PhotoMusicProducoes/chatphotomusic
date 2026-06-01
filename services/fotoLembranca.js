@@ -250,19 +250,26 @@ async function enviarFluxoFotoLembranca(chatId, clb) {
     await delay(600);
   }
 
-  // Moldura
-  await sendTyping(chatId); await delay(300);
-  if (sessions[chatId]?.pausado) return;
-  await sendText(chatId, "🖼️ Moldura da Foto (Arte):");
-  if (sessions[chatId]?.pausado) return;
-  await sendFileByUrl(chatId, urlBase + "molduradasfotos.mp3", "AUDIO", "");
+  // Moldura + Como contratar — suprimidos quando não for o último serviço
+  const _mp5 = sessions[chatId]?._envioMultiplo || {};
+  const _moldura5 = _mp5.ehUltimoComMoldura ?? true;
+  const _ultimo5  = _mp5.ehUltimo ?? true;
 
-  // Como contratar
-  await sendTyping(chatId); await delay(300);
-  if (sessions[chatId]?.pausado) return;
-  await sendText(chatId, "💼 Como contratar nossos serviços:");
-  if (sessions[chatId]?.pausado) return;
-  await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  if (_moldura5) {
+    await sendTyping(chatId); await delay(300);
+    if (sessions[chatId]?.pausado) return;
+    await sendText(chatId, "🖼️ Moldura da Foto (Arte):");
+    if (sessions[chatId]?.pausado) return;
+    await sendFileByUrl(chatId, urlBase + "molduradasfotos.mp3", "AUDIO", "");
+  }
+
+  if (_ultimo5) {
+    await sendTyping(chatId); await delay(300);
+    if (sessions[chatId]?.pausado) return;
+    await sendText(chatId, "💼 Como contratar nossos serviços:");
+    if (sessions[chatId]?.pausado) return;
+    await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  }
 
   // Transição para o PDF
   await sendTyping(chatId); await delay(300);
@@ -367,16 +374,6 @@ async function enviarFotoLembranca(chatId, clb, convidados, sessionsRef, operato
       sendText,
       sendFileByUrl,
       { session: sessions[chatId], servicoId: 5 }
-    );
-    await delay(600);
-
-    await sendTyping(chatId); await delay(300);
-    if (sessionsRef[chatId]?.pausado) return;
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
     );
     await delay(600);
 

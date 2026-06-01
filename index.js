@@ -349,6 +349,20 @@ function validarEmail(texto) {
 }
 
 // ======================================================
+// HELPER — INTERPRETAR SIM / NÃO (texto ou número)
+// Aceita: "1", "sim", "s", "yes" → "1"
+//         "2", "não", "nao", "n", "no" → "2"
+// Retorna null se não reconhecer
+// ======================================================
+function interpretarSimNao(texto) {
+  const t = String(texto || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (["1", "sim", "s", "yes", "y"].includes(t)) return "1";
+  if (["2", "nao", "n", "no", "nope", "nah"].includes(t)) return "2";
+  return null;
+}
+
+// ======================================================
 // FUNÇÃO — MOSTRAR MENU INICIAL
 // ======================================================
 async function mostrarMenuInicial(chatId) {
@@ -520,6 +534,79 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
   const session = sessions[chatId];
   if (!session) return true;
 
+  const orc = session.orcamento || {};
+
+  // ==============================================================
+  // EVENTO MULTI-DIA (corporativo=8 ou outros=9 com dias > 1)
+  // Não envia PDFs — envia msg de "orçamento em preparo" + resumo
+  // ==============================================================
+  const diasTotal = orc.dias || 1;
+  const clbId     = orc.celebracaoId;
+
+  if ((clbId === 8 || clbId === 9) && diasTotal > 1) {
+    const nomeServicoMap = {
+      1: "Foto Cabine", 2: "Totem Fotográfico", 3: "Plataforma 360º",
+      4: "Foto Paparazzi Digital", 5: "Foto Lembrança",
+      6: "Cobertura Fotográfica", 7: "Som Completo com DJ",
+      8: "Iluminação para Pista de Dança"
+    };
+
+    // Registra serviços como "enviados" para aparecerem no resumo
+    listaServicos.forEach(id => {
+      if (!orc.servicosEnviados) orc.servicosEnviados = [];
+      if (!orc.servicosEnviados.includes(id)) orc.servicosEnviados.push(id);
+    });
+
+    const nomesServicos = listaServicos
+      .map(id => nomeServicoMap[id]).filter(Boolean)
+      .map(n => `   • *${n}*`).join("\n");
+
+    // Resumo de datas por dia
+    let detalheDias = "";
+    if (orc.diasDetalhes?.length) {
+      detalheDias = "\n📅 *Cronograma informado:*\n" +
+        orc.diasDetalhes.map((d, i) =>
+          `   *Dia ${i + 1}:* ${d.data} — ${d.horaInicio} às ${d.horaFim}`
+        ).join("\n") + "\n";
+    } else if (orc.datasCorporativo?.length) {
+      detalheDias = "\n📅 *Datas:* " + orc.datasCorporativo.join(", ") + "\n";
+    }
+
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `Olá, *${orc.nome || ""}*! Recebemos todas as informações do seu evento. 🙏\n\n` +
+      `Seu evento terá *${diasTotal} dias* e os serviços solicitados são:\n${nomesServicos}\n` +
+      detalheDias +
+      `\nComo o orçamento para eventos com *múltiplos dias* é personalizado de acordo com a estrutura de cada dia, ` +
+      `nossa equipe irá analisar todos os detalhes e enviar o orçamento completo em breve.\n\n` +
+      `⏱️ *Prazo estimado:* até *24 horas úteis*.\n\n` +
+      `Fique tranquilo(a) — cuidaremos de tudo com muito carinho! 😊`
+    );
+
+    await sendTyping(chatId);
+    await sendText(chatId, "Deus abençoe você e sua equipe, grandiosamente!!! 🙏✨");
+
+    await enviarResumoCliente(chatId, session);
+
+    session.step = "finalizado";
+
+    if (!orc.capturado) {
+      orc.capturado = true;
+      capturarClienteOrcamento(chatId, session).catch(() => {});
+    }
+    return;
+  }
+
+  // ==============================================================
+  // FLUXO NORMAL — 1 dia ou evento não corporativo/outros
+  // ==============================================================
+
+  // Serviços com molduradasfotos.mp3 (para deduplicação)
+  const servicosComMoldura = [1, 2, 4, 5];
+  const ultimoComMoldura   = [...listaServicos].reverse()
+    .find(id => servicosComMoldura.includes(id));
+
   // ✅ Aguardar avaliação ser enviada (máximo 1 vez)
   while (session.enviandoAvaliacao) {
     await new Promise(r => setTimeout(r, 300));
@@ -531,32 +618,39 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
   }
 
   session.enviandoOrcamentos = true;
-  
+
   try {
     // ✅ Enviar avaliação UMA VEZ antes de todos os serviços
     if (!session.enviouAvaliacao) {
       console.log(`📊 Enviando avaliação da empresa para ${chatId}`);
       await enviarAvaliacaoEmpresa(chatId, sessions);
-      
+
       // Aguardar avaliação terminar
       while (session.enviandoAvaliacao) {
         await new Promise(r => setTimeout(r, 300));
       }
-      
+
       session.enviouAvaliacao = true;
     }
 
     // ✅ Agora enviar cada serviço (SEM avaliação novamente)
-    for (const servico of listaServicos) {
+    for (const [idx, servico] of listaServicos.entries()) {
 
       while (session.processandoServico) {
         await new Promise(r => setTimeout(r, 300));
       }
 
+      // Define flags de deduplicação (lidas pelos serviços via sessions[chatId]._envioMultiplo)
+      sessions[chatId]._envioMultiplo = {
+        ehUltimo:          idx === listaServicos.length - 1,
+        ehUltimoComMoldura: servico === ultimoComMoldura,
+        servicosNaLista:   listaServicos
+      };
+
       const celebracaoId = session.orcamento.celebracaoId;
-      const convidados = session.orcamento.convidados;
-      const horas = Number.parseInt(session.orcamento.duracao, 10) || session.orcamento.horas || 4;
-      const dias = session.orcamento.dias || 1;
+      const convidados   = session.orcamento.convidados;
+      const horas        = Number.parseInt(session.orcamento.duracao, 10) || session.orcamento.horas || 4;
+      const diasServ     = session.orcamento.dias || 1;
 
       console.log(`📤 Enviando orçamento do serviço ${servico} para ${chatId}`);
 
@@ -567,37 +661,42 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
         celebracaoId,
         convidados,
         horas,
-        dias,
+        diasServ,
         true  // ✅ modoManual=true previne re-envio de avaliação
       );
 
       registrarServicoEnviado(session, servico);
 
       await new Promise(resolve => setTimeout(resolve, 600));
-    }    
-    
-      // 📌 RESUMO FINAL DO EVENTO PARA O CLIENTE (UMA VEZ)
-      await enviarResumoCliente(chatId, session);
+    }
 
-      await sendTyping(chatId);
-      await sendText(chatId, "Perfeito! Qualquer dúvida estou por aqui 😊");
+    // Limpa flags de deduplicação após todos os serviços
+    delete sessions[chatId]._envioMultiplo;
 
-      await sendTyping(chatId);
-      await sendText(chatId, "Deus abençoe você e sua família, grandiosamente!!!");
+    // 📌 RESUMO FINAL DO EVENTO PARA O CLIENTE (UMA VEZ)
+    await enviarResumoCliente(chatId, session);
 
-      session.step = "orcamento_mais_servicos";
-      // Captura aniversário do cliente para sistema de comemorações (fire and forget)
-      if (!session.orcamento?.capturado) {
-        session.orcamento = session.orcamento || {};
-        session.orcamento.capturado = true;
-        capturarClienteOrcamento(chatId, session).catch(() => {});
-      }
-      await perguntarMaisOrcamentos(chatId);
+    await sendTyping(chatId);
+    await sendText(chatId, "Perfeito! Qualquer dúvida estou por aqui 😊");
+
+    await sendTyping(chatId);
+    await sendText(chatId, "Deus abençoe você e sua família, grandiosamente!!!");
+
+    session.step = "orcamento_mais_servicos";
+    // Captura aniversário do cliente para sistema de comemorações (fire and forget)
+    if (!session.orcamento?.capturado) {
+      session.orcamento = session.orcamento || {};
+      session.orcamento.capturado = true;
+      capturarClienteOrcamento(chatId, session).catch(() => {});
+    }
+    await perguntarMaisOrcamentos(chatId);
 
     return;
 
   } finally {
     session.enviandoOrcamentos = false;
+    // Garante limpeza das flags mesmo em caso de erro
+    delete sessions[chatId]?._envioMultiplo;
   }
 }
 
@@ -2141,9 +2240,208 @@ const resumoEucaristia =
     }
 
     session.orcamento.convidados = convidados;
-    session.step = "orcamento_data";
 
+    // Corporativo (8) e Outros (9) → perguntar dias ANTES da data
+    const clbConv = session.orcamento.celebracaoId;
+    if (clbConv === 8 || clbConv === 9) {
+      session.step = "orcamento_dias";
+      await enviarPerguntaESalvar(chatId, session,
+        "Quantos dias de evento? *(Digite somente o número)*"
+      );
+      return;
+    }
+
+    session.step = "orcamento_data";
     await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/02/2026*)");
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — QUANTOS DIAS (corporativo/outros, antes da data)
+  // ======================================================
+  if (session.step === "orcamento_dias") {
+    const dias = parseInt(corpoMensagem.replace(/\D+/g, ""), 10);
+
+    if (isNaN(dias) || dias <= 0) {
+      await sendText(chatId, "*⚠ Digite apenas o número de dias válido.*");
+      return;
+    }
+
+    session.orcamento.dias = dias;
+
+    if (dias === 1) {
+      // 1 dia → fluxo normal de data/horário
+      session.step = "orcamento_data";
+      await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/06/2026*)");
+      return;
+    }
+
+    // Mais de 1 dia → verificar se horários são iguais
+    session.step = "orcamento_horarios_iguais";
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `Seu evento terá *${dias} dias*. 📅\n\n` +
+      `Os horários de início e término serão os *mesmos em todos os dias*?\n\n` +
+      `*1* - Sim, os horários são iguais\n` +
+      `*2* - Não, os horários variam por dia`
+    );
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — HORÁRIOS IGUAIS PARA TODOS OS DIAS?
+  // ======================================================
+  if (session.step === "orcamento_horarios_iguais") {
+    const resp = interpretarSimNao(corpoMensagem);
+
+    if (!resp) {
+      await sendText(chatId,
+        "*⚠ Responda com o número da opção:*\n*1* - Sim\n*2* - Não"
+      );
+      return;
+    }
+
+    if (resp === "1") {
+      // Mesmos horários → pedir todas as datas e depois horário padrão
+      session.step = "orcamento_datas_multiplas";
+      await sendTyping(chatId);
+      await sendText(
+        chatId,
+        `Informe as *${session.orcamento.dias} datas* do evento, separadas por vírgula:\n` +
+        `*(Ex: 01/06/2026, 02/06/2026, 03/06/2026)*`
+      );
+      return;
+    }
+
+    // Horários diferentes → coletar data+hora por dia
+    session.orcamento.diasDetalhes = [];
+    session.orcamento.diaAtual    = 1;
+    session.step = "orcamento_dia_data";
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `📅 *Dia 1 de ${session.orcamento.dias}*\n` +
+      `Qual a data? *(Ex: 01/06/2026)*`
+    );
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — DATAS MÚLTIPLAS (mesmos horários)
+  // ======================================================
+  if (session.step === "orcamento_datas_multiplas") {
+    const datas = extrairDatasCorporativas(corpoMensagem);
+
+    if (!datas.length) {
+      await sendText(chatId,
+        "*⚠ Nenhuma data válida!* Use o formato DD/MM/AAAA separadas por vírgula.\n" +
+        "*(Ex: 01/06/2026, 02/06/2026)*"
+      );
+      return;
+    }
+
+    session.orcamento.datasCorporativo = datas;
+    session.orcamento.data             = datas[0]; // primeira como referência
+    session.step = "orcamento_hora_inicio";
+    await enviarPerguntaESalvar(chatId, session,
+      "Qual o *horário de início* (válido para todos os dias)? *(Ex: 08:00)*"
+    );
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — DATA DE CADA DIA (horários diferentes)
+  // ======================================================
+  if (session.step === "orcamento_dia_data") {
+    const regexData = /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
+
+    if (!regexData.test(corpoMensagem.trim())) {
+      await sendText(chatId, "*⚠ Data inválida!* Use o formato: *01/06/2026*");
+      return;
+    }
+
+    const sep = corpoMensagem.includes("/") ? "/" : corpoMensagem.includes(".") ? "." : "-";
+    const [dia, mes, ano] = corpoMensagem.trim().split(sep);
+    const anoCompleto = ano.length === 2 ? `20${ano}` : ano;
+    const diaIdx = (session.orcamento.diaAtual || 1) - 1;
+
+    if (!session.orcamento.diasDetalhes) session.orcamento.diasDetalhes = [];
+    session.orcamento.diasDetalhes[diaIdx] = { data: `${dia}/${mes}/${anoCompleto}` };
+
+    session.step = "orcamento_dia_hora_inicio";
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `⏰ *Dia ${session.orcamento.diaAtual}* — Qual o *horário de início*? *(Ex: 08:00)*`
+    );
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — HORA INÍCIO DE CADA DIA
+  // ======================================================
+  if (session.step === "orcamento_dia_hora_inicio") {
+    const horario = normalizarHorario(corpoMensagem);
+
+    if (!horario) {
+      await sendText(chatId, "*⚠ Horário inválido!* Use o formato *08:00*.");
+      return;
+    }
+
+    const diaIdx = (session.orcamento.diaAtual || 1) - 1;
+    session.orcamento.diasDetalhes[diaIdx].horaInicio = horario;
+    session.step = "orcamento_dia_hora_fim";
+
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `⏰ *Dia ${session.orcamento.diaAtual}* — Qual o *horário de término*? *(Ex: 18:00)*`
+    );
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — HORA FIM DE CADA DIA
+  // ======================================================
+  if (session.step === "orcamento_dia_hora_fim") {
+    const horario = normalizarHorario(corpoMensagem);
+
+    if (!horario) {
+      await sendText(chatId, "*⚠ Horário inválido!* Use o formato *18:00*.");
+      return;
+    }
+
+    const diaIdx    = (session.orcamento.diaAtual || 1) - 1;
+    const totalDias = session.orcamento.dias || 1;
+    session.orcamento.diasDetalhes[diaIdx].horaFim = horario;
+
+    if (session.orcamento.diaAtual < totalDias) {
+      // Próximo dia
+      session.orcamento.diaAtual++;
+      session.step = "orcamento_dia_data";
+      await sendTyping(chatId);
+      await sendText(
+        chatId,
+        `📅 *Dia ${session.orcamento.diaAtual} de ${totalDias}*\n` +
+        `Qual a data? *(Ex: 01/06/2026)*`
+      );
+      return;
+    }
+
+    // Todos os dias coletados → usar 1º dia como referência de horário
+    const primeiroDia = session.orcamento.diasDetalhes[0];
+    session.orcamento.data      = primeiroDia.data;
+    session.orcamento.horaInicio = primeiroDia.horaInicio;
+    session.orcamento.horaFim   = primeiroDia.horaFim;
+    session.orcamento.horas     = Number.parseInt(
+      calcularDuracaoEvento(primeiroDia.horaInicio, primeiroDia.horaFim), 10
+    ) || 4;
+    session.orcamento.duracao   = String(session.orcamento.horas);
+
+    session.step = "orcamento_local";
+    await sendTyping(chatId);
+    await sendText(chatId, "Qual o local do evento? *(bairro/cidade/salão)*");
     return;
   }
 
@@ -2254,62 +2552,6 @@ const resumoEucaristia =
     }
 
     session.orcamento.local = capitalizarPalavras(corpoMensagem);
-
-    if (session.orcamento.celebracaoId === 8) {
-      session.step = "orcamento_corporativo_dias";
-      await sendTyping(chatId);
-      await sendText(chatId, "Quantos dias de evento? (*Digite somente número*)");
-      return;
-    }
-
-    session.step = "orcamento_onde_encontrou";
-    await sendTyping(chatId);
-    await sendText(chatId, "Onde nos encontrou?");
-    return;
-  }
-
-  // ======================================================
-  // ORÇAMENTO — CORPORATIVO DIAS
-  // ======================================================
-  if (session.step === "orcamento_corporativo_dias") {
-    const dias = parseInt(corpoMensagem.replace(/\D+/g, ""), 10);
-
-    if (isNaN(dias) || dias <= 0) {
-      await sendText(chatId, "*⚠ Digite apenas números válidos.*");
-      return;
-    }
-
-    session.orcamento.dias = dias;
-
-    if (dias > 1) {
-      session.step = "orcamento_corporativo_datas";
-      await sendTyping(chatId);
-      await sendText(
-        chatId,
-        "Informe as datas do evento.\nUse o formato DD/MM/AAAA.\nExemplo: *01/02/2026, 02/02/2026*"
-      );
-      return;
-    }
-
-    session.step = "orcamento_onde_encontrou";
-    await sendTyping(chatId);
-    await sendText(chatId, "Onde nos encontrou?");
-    return;
-  }
-
-  // ======================================================
-  // ORÇAMENTO — CORPORATIVO DATAS
-  // ======================================================
-  if (session.step === "orcamento_corporativo_datas") {
-    const datas = extrairDatasCorporativas(corpoMensagem);
-
-    if (!datas.length) {
-      await sendText(chatId, "*⚠ Nenhuma data válida encontrada!*");
-      return;
-    }
-
-    session.orcamento.datasCorporativo = datas;
-
     session.step = "orcamento_onde_encontrou";
     await sendTyping(chatId);
     await sendText(chatId, "Onde nos encontrou?");
@@ -2346,12 +2588,13 @@ const resumoEucaristia =
   // ORÇAMENTO — DETALHES
   // ======================================================
   if (session.step === "orcamento_detalhes") {
-    if (corpoMensagem !== "1" && corpoMensagem !== "2") {
-      await sendText(chatId, "*⚠ Escolha apenas 1 (Sim) ou 2 (Não).*");
+    const respDetalhes = interpretarSimNao(corpoMensagem);
+    if (!respDetalhes) {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim\n*2* - Não");
       return;
     }
 
-    if (corpoMensagem === "1") {
+    if (respDetalhes === "1") {
       session.step = "orcamento_detalhes_texto";
       await sendTyping(chatId);
       await sendText(chatId, "*Digite os detalhes adicionais:*");
@@ -2661,19 +2904,23 @@ async function enviarResumoCliente(chatId, session) {
       linhas.push(`${index++}. Convidados: *${orc.convidados}*`);
     }
     
-    // ✅ Corrigido: usar `orc.data` em vez de `orc.data`
-    if (orc.data) linhas.push(`${index++}. Data do Evento: *${orc.data}*`);
-    
-    // ✅ Corrigido: usar `orc.horaInicio` em vez de `orc.horario`
-    if (orc.horaInicio) linhas.push(`${index++}. Horário de Início: *${orc.horaInicio}*`);
-    
-    // ✅ Novo: adicionar `orc.horaFim` (hora de término)
-    if (orc.horaFim) linhas.push(`${index++}. Horário de Término: *${orc.horaFim}*`);
-    
-    if (orc.horas) linhas.push(`${index++}. Duração: *${orc.horas} horas*`);
-
-    if (orc.dias && orc.dias > 1) {
-      linhas.push(`${index++}. Dias: *${orc.dias}*`);
+    // Multi-dias: mostrar cronograma por dia se disponível
+    if (orc.diasDetalhes?.length) {
+      linhas.push(`${index++}. Dias de Evento: *${orc.dias}*`);
+      orc.diasDetalhes.forEach((d, i) => {
+        linhas.push(`   📅 Dia ${i + 1}: *${d.data}* — ${d.horaInicio} às ${d.horaFim}`);
+      });
+    } else if (orc.datasCorporativo?.length) {
+      // Mesmos horários, múltiplas datas
+      linhas.push(`${index++}. Dias de Evento: *${orc.dias}*`);
+      linhas.push(`   📅 Datas: *${orc.datasCorporativo.join(", ")}*`);
+      if (orc.horaInicio) linhas.push(`   ⏰ Início: *${orc.horaInicio}*  Término: *${orc.horaFim || "—"}*`);
+    } else {
+      // 1 dia — exibição normal
+      if (orc.data)      linhas.push(`${index++}. Data do Evento: *${orc.data}*`);
+      if (orc.horaInicio) linhas.push(`${index++}. Horário de Início: *${orc.horaInicio}*`);
+      if (orc.horaFim)   linhas.push(`${index++}. Horário de Término: *${orc.horaFim}*`);
+      if (orc.horas)     linhas.push(`${index++}. Duração: *${orc.horas} horas*`);
     }
 
     // ✅ Corrigido: usar `orc.local` (já estava correto)

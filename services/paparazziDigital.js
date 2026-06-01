@@ -279,27 +279,34 @@ async function enviarFluxoPaparazzi(chatId, clb) {
     urlBase1 + "fotopaparazzidigital6Gif.mp4"
   );
 
-  // Moldura
-  await sendTyping(chatId); 
-  await delay(300);
-  if (sessions[chatId]?.pausado) return;
-  await sendText(chatId, "Moldura da Foto Paparazzi Digital (Arte)");
+  // Moldura + Como contratar — suprimidos quando não for o último serviço
+  const _mp4 = sessions[chatId]?._envioMultiplo || {};
+  const _moldura4 = _mp4.ehUltimoComMoldura ?? true;
+  const _ultimo4  = _mp4.ehUltimo ?? true;
 
-  await sendTyping(chatId); 
-  await delay(300);
-  if (sessions[chatId]?.pausado) return;
-  await sendFileByUrl(chatId, urlBase + "molduradasfotos.mp3", "AUDIO", "");
+  if (_moldura4) {
+    await sendTyping(chatId);
+    await delay(300);
+    if (sessions[chatId]?.pausado) return;
+    await sendText(chatId, "Moldura da Foto Paparazzi Digital (Arte)");
 
-  // Como contratar
-  await sendTyping(chatId); 
-  await delay(300);
-  if (sessions[chatId]?.pausado) return;
-  await sendText(chatId, "Como contratar nossos serviços:");
+    await sendTyping(chatId);
+    await delay(300);
+    if (sessions[chatId]?.pausado) return;
+    await sendFileByUrl(chatId, urlBase + "molduradasfotos.mp3", "AUDIO", "");
+  }
 
-  await sendTyping(chatId); 
-  await delay(300);
-  if (sessions[chatId]?.pausado) return;
-  await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  if (_ultimo4) {
+    await sendTyping(chatId);
+    await delay(300);
+    if (sessions[chatId]?.pausado) return;
+    await sendText(chatId, "Como contratar nossos serviços:");
+
+    await sendTyping(chatId);
+    await delay(300);
+    if (sessions[chatId]?.pausado) return;
+    await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  }
 }
 
 // ======================================================================
@@ -359,18 +366,6 @@ async function enviarOrcamentoPaparazzi(chatId, clb, convidados, duracao, diasCo
       { session: sessions[chatId], servicoId: 4 }
     );
 
-    // Deslocamento
-    await sendTyping(chatId); 
-    await delay(300);
-    if (sessions[chatId]?.pausado) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
-    );
-
     return;
   }
 
@@ -408,17 +403,6 @@ async function enviarOrcamentoPaparazzi(chatId, clb, convidados, duracao, diasCo
       { session: sessions[chatId], servicoId: 4 }
     );
 
-    // Deslocamento
-    await sendTyping(chatId); 
-    await delay(300);
-    if (sessions[chatId]?.pausado) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
-    );
     return;
   }
 
@@ -453,18 +437,6 @@ async function enviarOrcamentoPaparazzi(chatId, clb, convidados, duracao, diasCo
     sendText,
     sendFileByUrl,
     { session: sessions[chatId], servicoId: 4 }
-  );
-
-  // Deslocamento
-  await sendTyping(chatId); 
-  await delay(300);
-  if (sessions[chatId]?.pausado) return;
-
-  await sendText(
-    chatId,
-    "🚗 *Observação importante sobre deslocamento*\n" +
-    "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-    "Ele será calculado e enviado posteriormente de acordo com o local informado."
   );
 }
 

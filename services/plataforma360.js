@@ -442,46 +442,41 @@ async function enviarFluxoPlataforma360(chatId, clb) {
   if (estaPausado(chatId)) return;
   await sendFileByUrl(chatId, urlBase1 + "downloadnocelular.mp4", "VIDEO", "");
 
-  // Moldura
-  await sendTyping(chatId); await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "Moldura do vídeo 360º e da Foto Paparazzi Digital (Arte):");
+  // Moldura, Música, Como contratar — suprimidos quando não for o último serviço
+  const _mp3 = sessions[chatId]?._envioMultiplo || {};
+  const _moldura3 = _mp3.ehUltimoComMoldura ?? true;
+  const _ultimo3  = _mp3.ehUltimo ?? true;
 
-  if (clb === 8) {
+  if (_moldura3) {
+    await sendTyping(chatId); await delay(300);
     if (estaPausado(chatId)) return;
-    await sendFileByUrl(chatId, urlBase1 + "molduraplataformaCorporativoAudio.mp3", "AUDIO", "");
-  } else {
+    await sendText(chatId, "Moldura do vídeo 360º e da Foto Paparazzi Digital (Arte):");
+
+    if (clb === 8) {
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, urlBase1 + "molduraplataformaCorporativoAudio.mp3", "AUDIO", "");
+    } else {
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, urlBase1 + "molduraplataformaAudio.mp3", "AUDIO", "");
+    }
+
+    // Música
+    await sendTyping(chatId); await delay(300);
     if (estaPausado(chatId)) return;
-    await sendFileByUrl(chatId, urlBase1 + "molduraplataformaAudio.mp3", "AUDIO", "");
+    await sendText(chatId, "Música do vídeo 360º:");
+
+    if (estaPausado(chatId)) return;
+    await sendFileByUrl(chatId, urlBase1 + "musicaplataformaAudio.mp3", "AUDIO", "");
   }
 
-  // Música
-  await sendTyping(chatId); await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "Música do vídeo 360º:");
+  if (_ultimo3) {
+    await sendTyping(chatId); await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, "Como contratar nossos serviços:");
 
-  if (estaPausado(chatId)) return;
-  await sendFileByUrl(chatId, urlBase1 + "musicaplataformaAudio.mp3", "AUDIO", "");
-
-  // Como contratar
-  await sendTyping(chatId); await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "Como contratar nossos serviços:");
-
-  if (estaPausado(chatId)) return;
-  await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
-
-
-    // Deslocamento
-  await sendTyping(chatId); await delay(300);
-  if (estaPausado(chatId)) return;
-
-  await sendText(
-    chatId,
-    "🚗 *Observação importante sobre deslocamento*\n" +
-    "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-    "Ele será calculado e enviado posteriormente de acordo com o local informado."
-  );
+    if (estaPausado(chatId)) return;
+    await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  }
 }
 
 // ======================================================================
@@ -545,17 +540,6 @@ async function enviarOrcamentoPlataforma360(chatId, clb, convidados, duracao, di
       sendFileByUrl,
       { session: sessions[chatId], servicoId: 3 }
     );
-    
-    // Deslocamento
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
-    );
 
     return;
   }
@@ -590,17 +574,6 @@ async function enviarOrcamentoPlataforma360(chatId, clb, convidados, duracao, di
       { session: sessions[chatId], servicoId: 3 }
     );
 
-    // Deslocamento
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
-    );
-
     return;
   }
 
@@ -633,17 +606,6 @@ async function enviarOrcamentoPlataforma360(chatId, clb, convidados, duracao, di
     sendText,
     sendFileByUrl,
     { session: sessions[chatId], servicoId: 3 }
-  );
-
-  // Deslocamento
-  await sendTyping(chatId); await delay(300);
-  if (estaPausado(chatId)) return;
-
-  await sendText(
-    chatId,
-    "🚗 *Observação importante sobre deslocamento*\n" +
-    "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-    "Ele será calculado e enviado posteriormente de acordo com o local informado."
   );
 }
 

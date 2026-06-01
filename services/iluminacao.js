@@ -77,10 +77,16 @@ async function enviarFluxoIluminacao(chatId, clb) {
     await sendFileByUrl(chatId, midia, tipo, "");
   }
 
-  await sendTyping(chatId);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "💼 Como contratar nossos serviços:");
-  await sendFileByUrl(chatId, arquivosIluminacao.contratar, "AUDIO", "");
+  // Como contratar — suprimido quando não for o último serviço
+  const _mp8 = sessions[chatId]?._envioMultiplo || {};
+  const _ultimo8 = _mp8.ehUltimo ?? true;
+
+  if (_ultimo8) {
+    await sendTyping(chatId);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, "💼 Como contratar nossos serviços:");
+    await sendFileByUrl(chatId, arquivosIluminacao.contratar, "AUDIO", "");
+  }
 }
 
 // ======================================================

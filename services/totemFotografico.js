@@ -300,6 +300,13 @@ const pdfTotemCorporativoMais200 = {
 async function enviarFluxoTotem(chatId, clb) {
 
   if (estaPausado(chatId)) return;
+
+  // Flags de deduplicação (definidas por enviarMultiplosOrcamentos)
+  const _mpT = sessions[chatId]?._envioMultiplo || {};
+  const _molduraT = _mpT.ehUltimoComMoldura ?? true;
+  const _ultimoT  = _mpT.ehUltimo ?? true;
+  const _listaT   = _mpT.servicosNaLista || [];
+
   // Abertura
   await sendTyping(chatId);
   await delay(300);
@@ -310,6 +317,20 @@ async function enviarFluxoTotem(chatId, clb) {
   await delay(300);
   if (estaPausado(chatId)) return;
   await sendText(chatId, mensagemAberturaTotem(clb));
+
+  // Mensagem especial quando cliente pediu Foto Cabine + Totem juntos
+  if (_listaT.includes(1)) {
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(
+      chatId,
+      "✨ *Uma coisa importante sobre a diferença entre os dois serviços:*\n\n" +
+      "No Totem, diferente da Cabine, o fundo da foto é o *próprio ambiente da sua festa* — " +
+      "capturando o clima, a decoração e a energia do evento. " +
+      "É uma experiência completamente diferente e que combina perfeitamente com a Cabine! 🎉"
+    );
+  }
 
   // Introdução
   await sendTyping(chatId);
@@ -383,57 +404,69 @@ async function enviarFluxoTotem(chatId, clb) {
     }
   }
 
-  // Pacotes
+  // Pacotes — versão resumida quando cliente já viu a Foto Cabine
   await sendTyping(chatId);
   await delay(300);
   if (estaPausado(chatId)) return;
   await sendText(chatId, "*📦 Pacotes do Totem Fotográfico*");
 
-  // Como funciona
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(
-    chatId,
-    "Ao entrar na cabine, o nosso sistema permite que os convidados escolham o modelo da foto que desejam receber, #foto tirinha# ou *foto 10x15* (*Pacote Premium e Gold*), eles fazem uma sequência de 4 fotos e ao saírem recebem a foto impressa"
-  );
+  if (_listaT.includes(1)) {
+    // Cliente já recebeu a descrição dos pacotes na Foto Cabine — resumo rápido
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(
+      chatId,
+      "Assim como na *Foto Cabine*, o Totem Fotográfico também trabalha com os pacotes *Premium*, *Tirinha* e *Gold* — com as mesmas regras de quantidade de pessoas e revelação por vez. 😊\n\n" +
+      "A grande diferença está na experiência: no Totem o fundo é o *ambiente da sua festa*, enquanto na Cabine o fundo é *personalizado com o tema do evento*. Os dois se complementam perfeitamente! 🎉"
+    );
+  } else {
+    // Cliente não viu a Foto Cabine — exibe descrição completa dos pacotes
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(
+      chatId,
+      "Ao entrar na cabine, o nosso sistema permite que os convidados escolham o modelo da foto que desejam receber, *foto tirinha* ou *foto 10x15* (*Pacote Premium e Gold*), eles fazem uma sequência de 4 fotos e ao saírem recebem a foto impressa"
+    );
 
-  // Premium
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(
-    chatId,
-    "*Pacote Premium*\n" +
-    "• Foto 10x15: até *4 pessoas* → cada uma recebe uma cópia (até 4 fotos)\n" +
-    "• Foto Tirinha: até *6 pessoas* → cada uma recebe uma cópia (até 6 fotos)\n" +
-    "• Revelamos até *4 fotos 10x15* ou até *6 fotos tirinhas* por vez"
-  );
+    // Premium
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(
+      chatId,
+      "*Pacote Premium*\n" +
+      "• Foto 10x15: até *4 pessoas* → cada uma recebe uma cópia (até 4 fotos)\n" +
+      "• Foto Tirinha: até *6 pessoas* → cada uma recebe uma cópia (até 6 fotos)\n" +
+      "• Revelamos até *4 fotos 10x15* ou até *6 fotos tirinhas* por vez"
+    );
 
-  // Tirinha
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(
-    chatId,
-    "*Pacote Tirinha*\n" +
-    "• Foto Tirinha 05x15\n" +
-    "• Até *4 pessoas* por vez → cada uma recebe uma cópia\n" +
-    "• Revelamos até *4 fotos tirinhas* por vez"
-  );
+    // Tirinha
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(
+      chatId,
+      "*Pacote Tirinha*\n" +
+      "• Foto Tirinha 05x15\n" +
+      "• Até *4 pessoas* por vez → cada uma recebe uma cópia\n" +
+      "• Revelamos até *4 fotos tirinhas* por vez"
+    );
 
-  // Gold
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(
-    chatId,
-    "*Pacote Gold*\n" +
-    "• Independente da quantidade de pessoas\n" +
-    "• Foto 10x15 → revelamos *1 foto*\n" +
-    "• Foto Tirinha → revelamos *2 fotos*\n" +
-    "• Por quê? Porque a tirinha é uma 10x15 dividida ao meio 😉"
-  );
+    // Gold
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(
+      chatId,
+      "*Pacote Gold*\n" +
+      "• Independente da quantidade de pessoas\n" +
+      "• Foto 10x15 → revelamos *1 foto*\n" +
+      "• Foto Tirinha → revelamos *2 fotos*\n" +
+      "• Por quê? Porque a tirinha é uma 10x15 dividida ao meio 😉"
+    );
+  }
 
   // Mídias digitais
   await sendTyping(chatId);
@@ -481,24 +514,27 @@ async function enviarFluxoTotem(chatId, clb) {
     );
   }
 
-  // Moldura
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "🖼️ Moldura da Foto (Arte):");
+  // Moldura + Como contratar — suprimidos quando não for o último serviço
+  if (_molduraT) {
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, "🖼️ Moldura da Foto (Arte):");
 
-  if (estaPausado(chatId)) return;
-  await sendFileByUrl(chatId, urlBase + "molduradasfotos.mp3", "AUDIO", "");
-  await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendFileByUrl(chatId, urlBase + "molduradasfotos.mp3", "AUDIO", "");
+    await delay(300);
+  }
 
-  // Como contratar
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "💼 Como contratar nossos serviços:");
+  if (_ultimoT) {
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, "💼 Como contratar nossos serviços:");
 
-  if (estaPausado(chatId)) return;
-  await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+    if (estaPausado(chatId)) return;
+    await sendFileByUrl(chatId, urlBase + "comocontratar.mp3", "AUDIO", "");
+  }
 }
 
 // ======================================================================
@@ -566,17 +602,6 @@ async function enviarOrcamentoTotem(chatId, clb, convidados, duracao, diasCorpor
       sendText,
       sendFileByUrl,
       { session: sessions[chatId], servicoId: 2 }
-    );       
-
-    await sendTyping(chatId);
-    await delay(300);
-    if (estaPausado(chatId)) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
     );
 
     return;
@@ -613,19 +638,6 @@ async function enviarOrcamentoTotem(chatId, clb, convidados, duracao, diasCorpor
       sendText,
       sendFileByUrl,
       { session: sessions[chatId], servicoId: 2 }
-    );  
-
-    await delay(500);
-
-    await sendTyping(chatId);
-    await delay(300);
-    if (estaPausado(chatId)) return;
-
-    await sendText(
-      chatId,
-      "🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
     );
 
     return;
@@ -662,17 +674,6 @@ async function enviarOrcamentoTotem(chatId, clb, convidados, duracao, diasCorpor
     sendText,
     sendFileByUrl,
     { session: sessions[chatId], servicoId: 2 }
-  );
-
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-
-  await sendText(
-    chatId,
-    "🚗 *Observação importante sobre deslocamento*\n" +
-    "O custo de deslocamento **não está incluso** neste orçamento.\n" +
-    "Ele será calculado e enviado posteriormente de acordo com o local informado."
   );
 }
 
