@@ -444,7 +444,7 @@ async function enviarOrcamentoPaparazzi(chatId, clb, convidados, duracao, diasCo
   await delay(300);
   if (sessions[chatId]?.pausado) return;
   
-  // Envia o PDF 
+  // Envia o PDF
   await enviarPdfComLink(
     chatId,
     pdf,
@@ -452,6 +452,7 @@ async function enviarOrcamentoPaparazzi(chatId, clb, convidados, duracao, diasCo
     sendTyping,
     sendText,
     sendFileByUrl,
+    { session: sessions[chatId], servicoId: 4 }
   );
 
   // Deslocamento

@@ -772,6 +772,7 @@ async function enviarOrcamento(chatId, evento, clb, convidados, duracao, diasCor
     sendTyping,
     sendText,
     sendFileByUrl,
+    { session: sessions[chatId], servicoId: 1 }
   );
 
   // Deslocamento

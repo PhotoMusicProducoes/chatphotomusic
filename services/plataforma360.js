@@ -631,7 +631,8 @@ async function enviarOrcamentoPlataforma360(chatId, clb, convidados, duracao, di
     "Orcamento-Plataforma-360",
     sendTyping,
     sendText,
-    sendFileByUrl
+    sendFileByUrl,
+    { session: sessions[chatId], servicoId: 3 }
   );
 
   // Deslocamento
