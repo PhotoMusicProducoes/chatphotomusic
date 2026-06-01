@@ -334,6 +334,9 @@ async function enviarFotoLembranca(chatId, clb, convidados, sessionsRef, operato
     await enviarFluxoFotoLembranca(chatId, clb);
     if (sessionsRef[chatId]?.pausado) return;
 
+    // Multi-dia: apenas apresentação, orçamento enviado no resumo central
+    if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
+
     // 2) Seleciona PDF
     const pdf = selecionarPdfFotoLembranca(clb, convidados);
 

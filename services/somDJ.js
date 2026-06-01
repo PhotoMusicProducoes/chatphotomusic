@@ -200,6 +200,9 @@ async function enviarSomDJ(chatId, clb, convidados, sessionsRef, operatorPaused)
     await enviarFluxoSomDJ(chatId, clb);
     if (estaPausado(chatId)) return;
 
+    // Multi-dia: apenas apresentação, orçamento enviado no resumo central
+    if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
+
     // ======================================================
     // ENVIO DO PDF
     // ======================================================

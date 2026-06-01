@@ -629,6 +629,9 @@ async function enviarPlataforma360(chatId, clb, convidados, sessionsRef, operato
     // 1) Envia o fluxo
     await enviarFluxoPlataforma360(chatId, clb);
 
+    // Multi-dia: apenas apresentação, orçamento enviado no resumo central
+    if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
+
     // 2) Envia o orçamento
     await enviarOrcamentoPlataforma360(
       chatId,

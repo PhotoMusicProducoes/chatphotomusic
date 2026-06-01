@@ -538,18 +538,13 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
 
   // ==============================================================
   // EVENTO MULTI-DIA (corporativo=8 ou outros=9 com dias > 1)
-  // Não envia PDFs — envia msg de "orçamento em preparo" + resumo
+  // Envia apresentação completa de cada serviço (sem PDF)
+  // Depois envia o resumo unificado com nota de orçamento em preparo
   // ==============================================================
   const diasTotal = orc.dias || 1;
   const clbId     = orc.celebracaoId;
 
   if ((clbId === 8 || clbId === 9) && diasTotal > 1) {
-    const nomeServicoMap = {
-      1: "Foto Cabine", 2: "Totem Fotográfico", 3: "Plataforma 360º",
-      4: "Foto Paparazzi Digital", 5: "Foto Lembrança",
-      6: "Cobertura Fotográfica", 7: "Som Completo com DJ",
-      8: "Iluminação para Pista de Dança"
-    };
 
     // Registra serviços como "enviados" para aparecerem no resumo
     listaServicos.forEach(id => {
@@ -557,37 +552,40 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
       if (!orc.servicosEnviados.includes(id)) orc.servicosEnviados.push(id);
     });
 
-    const nomesServicos = listaServicos
-      .map(id => nomeServicoMap[id]).filter(Boolean)
-      .map(n => `   • *${n}*`).join("\n");
+    // Deduplicação de moldura/comocontratar igual ao fluxo normal
+    const servicosComMolduraM = [1, 2, 4, 5];
+    const ultimoComMolduraM   = [...listaServicos].reverse()
+      .find(id => servicosComMolduraM.includes(id));
 
-    // Resumo de datas por dia
-    let detalheDias = "";
-    if (orc.diasDetalhes?.length) {
-      detalheDias = "\n📅 *Cronograma informado:*\n" +
-        orc.diasDetalhes.map((d, i) =>
-          `   *Dia ${i + 1}:* ${d.data} — ${d.horaInicio} às ${d.horaFim}`
-        ).join("\n") + "\n";
-    } else if (orc.datasCorporativo?.length) {
-      detalheDias = "\n📅 *Datas:* " + orc.datasCorporativo.join(", ") + "\n";
+    // Envia apresentação de cada serviço (apenasFluxo=true → pula PDF)
+    for (const [idx, servico] of listaServicos.entries()) {
+      sessions[chatId]._envioMultiplo = {
+        ehUltimo:           idx === listaServicos.length - 1,
+        ehUltimoComMoldura: servico === ultimoComMolduraM,
+        servicosNaLista:    listaServicos,
+        apenasFluxo:        true   // ← sinaliza para pular PDF em todos os serviços
+      };
+
+      await enviarOrcamentoUnificado(
+        chatId,
+        servico,
+        orc.celebracaoId,
+        orc.convidados,
+        orc.horas || 4,
+        diasTotal,
+        true
+      );
+
+      await new Promise(r => setTimeout(r, 600));
     }
 
-    await sendTyping(chatId);
-    await sendText(
-      chatId,
-      `Olá, *${orc.nome || ""}*! Recebemos todas as informações do seu evento. 🙏\n\n` +
-      `Seu evento terá *${diasTotal} dias* e os serviços solicitados são:\n${nomesServicos}\n` +
-      detalheDias +
-      `\nComo o orçamento para eventos com *múltiplos dias* é personalizado de acordo com a estrutura de cada dia, ` +
-      `nossa equipe irá analisar todos os detalhes e enviar o orçamento completo em breve.\n\n` +
-      `⏱️ *Prazo estimado:* até *24 horas úteis*.\n\n` +
-      `Fique tranquilo(a) — cuidaremos de tudo com muito carinho! 😊`
-    );
+    delete sessions[chatId]._envioMultiplo;
+
+    // Resumo unificado (inclui cronograma + nota "orçamento em preparo")
+    await enviarResumoCliente(chatId, session);
 
     await sendTyping(chatId);
     await sendText(chatId, "Deus abençoe você e sua equipe, grandiosamente!!! 🙏✨");
-
-    await enviarResumoCliente(chatId, session);
 
     session.step = "finalizado";
 
@@ -2964,6 +2962,15 @@ async function enviarResumoCliente(chatId, session) {
       "O custo de deslocamento *não está incluso* neste orçamento.\n" +
       "Ele será calculado e enviado posteriormente de acordo com o local informado."
     );
+
+    // Multi-dia: nota de orçamento personalizado em preparo
+    if ((orc.dias || 1) > 1 && (orc.diasDetalhes?.length || orc.datasCorporativo?.length)) {
+      linhas.push(
+        "\n📋 *Orçamento:*\n" +
+        "Nossa equipe está analisando os detalhes de cada dia e enviará o orçamento *personalizado e completo* em breve.\n" +
+        "⏱️ *Prazo estimado:* até *24 horas úteis.*"
+      );
+    }
 
     linhas.push(`\n${index++}. Origem: *PhotoMusic Produções*`);
     linhas.push(`${index++}. Enviado em: *${new Date().toLocaleString("pt-BR")}*`);

@@ -465,6 +465,9 @@ async function enviarFotoPaparazzi(chatId, clb, convidados, sessionsRef, operato
     await enviarFluxoPaparazzi(chatId, clb);
     if (sessionsRef[chatId]?.pausado) return;
 
+    // Multi-dia: apenas apresentação, orçamento enviado no resumo central
+    if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
+
     // 2) Envia orçamento padronizado
     await enviarOrcamentoPaparazzi(
       chatId,

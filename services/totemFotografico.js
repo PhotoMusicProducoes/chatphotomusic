@@ -701,6 +701,9 @@ async function enviarTotemFotografico(chatId, clb, convidados, sessionsRef, oper
     await enviarFluxoTotem(chatId, clb);
     if (estaPausado(chatId)) return;
 
+    // Multi-dia: apenas apresentação, orçamento enviado no resumo central
+    if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
+
     // 2) Envia orçamento padronizado
     await enviarOrcamentoTotem(
       chatId,

@@ -786,6 +786,9 @@ async function enviarFotoCabine(chatId, clb, convidados, sessionsRef, operatorPa
     // Fluxo completo da cabine
     await enviarFluxoPadrao(chatId, evento, clb);
 
+    // Multi-dia: apenas apresentação, orçamento enviado no resumo central
+    if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
+
     // Envio do orçamento
     await enviarOrcamento(
       chatId,

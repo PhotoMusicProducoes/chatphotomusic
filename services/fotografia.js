@@ -175,6 +175,9 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
       await enviarFluxoFotografia(chatId, clb);
       if (estaPausado(chatId)) return;
 
+      // Multi-dia: apenas apresentação, orçamento enviado no resumo central
+      if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
+
       await sendTyping(chatId);
       await sendText(chatId, "💰 Segue o arquivo com o orçamento da *Cobertura Fotográfica* 📸✨");
 

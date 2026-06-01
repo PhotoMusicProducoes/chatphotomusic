@@ -117,6 +117,9 @@ async function enviarIluminacao(chatId, clb, convidados, sessionsRef, operatorPa
     await enviarFluxoIluminacao(chatId, clb);
     if (estaPausado(chatId)) return;
 
+    // Multi-dia: apenas apresentação, orçamento enviado no resumo central
+    if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
+
     // Envio do PDF
     await sendTyping(chatId);
     if (estaPausado(chatId)) return;
