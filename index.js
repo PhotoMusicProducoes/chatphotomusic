@@ -552,6 +552,19 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
       if (!orc.servicosEnviados.includes(id)) orc.servicosEnviados.push(id);
     });
 
+    // ✅ Envia avaliação da empresa UMA VEZ (igual ao fluxo normal de 1 dia)
+    while (session.enviandoAvaliacao) {
+      await new Promise(r => setTimeout(r, 300));
+    }
+    if (!session.enviouAvaliacao) {
+      console.log(`📊 [Multi-dia] Enviando avaliação para ${chatId}`);
+      await enviarAvaliacaoEmpresa(chatId, sessions);
+      while (session.enviandoAvaliacao) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+      session.enviouAvaliacao = true;
+    }
+
     // Deduplicação de moldura/comocontratar igual ao fluxo normal
     const servicosComMolduraM = [1, 2, 4, 5];
     const ultimoComMolduraM   = [...listaServicos].reverse()
