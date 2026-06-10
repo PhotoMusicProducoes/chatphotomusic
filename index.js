@@ -1911,7 +1911,12 @@ async function handleIncomingMessage(message) {
     const evento = session.eventosLista?.find(e => e.numero === numero);
 
     if (!evento) {
-      await sendText(chatId, "⚠ Evento não encontrado! Digite novamente o número correto.");
+      let mensagemErro = "⚠️ Opção inválida! Digite apenas o número do evento:\n\n";
+      (session.eventosLista || []).forEach((e) => {
+        mensagemErro += `*${e.numero}* - ${e.nome}\n`;
+      });
+      await sendTyping(chatId);
+      await sendText(chatId, mensagemErro);
       return;
     }
 
