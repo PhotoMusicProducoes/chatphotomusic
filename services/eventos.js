@@ -88,12 +88,13 @@ async function buscarEventos() {
     console.log(`✅ [eventos] ${dados.length} evento(s) encontrado(s):`, dados.map(e => `#${e.id} ${e.nome}`));
 
     return dados.map((e) => ({
-      numero: e.numero,       // "1", "2", "3"...
-      nome:   e.nome,         // nome do evento
-      titulo: e.titulo,       // nome + data formatada
-      links:  e.links || [],  // array de { nome, link }
-      id:     e.id,
-      token:  e.token_evento, // token único do evento (coluna token_evento)
+      numero:     e.numero,       // "1", "2", "3"...
+      nome:       e.nome,         // nome do evento
+      titulo:     e.titulo,       // nome + data formatada
+      preposicao: e.preposicao || 'ao', // preposição da mensagem de boas-vindas
+      links:      e.links || [],  // array de { nome, link }
+      id:         e.id,
+      token:      e.token_evento, // token único do evento (coluna token_evento)
     }));
 
   } catch (error) {
@@ -118,9 +119,10 @@ async function apresentarEvento(numeroEvento, telefone = "") {
   }
 
   // Cabeçalho
+  const prep = evento.preposicao || 'ao';
   let resposta =
     `🎉 *ATENÇÃO SALVE ESTE CONTATO ${NUMERO_CHATBOT}*\n\n` +
-    `*Bem-vindos ao ${evento.titulo}* 🥳\n\n`;
+    `*Bem-vindos ${prep} ${evento.titulo}* 🥳\n\n`;
 
   // Monta link da página de aceite com token do evento e telefone pré-preenchidos
   // Novo formato: ?t=TOKEN_EVENTO&tel=TELEFONE
@@ -150,12 +152,12 @@ async function apresentarEvento(numeroEvento, telefone = "") {
 
   // Passo a passo para baixar
   resposta +=
-    `*Passo a Passo para baixar a foto 🖼️:*\n\n` +
+    `*Passo a Passo para baixar a foto 🖼️ ou vídeo 🎞️:*\n\n` +
     `*1º* Salve o Contato ${NUMERO_CHATBOT};\n` +
-    `*2º* Clique no link acima;\n` +
-    `*3º* Procure seu vídeo ou sua foto;\n` +
-    `*4º* Clique no vídeo ou na foto;\n` +
-    `*5º* Clique na seta ⬇️ acima do vídeo ou da foto 🖼️ para baixar cada uma, separadamente.\n\n` +
+    `*2º* Clique no link para baixar sua foto ou vídeo;\n` +
+    `*3º* Leia os termos, digite seu nome, e-mail e clique no botão;\n` +
+    `*4º* Procure sua foto ou seu vídeo;\n` +
+    `*5º* Clique na seta ⬇️ acima do vídeo ou da foto 🖼️ para baixar cada um, separadamente.\n\n` +
     `*OBS:* Ao clicar na seta ⬇️ acima da foto 🖼️ ou do GIF Animado 🎞️, ` +
     `no *Sistema Android* a foto 🖼️ e o GIF 🎞️ serão salvos direto na galeria, ` +
     `já no *Iphone*, para salvar a foto clique em salvar imagem (a foto 🖼️ será salva na galeria) ` +
