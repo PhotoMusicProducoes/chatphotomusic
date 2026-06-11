@@ -10,24 +10,26 @@ function capitalizarPalavras(texto) {
 }
 
 // Função para normalizar horários enviados pelo cliente
+// Aceita: "23", "9", "04", "1300", "17h", "18h00", "23:00", "18h30min"
+// Rejeita: barra/ponto/traço (formato de data), texto, hora > 23, minuto > 59
 function normalizarHorario(input) {
   if (!input) return null;
 
-  const numeros = input.replace(/\D/g, "");
+  const txt = input.trim().toLowerCase();
 
-  if (numeros.length === 2) {
-    return `${numeros}:00`;
-  }
+  // Barra, ponto ou traço indicam data — não aceitar como hora
+  if (/[\/.\-]/.test(txt)) return null;
 
-  if (numeros.length === 3) {
-    return `${numeros[0]}:${numeros.slice(1)}`;
-  }
+  // hora (1-2 dígitos) + separador opcional (h ou :) + minutos opcionais + "min" opcional
+  const m = txt.match(/^(\d{1,2})\s*(?:h|:)?\s*(\d{2})?\s*(?:min)?$/);
+  if (!m) return null;
 
-  if (numeros.length === 4) {
-    return `${numeros.slice(0, 2)}:${numeros.slice(2)}`;
-  }
+  const hora = parseInt(m[1], 10);
+  const min  = m[2] ? parseInt(m[2], 10) : 0;
 
-  return null;
+  if (hora > 23 || min > 59) return null;
+
+  return String(hora).padStart(2, "0") + ":" + String(min).padStart(2, "0");
 }
 
 // Função para calcular a duração do evento

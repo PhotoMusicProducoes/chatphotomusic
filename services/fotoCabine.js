@@ -60,6 +60,25 @@ function extrairHoras(duracao, clb) {
 }
 
 // ======================================================
+// GUESTBOOK — Imagens/vídeos compartilhados por todas as celebrações
+// ======================================================
+const GUESTBOOK_IMAGENS = [
+  urlBase + "guestbook1.mp4",
+  urlBase + "guestbook2.jpg",
+  urlBase + "guestbook3.jpg",
+  urlBase + "guestbook4.jpg",
+  urlBase + "guestbook6.jpg",
+  urlBase + "guestbook7.jpg",
+  urlBase2 + "guestbook8.mp4",
+  urlBase2 + "guestbook9.mp4",
+  urlBase + "guestbook10.jpg",
+  urlBase + "guestbook11.jpg",
+  urlBase2 + "guestbook12.mp4",
+  urlBase + "guestbook13.jpg",
+  urlBase + "guestbook14.jpg"
+];
+
+// ======================================================
 // ARQUIVOS ESPECÍFICOS POR EVENTO
 // (BLOCO COMPLETO, SEM ALTERAR NADA)
 // ======================================================
@@ -74,21 +93,7 @@ const eventos = {
     gif2: urlBase + "gif2.mp4",
     guestbook: {
       audio: urlBase + "guestbookaudio15anos.mp3",
-      imagens: [
-        urlBase + "guestbook1.mp4",
-        urlBase + "guestbook2.jpg",
-        urlBase + "guestbook3.jpg",
-        urlBase + "guestbook4.jpg",
-        urlBase + "guestbook6.jpg",
-        urlBase + "guestbook7.jpg",
-        urlBase2 + "guestbook8.mp4",
-        urlBase2 + "guestbook9.mp4",
-        urlBase + "guestbook10.jpg",
-        urlBase + "guestbook11.jpg",
-        urlBase2 + "guestbook12.mp4",
-        urlBase + "guestbook13.jpg",
-        urlBase + "guestbook14.jpg"
-      ]
+      imagens: GUESTBOOK_IMAGENS
     },
     orcamentos: {
       "2h": urlBase3 + "orcamentoFotoCabine15anos2h.pdf",
@@ -109,21 +114,7 @@ const eventos = {
     gif2: urlBase + "casamentogif2.mp4",
     guestbook: {
       audio: urlBase + "guestbookaudiocasamento.mp3",
-      imagens: [
-        urlBase + "guestbook1.mp4",
-        urlBase + "guestbook2.jpg",
-        urlBase + "guestbook3.jpg",
-        urlBase + "guestbook4.jpg",
-        urlBase + "guestbook6.jpg",
-        urlBase + "guestbook7.jpg",
-        urlBase2 + "guestbook8.mp4",
-        urlBase2 + "guestbook9.mp4",
-        urlBase + "guestbook10.jpg",
-        urlBase + "guestbook11.jpg",
-        urlBase2 + "guestbook12.mp4",
-        urlBase + "guestbook13.jpg",
-        urlBase + "guestbook14.jpg"
-      ]
+      imagens: GUESTBOOK_IMAGENS
     },
     orcamentos: {
       "2h": urlBase3 + "orcamentoFotoCabineCasamento2h.pdf",
@@ -142,7 +133,10 @@ const eventos = {
     foto10x15: urlBase + "aniversarioinfantilfoto10x15.jpg",
     gif1: urlBase + "aniversarioinfantilGif1.mp4",
     gif2: urlBase + "aniversarioinfantilGif2.mp4",
-    guestbook: null,
+    guestbook: {
+      audio: null,
+      imagens: GUESTBOOK_IMAGENS
+    },
     orcamentos: {
       "2h": urlBase3 + "orcamentoFotoCabineInfantil2h.pdf",
       "3h": urlBase3 + "orcamentoFotoCabineInfantil3h.pdf",
@@ -160,7 +154,10 @@ const eventos = {
     foto10x15: urlBase + "foto10x15.jpg",
     gif1: urlBase + "gif1.mp4",
     gif2: urlBase + "gif2.mp4",
-    guestbook: null,
+    guestbook: {
+      audio: null,
+      imagens: GUESTBOOK_IMAGENS
+    },
     orcamentos: {
       "2h": urlBase3 + "orcamentoFotoCabineAdolescente2h.pdf",
       "3h": urlBase3 + "orcamentoFotoCabineAdolescente3h.pdf",
@@ -178,7 +175,10 @@ const eventos = {
     foto10x15: urlBase + "aniversarioadultoGiffoto10x15.jpg",
     gif1: urlBase + "aniversarioadultoGif1.mp4",
     gif2: urlBase + "aniversarioadultoGif2.mp4",
-    guestbook: null,
+    guestbook: {
+      audio: null,
+      imagens: GUESTBOOK_IMAGENS
+    },
     orcamentos: {
       "2h": urlBase3 + "orcamentoFotoCabineAdulto2h.pdf",
       "3h": urlBase3 + "orcamentoFotoCabineAdulto3h.pdf",
@@ -198,21 +198,7 @@ const eventos = {
     gif2: urlBase + "bodasGif2.mp4",
     guestbook: {
       audio: urlBase + "guestbookaudiobodas.mp3",
-      imagens: [
-        urlBase + "guestbook1.mp4",
-        urlBase + "guestbook2.jpg",
-        urlBase + "guestbook3.jpg",
-        urlBase + "guestbook4.jpg",
-        urlBase + "guestbook6.jpg",
-        urlBase + "guestbook7.jpg",
-        urlBase2 + "guestbook8.mp4",
-        urlBase2 + "guestbook9.mp4",
-        urlBase + "guestbook10.jpg",
-        urlBase + "guestbook11.jpg",
-        urlBase2 + "guestbook12.mp4",
-        urlBase + "guestbook13.jpg",
-        urlBase + "guestbook14.jpg"
-      ]
+      imagens: GUESTBOOK_IMAGENS
     },
     orcamentos: {
       "2h": urlBase3 + "orcamentoFotoCabineBodas2h.pdf",
@@ -520,7 +506,7 @@ async function enviarFluxoPadrao(chatId, evento, clb) {
   if (estaPausado(chatId)) return;
   await sendText(chatId, "GIF Animado ☝️");
 
-  // 14) Guestbook — SOMENTE 15 anos e Casamento
+  // 14) Guestbook — 15 anos, Casamento, Bodas e todos os Aniversários
   if (evento.guestbook) {
     await sendTyping(chatId);
     await delay(300);
@@ -535,10 +521,13 @@ async function enviarFluxoPadrao(chatId, evento, clb) {
       "O Guestbook é um álbum digital onde os convidados deixam mensagens especiais em vídeo ou foto, criando uma lembrança emocionante e inesquecível do seu evento. 💖"
     );
 
-    await sendTyping(chatId);
-    await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendFileByUrl(chatId, evento.guestbook.audio, "AUDIO", "");
+    // Áudio específico da celebração (15 anos, casamento, bodas) — aniversários não têm
+    if (evento.guestbook.audio) {
+      await sendTyping(chatId);
+      await delay(300);
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, evento.guestbook.audio, "AUDIO", "");
+    }
 
     await sendTyping(chatId);
     await delay(300);

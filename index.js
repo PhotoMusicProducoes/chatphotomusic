@@ -285,6 +285,28 @@ function extrairServicosDaMensagem(texto) {
     .filter(n => n >= 1 && n <= 8);
 }
 
+// ======================================================
+// PARSE DE DATA FLEXÍVEL
+// Aceita DD/MM (assume ano corrente) e DD/MM/AA(AA).
+// Retorna { dia, mes, ano, str, date } ou null se inválida.
+// ======================================================
+function parsearDataFlex(texto) {
+  const t = (texto || "").trim();
+  const m = t.match(/^(0?[1-9]|[12][0-9]|3[01])[\/.\-](0?[1-9]|1[0-2])(?:[\/.\-](\d{2}|\d{4}))?$/);
+  if (!m) return null;
+
+  const dia = m[1].padStart(2, "0");
+  const mes = m[2].padStart(2, "0");
+  let ano   = m[3] || "";
+  if (!ano) ano = String(new Date().getFullYear()); // sem ano → ano corrente
+  else if (ano.length === 2) ano = "20" + ano;
+
+  const date = new Date(`${ano}-${mes}-${dia}`);
+  if (isNaN(date.getTime())) return null;
+
+  return { dia, mes, ano, str: `${dia}/${mes}/${ano}`, date };
+}
+
 function extrairDatasCorporativas(texto) {
   const partes = texto
     .split(/[\s,;]+/)
@@ -292,21 +314,13 @@ function extrairDatasCorporativas(texto) {
     .filter(p => p.length > 0);
 
   const datasValidas = [];
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
 
   for (const parte of partes) {
-    const regex = /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
-    if (!regex.test(parte)) continue;
-
-    const sep = parte.includes("/") ? "/" : parte.includes(".") ? "." : "-";
-    const [dia, mes, ano] = parte.split(sep);
-    const anoCompleto = ano.length === 2 ? `20${ano}` : ano;
-
-    const data = new Date(`${anoCompleto}-${mes}-${dia}`);
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-
-    if (data >= hoje) {
-      datasValidas.push(`${dia}/${mes}/${anoCompleto}`);
+    const d = parsearDataFlex(parte);
+    if (d && d.date >= hoje) {
+      datasValidas.push(d.str);
     }
   }
 
@@ -2276,10 +2290,18 @@ const resumoEucaristia =
   // ORÇAMENTO — QUANTOS DIAS (corporativo/outros, antes da data)
   // ======================================================
   if (session.step === "orcamento_dias") {
-    const dias = parseInt(corpoMensagem.replace(/\D+/g, ""), 10);
+    const txtDias = corpoMensagem.trim();
 
-    if (isNaN(dias) || dias <= 0) {
-      await sendText(chatId, "*⚠ Digite apenas o número de dias válido.*");
+    // Aceita somente dígitos — "20/01" (data) ou texto são rejeitados
+    if (!/^\d+$/.test(txtDias)) {
+      await sendText(chatId, "*⚠ Digite apenas o número de dias.* (Ex: *2*)");
+      return;
+    }
+
+    const dias = parseInt(txtDias, 10);
+
+    if (dias <= 0 || dias > 90) {
+      await sendText(chatId, "*⚠ Quantidade de dias inválida!* Digite um número entre *1* e *90*.");
       return;
     }
 
@@ -2351,7 +2373,7 @@ const resumoEucaristia =
 
     if (!datas.length) {
       await sendText(chatId,
-        "*⚠ Nenhuma data válida!* Use o formato DD/MM/AAAA separadas por vírgula.\n" +
+        "*⚠ Nenhuma data válida!* Use o formato DD/MM ou DD/MM/AAAA separadas por vírgula.\n" +
         "*(Ex: 01/06/2026, 02/06/2026)*"
       );
       return;
@@ -2370,20 +2392,25 @@ const resumoEucaristia =
   // ORÇAMENTO — DATA DE CADA DIA (horários diferentes)
   // ======================================================
   if (session.step === "orcamento_dia_data") {
-    const regexData = /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
+    const dataFlex = parsearDataFlex(corpoMensagem);
 
-    if (!regexData.test(corpoMensagem.trim())) {
-      await sendText(chatId, "*⚠ Data inválida!* Use o formato: *01/06/2026*");
+    if (!dataFlex) {
+      await sendText(chatId, "*⚠ Data inválida!* Use o formato: *01/06/2026* ou *01/06*");
       return;
     }
 
-    const sep = corpoMensagem.includes("/") ? "/" : corpoMensagem.includes(".") ? "." : "-";
-    const [dia, mes, ano] = corpoMensagem.trim().split(sep);
-    const anoCompleto = ano.length === 2 ? `20${ano}` : ano;
+    const hojeDia = new Date();
+    hojeDia.setHours(0, 0, 0, 0);
+
+    if (dataFlex.date < hojeDia) {
+      await sendText(chatId, "*⚠ A data do evento não pode estar no passado!*");
+      return;
+    }
+
     const diaIdx = (session.orcamento.diaAtual || 1) - 1;
 
     if (!session.orcamento.diasDetalhes) session.orcamento.diasDetalhes = [];
-    session.orcamento.diasDetalhes[diaIdx] = { data: `${dia}/${mes}/${anoCompleto}` };
+    session.orcamento.diasDetalhes[diaIdx] = { data: dataFlex.str };
 
     session.step = "orcamento_dia_hora_inicio";
     await sendTyping(chatId);
@@ -2430,6 +2457,13 @@ const resumoEucaristia =
 
     const diaIdx    = (session.orcamento.diaAtual || 1) - 1;
     const totalDias = session.orcamento.dias || 1;
+
+    // Hora igual à de início não é aceita (ex: 17h e 17:00)
+    if (session.orcamento.diasDetalhes[diaIdx].horaInicio === horario) {
+      await sendText(chatId, "*⚠ O horário de término não pode ser igual ao de início!* Informe o horário em que o evento termina.");
+      return;
+    }
+
     session.orcamento.diasDetalhes[diaIdx].horaFim = horario;
 
     if (session.orcamento.diaAtual < totalDias) {
@@ -2465,33 +2499,22 @@ const resumoEucaristia =
   // ORÇAMENTO — DATA
   // ======================================================
   if (session.step === "orcamento_data") {
-    const regexData =
-      /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
+    const dataFlex = parsearDataFlex(corpoMensagem);
 
-    if (!regexData.test(corpoMensagem)) {
-      await sendText(chatId, "*⚠ Data inválida!* Use o formato: *01/02/2026*");
+    if (!dataFlex) {
+      await sendText(chatId, "*⚠ Data inválida!* Use o formato: *01/02/2026* ou *01/02*");
       return;
     }
 
-    const separador = corpoMensagem.includes("/")
-      ? "/"
-      : corpoMensagem.includes(".")
-      ? "."
-      : "-";
-
-    const [dia, mes, ano] = corpoMensagem.split(separador);
-    const anoCompleto = ano.length === 2 ? `20${ano}` : ano;
-
-    const dataEvento = new Date(`${anoCompleto}-${mes}-${dia}`);
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    if (dataEvento < hoje) {
+    if (dataFlex.date < hoje) {
       await sendText(chatId, "*⚠ A data do evento não pode estar no passado!*");
       return;
     }
 
-    session.orcamento.data = `${dia}/${mes}/${anoCompleto}`;
+    session.orcamento.data = dataFlex.str;
     session.step = "orcamento_hora_inicio";
 
     await enviarPerguntaESalvar(chatId, session, "Qual o horário de início? (*Ex: 18:00*)");
@@ -2533,13 +2556,14 @@ const resumoEucaristia =
     let minutosInicio = horaInicio * 60 + minInicio;
     let minutosFim = horaFim * 60 + minFim;
 
-    if (minutosFim <= minutosInicio) {
-      minutosFim += 24 * 60;
+    // Hora igual à de início não é aceita (ex: 17h e 17:00)
+    if (minutosFim === minutosInicio) {
+      await sendText(chatId, "*⚠ O horário de término não pode ser igual ao de início!* Informe o horário em que o evento termina.");
+      return;
     }
 
-    if (minutosFim - minutosInicio <= 0) {
-      await sendText(chatId, "*⚠ O horário de término deve ser diferente do início.*");
-      return;
+    if (minutosFim < minutosInicio) {
+      minutosFim += 24 * 60; // evento vira a madrugada
     }
 
     session.orcamento.horaFim = horarioNormalizado;
