@@ -25,8 +25,10 @@ function normalizarNumero(numero) {
   if (numero.length === 8)
     return "55219" + numero;
 
+  // 13 dígitos sem prefixo 55 = número internacional completo
+  // (ex: Alemanha 4917112345678) — NÃO adicionar 55, senão vira número inválido
   if (numero.length === 13 && !numero.startsWith("55"))
-    return "55" + numero;
+    return numero;
 
   // 11 dígitos: celular brasileiro tem o 3º dígito (índice 2) = '9'
   // (DDD 2 dígitos + dígito 9 + 8 dígitos do número)
@@ -308,6 +310,44 @@ function montarMensagemBodasResponsavel(registro) {
   );
 }
 
+// ================= MENSAGEM 11: DIA DA FESTA - CELEBRADO =================
+// Parabeniza pelo grande dia da festa de aniversário (mesmo que a data de
+// nascimento seja outra). Tom cristão católico celebrativo.
+function montarMensagemDiaFestaCelebrado(registro) {
+  return (
+    `Bom dia, *${registro.nomeCelebrado}*. 🎉✨\n\n` +
+    `Chegou o grande dia da sua festa! 🥳🎂\n\n` +
+    `É um privilégio imenso estar ao seu lado celebrando este dia tão especial!\n\n` +
+    `Agradecemos a Deus pela sua vida e pedimos que Ele derrame sobre você muitas bênçãos, saúde, paz, alegria e felicidade. Que a festa seja maravilhosa e inesquecível! 🙏💕\n\n` +
+    `Com muito carinho,🥰🥰\n\n` +
+    `*Adriana e Mario*\n` +
+    `*PhotoMusic Produções*\n\n` +
+    `✨ *Instagram PhotoMusic*\n` +
+    `https://instagram.com/photomusicproducoes\n` +
+    `https://photomusic.com.br/`
+  );
+}
+
+// ================= MENSAGEM 12: DIA DA FESTA - RESPONSÁVEL =================
+function montarMensagemDiaFestaResponsavel(registro) {
+  const genero  = registro.generoCelebrado;
+  const artigo  = genero === "feminino" ? "da" : "do";
+  const relacao = registro.relacao ? `${registro.relacao} ` : "";
+
+  return (
+    `Bom dia, *${registro.nomeResponsavel}*. 🎉✨\n\n` +
+    `Chegou o grande dia da festa ${artigo} ${relacao}*${registro.nomeCelebrado}*! 🥳🎂\n\n` +
+    `É um privilégio imenso estar ao lado de vocês celebrando este dia tão especial!\n\n` +
+    `Agradecemos a Deus por este momento e pedimos que Ele derrame muitas bênçãos, saúde, paz, alegria e felicidade sobre toda a família. Que a festa seja maravilhosa e inesquecível! 🙏💕\n\n` +
+    `Com muito carinho,🥰🥰\n\n` +
+    `*Adriana e Mario*\n` +
+    `*PhotoMusic Produções*\n\n` +
+    `✨ *Instagram PhotoMusic*\n` +
+    `https://instagram.com/photomusicproducoes\n` +
+    `https://photomusic.com.br/`
+  );
+}
+
 // ================= EXECUÇÃO PRINCIPAL =================
 async function executarEnvioComemoracoes() {
   console.log("\n🎉 ========== INICIANDO VERIFICAÇÃO DE COMEMORAÇÕES ==========");
@@ -347,11 +387,12 @@ async function executarEnvioComemoracoes() {
     let bloqueadas_por_prioridade = 0; // NOVO: Contador de bloqueios por prioridade
 
     // ✅ NOVO: Separar registros em 2 grupos
-    const registrosComAno = registros.filter(r => 
-      r.ano !== undefined && (r.tipo === "dia_casamento" || r.tipo === "quinze_anos" || r.tipo === "bodas")
+    const TIPOS_COM_ANO = ["dia_casamento", "quinze_anos", "bodas", "dia_festa"];
+    const registrosComAno = registros.filter(r =>
+      r.ano !== undefined && r.ano !== null && TIPOS_COM_ANO.includes(r.tipo)
     );
-    const registrosSemAno = registros.filter(r => 
-      r.ano === undefined || (r.tipo !== "dia_casamento" && r.tipo !== "quinze_anos" && r.tipo !== "bodas")
+    const registrosSemAno = registros.filter(r =>
+      r.ano === undefined || r.ano === null || !TIPOS_COM_ANO.includes(r.tipo)
     );
 
     // ✅ NOVO: Rastrear telefones/datas já processados (com ano)
@@ -443,6 +484,27 @@ async function executarEnvioComemoracoes() {
           }
           mensagem = montarMensagemBodasResponsavel(registro);
           tipoMensagem = `👰 ${registro.nome_bodas} (Responsável)`;
+        }
+      }
+      else if (registro.tipo === "dia_festa") {
+        const destinatario = (registro.destinatario || "responsavel").toLowerCase();
+
+        if (destinatario === "celebrado") {
+          if (!registro.nomeCelebrado) {
+            console.log(`   ❌ Falta 'nomeCelebrado'`);
+            erros++;
+            continue;
+          }
+          mensagem = montarMensagemDiaFestaCelebrado(registro);
+          tipoMensagem = "🎂 DIA DA FESTA (Celebrado)";
+        } else {
+          if (!registro.nomeResponsavel || !registro.nomeCelebrado) {
+            console.log(`   ❌ Faltam campos obrigatórios`);
+            erros++;
+            continue;
+          }
+          mensagem = montarMensagemDiaFestaResponsavel(registro);
+          tipoMensagem = "🎂 DIA DA FESTA (Responsável)";
         }
       }
 
