@@ -2197,11 +2197,48 @@ const resumoEucaristia =
   // ======================================================
   if (session.step === "orcamento_nome") {
     const nome = capitalizarPalavras(corpoMensagem);
+
+    if (!nome || nome.length < 2) {
+      await sendText(chatId, "*⚠ Informe um nome válido.*");
+      return;
+    }
+
     session.orcamento.nome = nome;
+    session.step = "orcamento_nome_confirmar";
+
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `Seu nome é *${nome}*? (*Digite somente o número*)\n\n` +
+      "*1* - Sim\n" +
+      "*2* - Não"
+    );
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — CONFIRMAÇÃO DO NOME
+  // ======================================================
+  if (session.step === "orcamento_nome_confirmar") {
+    const respNome = corpoMensagem.trim();
+
+    if (respNome !== "1" && respNome !== "2") {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim\n*2* - Não");
+      return;
+    }
+
+    if (respNome === "2") {
+      session.orcamento.nome = null;
+      session.step = "orcamento_nome";
+      await sendTyping(chatId);
+      await sendText(chatId, "Sem problemas! Qual o seu nome?");
+      return;
+    }
+
     session.step = "orcamento_celebracao";
 
     await sendTyping(chatId);
-    await sendText(chatId, `Olá, *${nome}*! \nAgora, me fale um pouco sobre o seu evento`);
+    await sendText(chatId, `Olá, *${session.orcamento.nome}*! \nAgora, me fale um pouco sobre o seu evento`);
 
     await sendTyping(chatId);
     await sendText(
@@ -2489,9 +2526,8 @@ const resumoEucaristia =
     ) || 4;
     session.orcamento.duracao   = String(session.orcamento.horas);
 
-    session.step = "orcamento_local";
-    await sendTyping(chatId);
-    await sendText(chatId, "Qual o local do evento? *(bairro/cidade/salão)*");
+    session.step = "orcamento_bairro";
+    await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
     return;
   }
 
@@ -2575,23 +2611,68 @@ const resumoEucaristia =
     // FIX: garantir horas numéricas para os serviços
     session.orcamento.horas = Number.parseInt(session.orcamento.duracao, 10) || 2;
 
-    session.step = "orcamento_local";
+    session.step = "orcamento_bairro";
 
-    await sendTyping(chatId);
-    await sendText(chatId, "Qual o local do evento? (*bairro/cidade/salão*)");
+    await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
     return;
   }
 
   // ======================================================
-  // ORÇAMENTO — LOCAL
+  // ORÇAMENTO — BAIRRO
   // ======================================================
-  if (session.step === "orcamento_local") {
-    if (!corpoMensagem || corpoMensagem.length < 2) {
-      await sendText(chatId, "*⚠ Informe um local válido.*");
+  if (session.step === "orcamento_bairro") {
+    if (!corpoMensagem || corpoMensagem.trim().length < 2) {
+      await sendText(chatId, "*⚠ Informe um bairro válido.*");
       return;
     }
 
-    session.orcamento.local = capitalizarPalavras(corpoMensagem);
+    session.orcamento.bairro = capitalizarPalavras(corpoMensagem.trim());
+    session.step = "orcamento_cidade";
+    await enviarPerguntaESalvar(chatId, session, "Qual a *cidade* do evento?");
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — CIDADE
+  // ======================================================
+  if (session.step === "orcamento_cidade") {
+    if (!corpoMensagem || corpoMensagem.trim().length < 2) {
+      await sendText(chatId, "*⚠ Informe uma cidade válida.*");
+      return;
+    }
+
+    session.orcamento.cidade = capitalizarPalavras(corpoMensagem.trim());
+    session.step = "orcamento_salao";
+    await enviarPerguntaESalvar(
+      chatId,
+      session,
+      "Qual o nome do *salão/local* do evento?\nSe ainda não tiver definido, responda *pular*."
+    );
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — SALÃO
+  // ======================================================
+  if (session.step === "orcamento_salao") {
+    const txtSalao = corpoMensagem.trim();
+    const pulou = txtSalao.toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+
+    if (!pulou && txtSalao.length < 2) {
+      await sendText(chatId, "*⚠ Informe o nome do salão* ou responda *pular*.");
+      return;
+    }
+
+    session.orcamento.salao = pulou ? null : capitalizarPalavras(txtSalao);
+
+    // Mantém orc.local composto para o resumo e demais etapas do fluxo
+    session.orcamento.local = [
+      session.orcamento.salao,
+      session.orcamento.bairro,
+      session.orcamento.cidade
+    ].filter(Boolean).join(", ");
+
     session.step = "orcamento_onde_encontrou";
     await sendTyping(chatId);
     await sendText(chatId, "Onde nos encontrou?");
