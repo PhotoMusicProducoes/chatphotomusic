@@ -209,6 +209,44 @@ async function capturarClienteOrcamento(chatId, session) {
   }
 }
 
+/**
+ * Consulta o valor de deslocamento (tabela pm_deslocamento) via REST do
+ * PhotoMusic Pro. O endpoint corrige o bairro digitado errado (fuzzy) e
+ * retorna o valor cadastrado para bairro/cidade.
+ * Em caso de erro ou bairro não cadastrado, orc.deslocamento fica null e
+ * o resumo usa a mensagem genérica de deslocamento.
+ */
+async function consultarDeslocamento(session) {
+  try {
+    const orc = session.orcamento;
+    if (!orc?.bairro) return;
+
+    const resp = await axios.get(`${PM_API_BASE}/deslocamento-consultar`, {
+      params:  { bairro: orc.bairro, cidade: orc.cidade || "" },
+      headers: { "X-PM-Api-Key": PM_API_KEY },
+      timeout: 6000
+    });
+
+    if (resp.data?.status === "encontrado") {
+      // Bairro corrigido pelo fuzzy → adota o nome oficial cadastrado
+      if (resp.data.corrigido && resp.data.bairro) {
+        console.log(`🚗 Bairro corrigido: "${orc.bairro}" → "${resp.data.bairro}"`);
+        orc.bairro = resp.data.bairro;
+      }
+      orc.deslocamento = {
+        valor:  Number(resp.data.valor),
+        bairro: resp.data.bairro,
+        cidade: resp.data.cidade
+      };
+      console.log(`🚗 Deslocamento: R$ ${orc.deslocamento.valor} (${orc.deslocamento.bairro}/${orc.deslocamento.cidade})`);
+    } else {
+      orc.deslocamento = null;
+    }
+  } catch (e) {
+    console.warn(`⚠️ consultarDeslocamento: ${e.message}`);
+  }
+}
+
 // ======================================================
 // CONTROLE DE PAUSA  (estado persistido em utils/pauseControl.js)
 // ======================================================
@@ -2666,6 +2704,10 @@ const resumoEucaristia =
 
     session.orcamento.salao = pulou ? null : capitalizarPalavras(txtSalao);
 
+    // Consulta o valor de deslocamento e corrige o bairro (fuzzy) ANTES
+    // de compor orc.local, para o nome corrigido entrar no resumo
+    await consultarDeslocamento(session);
+
     // Mantém orc.local composto para o resumo e demais etapas do fluxo
     session.orcamento.local = [
       session.orcamento.salao,
@@ -3080,11 +3122,21 @@ async function enviarResumoCliente(chatId, session) {
     }
 
     // 🚗 Deslocamento — após todos os serviços
-    linhas.push(
-      "\n🚗 *Observação importante sobre deslocamento*\n" +
-      "O custo de deslocamento *não está incluso* neste orçamento.\n" +
-      "Ele será calculado e enviado posteriormente de acordo com o local informado."
-    );
+    if (orc.deslocamento?.valor != null && !isNaN(orc.deslocamento.valor)) {
+      const valorFmt = Number(orc.deslocamento.valor)
+        .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      linhas.push(
+        "\n🚗 *Deslocamento*\n" +
+        `Valor do deslocamento para *${orc.deslocamento.bairro} — ${orc.deslocamento.cidade}*: *R$ ${valorFmt}*\n` +
+        "_Este valor não está incluso nos orçamentos acima._"
+      );
+    } else {
+      linhas.push(
+        "\n🚗 *Observação importante sobre deslocamento*\n" +
+        "O custo de deslocamento *não está incluso* neste orçamento.\n" +
+        "Ele será calculado e enviado posteriormente de acordo com o local informado."
+      );
+    }
 
     // Multi-dia: nota de orçamento personalizado em preparo
     if ((orc.dias || 1) > 1 && (orc.diasDetalhes?.length || orc.datasCorporativo?.length)) {
@@ -3130,6 +3182,13 @@ async function enviarResumoOperador(chatIdCliente, session) {
 
     if (orc.dias && orc.dias > 1) {
       linhas.push(`- Dias: *${orc.dias}*`);
+    }
+
+    if (orc.local) linhas.push(`- Local: *${orc.local}*`);
+    if (orc.deslocamento?.valor != null) {
+      const valorDesloc = Number(orc.deslocamento.valor)
+        .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      linhas.push(`- Deslocamento: *R$ ${valorDesloc}* (${orc.deslocamento.bairro}/${orc.deslocamento.cidade})`);
     }
 
     const servicos = (orc.servicosEnviados || [])
