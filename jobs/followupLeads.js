@@ -199,16 +199,17 @@ async function registrarFollowup(id, tipo, estagio) {
 }
 
 // ======================================================
-// SCHEDULER — a cada 30 min, das 9h às 19h (Brasília)
-// O horário comercial evita mensagem de madrugada; o que
-// vencer fora da janela é enviado no primeiro ciclo do dia.
+// SCHEDULER — a cada 30 min, das 7h às 20h (Brasília)
+// Janela de envio da PhotoMusic: o cliente pode pedir orçamento 24h
+// por dia, mas o follow-up NÃO sai de madrugada. O que vencer fora da
+// janela (à noite/madrugada) é enviado no primeiro ciclo das 7h.
 // ======================================================
 function inicializarFollowupLeads() {
-  cron.schedule("*/30 9-19 * * *", () => {
+  cron.schedule("*/30 7-20 * * *", () => {
     executarFollowupLeads();
   }, { timezone: TIMEZONE });
 
-  console.log("📨 Follow-up de leads agendado (a cada 30 min, 9h–19h).");
+  console.log("📨 Follow-up de leads agendado (a cada 30 min, 7h–20h).");
 }
 
 module.exports = { inicializarFollowupLeads, executarFollowupLeads };
