@@ -4,6 +4,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const { handleIncomingMessage } = require("./index");
 const { inicializarScheduler } = require("./jobs/mensagensComemorativas");
+const { inicializarFollowupLeads } = require("./jobs/followupLeads");
 const { inicializarPausaEspecial } = require("./utils/index.js");
 
 const app = express();
@@ -13,6 +14,7 @@ app.use(bodyParser.json());
 console.log("\n🚀 Iniciando sistema integrado (ChatBot + Comemorações + Pausa Especial)...\n");
 inicializarPausaEspecial();
 inicializarScheduler();
+inicializarFollowupLeads();
 
 // ================= FILA SEQUENCIAL POR USUÁRIO =================
 // Garante que duas mensagens do mesmo número nunca sejam processadas
@@ -64,6 +66,10 @@ async function processarWebhook(req, res) {
       // Indica se é grupo
       isGroup: payload.isGroup || false,
       isGroupMsg: payload.isGroup || payload.isGroupMsg || false,
+
+      // Em grupo, quem REALMENTE enviou a mensagem (autor). No privado fica
+      // nulo e usamos o phone. Usado para autorizar operadores por número.
+      participantPhone: payload.participantPhone || payload.participantLid || null,
 
       // ESSENCIAL: distingue bot (fromApi=true) de operador (fromApi=false/undefined)
       fromMe: payload.fromMe || false,

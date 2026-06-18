@@ -95,6 +95,11 @@ async function buscarEventos() {
       links:      e.links || [],  // array de { nome, link }
       id:         e.id,
       token:      e.token_evento, // token único do evento (coluna token_evento)
+      // Redes da empresa contratante — preenchidas pelo WP somente quando o
+      // evento tem o serviço Me Conta (senão ficam vazias e usamos os padrões)
+      instagram:      e.instagram || "",       // só o usuário, sem @ e sem URL
+      instagramNome:  e.instagram_nome || "",  // nome da empresa (para o rótulo)
+      googleReview:   e.google_review || "",   // link de avaliação Google da empresa
     }));
 
   } catch (error) {
@@ -142,13 +147,23 @@ async function apresentarEvento(numeroEvento, telefone = "") {
     resposta += "Nenhum link disponível para este evento no momento.\n\n";
   }
 
-  // Social + avaliação
+  // Social + avaliação — com Me Conta no evento, usa as redes da empresa
+  // contratante (seguidores + avaliações para ela); senão, as da PhotoMusic
+  const instaUser  = (evento.instagram || "").replace(/^@/, "");
+  const instaLabel = evento.instagramNome
+    ? `*Instagram ${evento.instagramNome}*`
+    : (instaUser ? `*Instagram*` : `*Instagram PhotoMusic*`);
+  const instaUrl   = instaUser
+    ? `https://instagram.com/${instaUser}`
+    : `https://instagram.com/photomusicproducoes`;
+  const reviewUrl  = evento.googleReview || `https://g.page/r/CVcwPOqAtId5EBM/review`;
+
   resposta +=
     `Siga a nossa página✨ \n` +
-    `🚨 *Instagram PhotoMusic* \n` +
-    `https://instagram.com/photomusicproducoes \n\n` +
+    `🚨 ${instaLabel} \n` +
+    `${instaUrl} \n\n` +
     `[*Link para avaliação no Google*] \n` +
-    `https://g.page/r/CVcwPOqAtId5EBM/review \n\n`;
+    `${reviewUrl} \n\n`;
 
   // Passo a passo para baixar
   resposta +=

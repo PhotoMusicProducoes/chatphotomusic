@@ -154,17 +154,17 @@ function normalizarDataNascimento(str) {
 
 /**
  * Registra o cliente (coletado no fluxo de orçamento) em pm_leads via REST
- * do PhotoMusic Pro. Se tiver data de nascimento válida, sincroniza também
- * com pm_comemoracao_contatos.
+ * do PhotoMusic Pro, com TODOS os dados do orçamento (Fase 3 do funil):
+ * celebração, data, convidados, horários, local, serviços, links dos PDFs,
+ * deslocamento, onde encontrou e detalhes — usados no marketing e follow-up.
+ * Se tiver data de nascimento válida, sincroniza com pm_comemoracao_contatos.
  * Fire-and-forget: não bloqueia o fluxo do bot.
- *
- * Dispara quando o cliente forneceu ao menos e-mail OU data de nascimento.
  */
 async function capturarClienteOrcamento(chatId, session) {
   try {
     const orc = session.orcamento;
-    // Exige ao menos e-mail ou data de nascimento para salvar
-    if (!orc || (!orc.dataNascimento && !orc.email)) return;
+    // Captura sempre que houver um orçamento em andamento (telefone é a chave)
+    if (!orc || (!orc.nome && !orc.celebracaoId)) return;
 
     const tel = normalizarNumero(chatId);
     if (!tel) return;
@@ -182,6 +182,19 @@ async function capturarClienteOrcamento(chatId, session) {
       }
     }
 
+    const servicosMapLead = {
+      1: "Foto Cabine",
+      2: "Totem Fotográfico",
+      3: "Plataforma 360",
+      4: "Foto Paparazzi Digital",
+      5: "Foto Lembrança",
+      6: "Cobertura Fotográfica",
+      7: "Som Completo com DJ",
+      8: "Iluminação para Pista de Dança"
+    };
+    const servicosIds   = orc.servicosEnviados || [];
+    const servicosNomes = servicosIds.map(id => servicosMapLead[id]).filter(Boolean);
+
     const payload = {
       telefone:       tel,
       nome:           orc.nome       || "",
@@ -191,6 +204,22 @@ async function capturarClienteOrcamento(chatId, session) {
       ano,
       dataEvento:     orc.data       || "",
       tipoCelebracao: orc.celebracao || "",
+      convidados:     orc.convidados || null,
+      horas:          orc.horas      || null,
+      horaInicio:     orc.horaInicio || "",
+      horaFim:        orc.horaFim    || "",
+      dias:           orc.dias       || 1,
+      bairro:         orc.bairro     || "",
+      cidade:         orc.cidade     || "",
+      salao:          orc.salao      || "",
+      localEvento:    orc.local      || "",
+      ondeEncontrou:  orc.ondeEncontrou || "",
+      detalhes:       orc.detalhes   || "",
+      deslocamentoValor:  orc.deslocamento ? Number(orc.deslocamento.valor) : null,
+      deslocamentoGratis: orc.deslocamento ? !!orc.deslocamento.gratis : false,
+      servicos:       servicosNomes,
+      servicosIds:    servicosIds,
+      linksOrcamento: orc.linksOrcamento || {},
     };
 
     const resp = await axios.post(
@@ -207,6 +236,139 @@ async function capturarClienteOrcamento(chatId, session) {
   } catch (e) {
     console.warn(`⚠️ capturarClienteOrcamento: ${e.message}`);
   }
+}
+
+/**
+ * Etapa 2 — Auto-pausa do fluxo após erros repetidos (depois do resumo).
+ * O bot envia UMA mensagem de transição, pausa o fluxo (fica mudo daqui
+ * em diante) e chama o operador. As mensagens do Sistema PhotoMusic Pro
+ * (follow-up, comemorações, etc) continuam chegando normalmente.
+ */
+async function autoPausarFluxo(chatId, session, motivo) {
+  session.stepAnterior = session.step; // guarda onde travou (p/ o operador retomar)
+  session.step = "pausado_fluxo";
+  await sendTyping(chatId);
+  await sendText(
+    chatId,
+    "Vou chamar nossa equipe para te ajudar com isso 😊\n" +
+    "Em instantes alguém fala com você por aqui."
+  );
+  try {
+    await sendText(
+      OPERADOR_TELEFONE_ID,
+      `🙋 *Atendimento necessário*\n` +
+      `${chatId}\n` +
+      `O cliente não conseguiu seguir no fluxo (${motivo}).\n` +
+      `O bot pausou — *assuma o atendimento* por aqui.`
+    );
+  } catch (e) { console.warn(`⚠️ aviso operador auto-pausa: ${e.message}`); }
+}
+
+// ======================================================
+// CONFIRMAÇÃO FINAL DO ORÇAMENTO (revisão antes de gerar)
+// Reduz erro de digitação: o cliente confere e corrige os
+// campos que quiser (estilo "escolher serviços") antes do
+// orçamento sair. Garante resumo correto p/ e-mail e PhotoMusic Pro.
+// ======================================================
+const CAMPOS_CORRIGIVEIS = [
+  { id: 1,  label: "Celebração",         tipo: "celebracao" },
+  { id: 2,  label: "Convidados",         tipo: "numero"     },
+  { id: 3,  label: "Data do evento",     tipo: "data"       },
+  { id: 4,  label: "Horário de início",  tipo: "hora_ini"   },
+  { id: 5,  label: "Horário de término", tipo: "hora_fim"   },
+  { id: 6,  label: "Bairro",             tipo: "bairro"     },
+  { id: 7,  label: "Cidade",             tipo: "cidade"     },
+  { id: 8,  label: "Salão / Local",      tipo: "salao"      },
+  { id: 9,  label: "Onde nos encontrou", tipo: "onde"       },
+  { id: 10, label: "Detalhes do evento", tipo: "detalhes"   },
+  { id: 11, label: "E-mail",             tipo: "email"      },
+  { id: 12, label: "Data de nascimento", tipo: "nascimento" },
+];
+
+function valorCampoResumo(orc, tipo) {
+  switch (tipo) {
+    case "celebracao": return orc.celebracaoId ? (celebracoes[orc.celebracaoId] || orc.celebracao || "—") : (orc.celebracao || "—");
+    case "numero":     return orc.convidados || "—";
+    case "data":       return orc.data       || "—";
+    case "hora_ini":   return orc.horaInicio || "—";
+    case "hora_fim":   return orc.horaFim     || "—";
+    case "bairro":     return orc.bairro      || "—";
+    case "cidade":     return orc.cidade      || "—";
+    case "salao":      return orc.salao       || "(não informado)";
+    case "onde":       return orc.ondeEncontrou || "(não informado)";
+    case "detalhes":   return orc.detalhes    || "(nenhum)";
+    case "email":      return orc.email       || "(não informado)";
+    case "nascimento": return orc.dataNascimento || "(não informado)";
+    default: return "—";
+  }
+}
+
+function textoMenuServicos() {
+  return "Agora escolha os serviços que deseja orçamento (para mais de um, digite os números separados por vírgula, ex: *1,3,5 ou 124*):\n\n" +
+    "*1* - Foto Cabine\n" +
+    "*2* - Totem Fotográfico\n" +
+    "*3* - Plataforma 360º\n" +
+    "*4* - Foto Paparazzi Digital\n" +
+    "*5* - Foto Lembrança\n" +
+    "*6* - Cobertura Fotográfica\n" +
+    "*7* - Som Completo com DJ\n" +
+    "*8* - Iluminação para Pista de Dança";
+}
+
+async function mostrarConfirmacaoOrcamento(chatId, session) {
+  const orc = session.orcamento || {};
+  let txt = "📋 *Confira os dados do seu evento:*\n\n";
+  for (const c of CAMPOS_CORRIGIVEIS) {
+    const v = valorCampoResumo(orc, c.tipo);
+    // Não envolve em negrito quando é e-mail/link — o WhatsApp linka e o
+    // *asterisco* fica solto. Demais campos vão em negrito normalmente.
+    const vFmt = String(v).includes("@") ? v : `*${v}*`;
+    txt += `*${c.id}* - ${c.label}: ${vFmt}\n`;
+  }
+  txt += "\nEstá tudo certo?\n*1* - Sim, quero o orçamento\n*2* - Corrigir algo";
+  session.step = "orcamento_confirmar";
+  await sendTyping(chatId);
+  await sendText(chatId, txt);
+}
+
+// Recalcula os valores derivados após uma correção (duração e deslocamento)
+async function finalizarCorrecoesOrcamento(session) {
+  const orc = session.orcamento;
+  if (orc.horaInicio && orc.horaFim) {
+    orc.duracao = calcularDuracaoEvento(orc.horaInicio, orc.horaFim);
+    orc.horas   = Number.parseInt(orc.duracao, 10) || orc.horas || 4;
+  }
+  await consultarDeslocamento(session);
+  orc.local = [orc.salao, orc.bairro, orc.cidade].filter(Boolean).join(", ");
+}
+
+// Pergunta o próximo campo da fila de correção; se acabou, recalcula e reconfirma
+async function pedirProximaCorrecao(chatId, session) {
+  const fila = session.correcaoFila || [];
+  if (fila.length === 0) {
+    await finalizarCorrecoesOrcamento(session);
+    await mostrarConfirmacaoOrcamento(chatId, session);
+    return;
+  }
+  const campo = fila[0];
+  session.correcaoAtual = campo;
+  session.step = "orcamento_corrigir_valor";
+  const perguntas = {
+    celebracao: "Qual a celebração? (*Digite o número*)\n*1* 15 anos · *2* Casamento · *3* Infantil · *4* Adolescente · *5* Adulto · *6* Bodas · *7* Formatura · *8* Corporativo · *9* Outros",
+    numero:     "Quantos convidados? (*somente número*)",
+    data:       "Qual a *data* do evento? (*Ex: 20/06/2026*)",
+    hora_ini:   "Qual o *horário de início*? (*Ex: 18:00 ou 18h*)",
+    hora_fim:   "Qual o *horário de término*? (*Ex: 23:00 ou 23h*)",
+    bairro:     "Qual o *bairro* do evento?",
+    cidade:     "Qual a *cidade* do evento?",
+    salao:      "Qual o nome do *salão/local*? (ou responda *pular*)",
+    onde:       "Onde nos encontrou?",
+    detalhes:   "Quais os *detalhes adicionais* do evento? (ou responda *pular*)",
+    email:      "Qual o seu *e-mail*? (ou responda *pular*)",
+    nascimento: "Qual a sua *data de nascimento*? (*Ex: 01/02/1985* ou *pular*)",
+  };
+  await sendTyping(chatId);
+  await sendText(chatId, perguntas[campo.tipo] || "Informe o novo valor:");
 }
 
 /**
@@ -235,10 +397,11 @@ async function consultarDeslocamento(session) {
       }
       orc.deslocamento = {
         valor:  Number(resp.data.valor),
+        gratis: resp.data.gratis === true,
         bairro: resp.data.bairro,
         cidade: resp.data.cidade
       };
-      console.log(`🚗 Deslocamento: R$ ${orc.deslocamento.valor} (${orc.deslocamento.bairro}/${orc.deslocamento.cidade})`);
+      console.log(`🚗 Deslocamento: ${orc.deslocamento.gratis ? "GRÁTIS (promoção)" : "R$ " + orc.deslocamento.valor} (${orc.deslocamento.bairro}/${orc.deslocamento.cidade})`);
     } else {
       orc.deslocamento = null;
     }
@@ -255,6 +418,32 @@ async function consultarDeslocamento(session) {
 // CONFIGURAÇÃO DO OPERADOR
 // ======================================================
 const OPERADOR_TELEFONE_ID = "5521964428172@c.us";
+
+// Operadores autorizados a enviar comandos (além da própria linha do bot,
+// reconhecida por fromMe). Funciona no privado e em grupos.
+// Para adicionar/remover, edite este mapa (número → nome).
+const OPERADORES = {
+  "21967082501": "Mario Nazeanze",
+  "21982192443": "Adriana Mendonça",
+  "21976020039": "Adriana Mendonça",
+};
+const OPERADORES_AUTORIZADOS = Object.keys(OPERADORES).map(normalizarNumero);
+
+function ehNumeroAutorizado(numero) {
+  const n = normalizarNumero(numero);
+  return !!n && OPERADORES_AUTORIZADOS.includes(n);
+}
+
+// Nome amigável de quem enviou o comando (para o resumo do operador)
+function nomeOperador(numero) {
+  const n = normalizarNumero(numero);
+  if (!n) return "operador";
+  for (const [k, v] of Object.entries(OPERADORES)) {
+    if (normalizarNumero(k) === n) return v;
+  }
+  if (n === normalizarNumero(OPERADOR_TELEFONE_ID)) return "PhotoMusic (linha)";
+  return n;
+}
 
 const comandosServicos = {
   "#fotocabine": 1,
@@ -321,6 +510,19 @@ function extrairServicosDaMensagem(texto) {
   return unicos
     .map(n => parseInt(n, 10))
     .filter(n => n >= 1 && n <= 8);
+}
+
+// Extrai números de itens (1..max). Aceita colado ("256" → 2,5,6, como em
+// serviços) e também com separador ("10,11" → 10,11, para itens de 2 dígitos).
+function extrairNumerosCampos(texto, max) {
+  const t = (texto || "").trim();
+  let nums;
+  if (/[,;.\s]/.test(t)) {
+    nums = t.split(/[,;.\s]+/).map(s => parseInt(s.replace(/\D+/g, ""), 10));
+  } else {
+    nums = t.replace(/\D+/g, "").split("").map(s => parseInt(s, 10));
+  }
+  return [...new Set(nums)].filter(n => Number.isInteger(n) && n >= 1 && n <= max);
 }
 
 // ======================================================
@@ -861,8 +1063,25 @@ async function handleIncomingMessage(message) {
   // ======================================================
   // IDENTIFICAR OPERADOR, BOT E CLIENTE + SALVAR ÚLTIMO CLIENTE
   // ======================================================
-  const isOperador = message.fromMe === true && message.fromApi !== true;
   const isBot = message.fromApi === true;
+
+  // A mensagem parece um COMANDO de operador? (começa com prefixo conhecido)
+  const _corpoCmd = (corpoMensagem || "").trim().toLowerCase();
+  const pareceComandoOperador =
+    _corpoCmd.startsWith("#") ||
+    /^(pausarespecial|retomarespecial|pausar|retomar|resetar|respondercliente|responder|listarpausas)\b/.test(_corpoCmd);
+
+  // Operador:
+  //  - a própria linha do bot (fromMe) — atendimento manual, sempre operador;
+  //  - um número autorizado SÓ quando a mensagem é um comando. Mensagem
+  //    normal de um número autorizado é tratada como CLIENTE (permite que
+  //    Mário/Adriana testem o fluxo com o próprio número).
+  // Em grupo, quem envia é o participantPhone; no privado, é o phone/from.
+  const remetenteReal = message.participantPhone || message.phone || message.from;
+  const isOperador = !isBot && (
+    message.fromMe === true ||
+    (ehNumeroAutorizado(remetenteReal) && pareceComandoOperador)
+  );
 
   // ignora mensagens enviadas pelo próprio bot
   if (isBot) {
@@ -1363,6 +1582,16 @@ async function handleIncomingMessage(message) {
         return;
       }
 
+      // Destrava antes de injetar: tira da pausa do operador e, se o fluxo
+      // foi pausado (3 erros) ou encerrado por follow-up, volta ao passo
+      // onde o cliente travou — assim a resposta entra no lugar certo.
+      if (estaPausado(numeroCliente)) retomarCliente(numeroCliente);
+      if ((sessaoCliente.step === "pausado_fluxo" || sessaoCliente.step === "pausado_followup")
+          && sessaoCliente.stepAnterior) {
+        sessaoCliente.step = sessaoCliente.stepAnterior;
+        sessaoCliente.avisouOperadorFollowup = false;
+      }
+
       console.log(`🎭 [OPERADOR] Injetando resposta "${respostaTexto}" para ${numeroCliente} (step: ${sessaoCliente.step})`);
 
       // Monta uma mensagem simulada no mesmo formato que a Z-API envia
@@ -1709,7 +1938,7 @@ async function handleIncomingMessage(message) {
 
         // 📌 ENVIAR RESUMO PARA O OPERADOR
         await new Promise(r => setTimeout(r, 500));
-        await enviarResumoOperador(OPERADOR_TELEFONE_ID, session);
+        await enviarResumoOperador(chatIdCliente, session, nomeOperador(remetenteReal));
 
         // 📌 REPAUSAR SE ESTAVA PAUSADO
         if (estavaPausado) pausarCliente(chatIdCliente);
@@ -1850,6 +2079,38 @@ async function handleIncomingMessage(message) {
   if (!session.step) {
     console.log(`🧭 Step vazio para ${chatId}. Reenviando menu inicial.`);
     await mostrarMenuInicial(chatId);
+    return;
+  }
+
+  // ======================================================
+  // GUARD — fluxo encerrado por follow-up (Camada A)
+  // O cliente não finalizou, o follow-up chegou e encerrou o fluxo
+  // antigo para a resposta não colidir. Bot fica quieto e avisa o
+  // operador na 1ª resposta do cliente, para ele assumir.
+  // ======================================================
+  if (session.step === "pausado_followup") {
+    if (!session.avisouOperadorFollowup) {
+      session.avisouOperadorFollowup = true;
+      try {
+        await sendText(
+          OPERADOR_TELEFONE_ID,
+          `📩 *Cliente respondeu após follow-up*\n` +
+          `${chatId}\n` +
+          `_"${corpoMensagem}"_\n\n` +
+          `O fluxo automático foi encerrado — *assuma o atendimento* por aqui.`
+        );
+      } catch (e) { console.warn(`⚠️ aviso operador follow-up: ${e.message}`); }
+    }
+    console.log(`🔒 ${chatId} em pausado_followup. Operador avisado, bot não responde.`);
+    return;
+  }
+
+  // ======================================================
+  // GUARD — fluxo pausado por excesso de erros (Etapa 2)
+  // O operador já foi avisado no momento da pausa; bot fica mudo.
+  // ======================================================
+  if (session.step === "pausado_fluxo") {
+    console.log(`🔒 ${chatId} em pausado_fluxo. Operador já avisado, bot não responde.`);
     return;
   }
 
@@ -2458,7 +2719,7 @@ const resumoEucaristia =
     session.orcamento.data             = datas[0]; // primeira como referência
     session.step = "orcamento_hora_inicio";
     await enviarPerguntaESalvar(chatId, session,
-      "Qual o *horário de início* (válido para todos os dias)? *(Ex: 08:00)*"
+      "Qual o *horário de início* (válido para todos os dias)? *(Ex: 08:00 ou 8h)*"
     );
     return;
   }
@@ -2491,7 +2752,7 @@ const resumoEucaristia =
     await sendTyping(chatId);
     await sendText(
       chatId,
-      `⏰ *Dia ${session.orcamento.diaAtual}* — Qual o *horário de início*? *(Ex: 08:00)*`
+      `⏰ *Dia ${session.orcamento.diaAtual}* — Qual o *horário de início*? *(Ex: 08:00 ou 8h)*`
     );
     return;
   }
@@ -2514,7 +2775,7 @@ const resumoEucaristia =
     await sendTyping(chatId);
     await sendText(
       chatId,
-      `⏰ *Dia ${session.orcamento.diaAtual}* — Qual o *horário de término*? *(Ex: 18:00)*`
+      `⏰ *Dia ${session.orcamento.diaAtual}* — Qual o *horário de término*? *(Ex: 18:00 ou 18h)*`
     );
     return;
   }
@@ -2591,7 +2852,7 @@ const resumoEucaristia =
     session.orcamento.data = dataFlex.str;
     session.step = "orcamento_hora_inicio";
 
-    await enviarPerguntaESalvar(chatId, session, "Qual o horário de início? (*Ex: 18:00*)");
+    await enviarPerguntaESalvar(chatId, session, "Qual o horário de início? (*Ex: 18:00 ou 18h*)");
     return;
   }
 
@@ -2609,7 +2870,7 @@ const resumoEucaristia =
     session.orcamento.horaInicio = horarioNormalizado;
     session.step = "orcamento_hora_fim";
 
-    await enviarPerguntaESalvar(chatId, session, "Qual o horário de término? (*Ex: 23:00*)");
+    await enviarPerguntaESalvar(chatId, session, "Qual o horário de término? (*Ex: 23:00 ou 23h*)");
     return;
   }
 
@@ -2659,12 +2920,15 @@ const resumoEucaristia =
   // ORÇAMENTO — BAIRRO
   // ======================================================
   if (session.step === "orcamento_bairro") {
-    if (!corpoMensagem || corpoMensagem.trim().length < 2) {
-      await sendText(chatId, "*⚠ Informe um bairro válido.*");
+    const txtBairro = (corpoMensagem || "").trim();
+    // Bairro precisa ter pelo menos uma letra — evita que um número solto
+    // (ex: "13" digitado por engano) seja aceito e desloque todo o fluxo.
+    if (txtBairro.length < 2 || !/[a-zA-ZÀ-ÿ]/.test(txtBairro)) {
+      await sendText(chatId, "*⚠ Informe o nome do bairro* (ex: *Recreio*). Não use apenas números.");
       return;
     }
 
-    session.orcamento.bairro = capitalizarPalavras(corpoMensagem.trim());
+    session.orcamento.bairro = capitalizarPalavras(txtBairro);
     session.step = "orcamento_cidade";
     await enviarPerguntaESalvar(chatId, session, "Qual a *cidade* do evento?");
     return;
@@ -2674,12 +2938,13 @@ const resumoEucaristia =
   // ORÇAMENTO — CIDADE
   // ======================================================
   if (session.step === "orcamento_cidade") {
-    if (!corpoMensagem || corpoMensagem.trim().length < 2) {
-      await sendText(chatId, "*⚠ Informe uma cidade válida.*");
+    const txtCidade = (corpoMensagem || "").trim();
+    if (txtCidade.length < 2 || !/[a-zA-ZÀ-ÿ]/.test(txtCidade)) {
+      await sendText(chatId, "*⚠ Informe o nome da cidade* (ex: *Rio de Janeiro*). Não use apenas números.");
       return;
     }
 
-    session.orcamento.cidade = capitalizarPalavras(corpoMensagem.trim());
+    session.orcamento.cidade = capitalizarPalavras(txtCidade);
     session.step = "orcamento_salao";
     await enviarPerguntaESalvar(
       chatId,
@@ -2810,15 +3075,16 @@ const resumoEucaristia =
   // ======================================================
   if (session.step === "coletar_email_opcional") {
 
-    const texto = corpoMensagem.trim();
+    // Remove asteriscos/formatação do WhatsApp e espaços — "*email@x.com" vira "email@x.com"
+    const texto = corpoMensagem.trim().replace(/[*_~`'"<>()\[\]\s]/g, "");
 
-    // regex simples e segura de e-mail
-    const regexEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Valida com caracteres reais de e-mail (letras, números, . _ % + -)
+    const regexEmail = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
 
     if (texto.toLowerCase() === "pular") {
       session.orcamento.email = null;
     } else if (regexEmail.test(texto)) {
-      session.orcamento.email = texto;
+      session.orcamento.email = texto.toLowerCase();
     } else {
       // qualquer outra coisa → ignora silenciosamente
       session.orcamento.email = null;
@@ -2863,23 +3129,141 @@ const resumoEucaristia =
       return;
     }
 
-    // Avança para o próximo step
-    session.step = "orcamento_escolher_servico";
+    // Antes de escolher serviços, mostra a confirmação dos dados do evento
+    await mostrarConfirmacaoOrcamento(chatId, session);
+    return;
+  }
 
+  // ======================================================
+  // ORÇAMENTO — CONFIRMAÇÃO DOS DADOS (revisão antes do orçamento)
+  // ======================================================
+  if (session.step === "orcamento_confirmar") {
+    const r = (corpoMensagem || "").trim();
+    if (r !== "1" && r !== "2") {
+      await sendText(chatId, "*⚠ Responda:* *1* para confirmar ou *2* para corrigir.");
+      return;
+    }
+    if (r === "1") {
+      // Confirmado → segue para escolher serviços
+      session.correcaoFila = null;
+      session.correcaoAtual = null;
+      session.step = "orcamento_escolher_servico";
+      await sendTyping(chatId);
+      await sendText(chatId, textoMenuServicos());
+      return;
+    }
+    // r === "2" → pede os números dos campos a corrigir
+    session.step = "orcamento_corrigir_escolher";
     await sendTyping(chatId);
     await sendText(
       chatId,
-      "Agora escolha os serviços que deseja orçamento (para mais de um, digite os números separados por vírgula, ex: *1,3,5 ou 124*):\n\n" +
-      "*1* - Foto Cabine\n" +
-      "*2* - Totem Fotográfico\n" +
-      "*3* - Plataforma 360º\n" +
-      "*4* - Foto Paparazzi Digital\n" +
-      "*5* - Foto Lembrança\n" +
-      "*6* - Cobertura Fotográfica\n" +
-      "*7* - Som Completo com DJ\n" +
-      "*8* - Iluminação para Pista de Dança"
+      "Digite os *números* dos itens que deseja corrigir (para mais de um, separe por vírgula, ex: *3,4*):\n\n" +
+      CAMPOS_CORRIGIVEIS.map(c => `*${c.id}* - ${c.label}`).join("\n")
     );
+    return;
+  }
 
+  // ======================================================
+  // ORÇAMENTO — ESCOLHER O QUE CORRIGIR
+  // ======================================================
+  if (session.step === "orcamento_corrigir_escolher") {
+    const unicos = extrairNumerosCampos(corpoMensagem, CAMPOS_CORRIGIVEIS.length);
+    if (unicos.length === 0) {
+      await sendText(chatId, "*⚠ Digite os números dos itens a corrigir, separados por vírgula* (ex: *3,4*).");
+      return;
+    }
+    // Monta a fila na ordem dos campos
+    session.correcaoFila = CAMPOS_CORRIGIVEIS.filter(c => unicos.includes(c.id));
+    await pedirProximaCorrecao(chatId, session);
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — APLICAR CORREÇÃO DE UM CAMPO
+  // ======================================================
+  if (session.step === "orcamento_corrigir_valor") {
+    const campo = session.correcaoAtual || {};
+    const orc = session.orcamento;
+    const txt = (corpoMensagem || "").trim();
+    let ok = false;
+
+    switch (campo.tipo) {
+      case "celebracao": {
+        const op = parseInt(txt, 10);
+        if ([1,2,3,4,5,6,7,8,9].includes(op)) { orc.celebracaoId = op; orc.celebracao = celebracoes[op]; ok = true; }
+        break;
+      }
+      case "numero": {
+        const n = parseInt(txt.replace(/\D+/g, ""), 10);
+        if (!isNaN(n) && n > 0) { orc.convidados = n; ok = true; }
+        break;
+      }
+      case "data": {
+        const d = parsearDataFlex(txt);
+        const hoje = new Date(); hoje.setHours(0,0,0,0);
+        if (d && d.date >= hoje) { orc.data = d.str; ok = true; }
+        break;
+      }
+      case "hora_ini": {
+        const h = normalizarHorario(txt);
+        if (h) { orc.horaInicio = h; ok = true; }
+        break;
+      }
+      case "hora_fim": {
+        const h = normalizarHorario(txt);
+        if (h) { orc.horaFim = h; ok = true; }
+        break;
+      }
+      case "bairro": {
+        if (txt.length >= 2 && /[a-zA-ZÀ-ÿ]/.test(txt)) { orc.bairro = capitalizarPalavras(txt); ok = true; }
+        break;
+      }
+      case "cidade": {
+        if (txt.length >= 2 && /[a-zA-ZÀ-ÿ]/.test(txt)) { orc.cidade = capitalizarPalavras(txt); ok = true; }
+        break;
+      }
+      case "salao": {
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+        orc.salao = pulou ? null : capitalizarPalavras(txt);
+        ok = true;
+        break;
+      }
+      case "onde": {
+        if (txt.length >= 2) { orc.ondeEncontrou = capitalizarPalavras(txt); ok = true; }
+        break;
+      }
+      case "detalhes": {
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+        orc.detalhes = pulou ? null : capitalizarPalavras(txt);
+        ok = true;
+        break;
+      }
+      case "email": {
+        const limpo = txt.replace(/[*_~`'"<>()\[\]\s]/g, "");
+        const pulou = limpo.toLowerCase() === "pular";
+        if (pulou) { orc.email = null; ok = true; }
+        else if (/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/.test(limpo)) {
+          orc.email = limpo.toLowerCase(); ok = true;
+        }
+        break;
+      }
+      case "nascimento": {
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+        const regexNasc = /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
+        if (pulou) { orc.dataNascimento = null; ok = true; }
+        else if (regexNasc.test(txt)) { orc.dataNascimento = txt; ok = true; }
+        break;
+      }
+    }
+
+    if (!ok) {
+      await sendText(chatId, "*⚠ Valor inválido.* Tente novamente.");
+      return; // permanece no mesmo campo
+    }
+
+    // Campo corrigido → remove da fila e vai ao próximo (ou reconfirma)
+    if (session.correcaoFila) session.correcaoFila.shift();
+    await pedirProximaCorrecao(chatId, session);
     return;
   }
 
@@ -2891,9 +3275,17 @@ const resumoEucaristia =
     const servicos = extrairServicosDaMensagem(corpoMensagem);
 
     if (servicos.length === 0) {
+      // Após 3 tentativas inválidas → auto-pausa e chama o operador
+      session.tentativasInvalidasEscolher = (session.tentativasInvalidasEscolher || 0) + 1;
+      if (session.tentativasInvalidasEscolher >= 3) {
+        await autoPausarFluxo(chatId, session, "respostas inválidas na escolha de serviços");
+        return;
+      }
       await sendText(chatId, "*⚠ Digite pelo menos um número válido entre 1 e 8.*");
       return;
     }
+    // Reseta o contador ao acertar
+    session.tentativasInvalidasEscolher = 0;
 
     // ======================================================
     // REGRA ESPECIAL — ILUMINAÇÃO (8) NÃO PODE SER SOZINHA
@@ -2969,10 +3361,10 @@ const resumoEucaristia =
   if (session.step === "orcamento_mais_servicos") {
 
     if (corpoMensagem !== "1" && corpoMensagem !== "2") {
-      // Conta tentativas inválidas — após 3 ignora silenciosamente (sem pausar)
+      // Conta tentativas inválidas — após 3 auto-pausa e chama o operador
       session.tentativasInvalidasMaisServicos = (session.tentativasInvalidasMaisServicos || 0) + 1;
       if (session.tentativasInvalidasMaisServicos >= 3) {
-        console.log(`ℹ️ ${chatId} excedeu tentativas em orcamento_mais_servicos. Ignorando.`);
+        await autoPausarFluxo(chatId, session, "respostas inválidas em 'deseja mais serviços'");
         return;
       }
       await sendTyping(chatId);
@@ -3056,7 +3448,7 @@ async function enviarResumoCliente(chatId, session) {
 
     // ✅ Corrigido: usar `orc.nome` em vez de `orc.cliente`
     if (orc.nome) linhas.push(`${index++}. Nome: *${orc.nome}*`);
-    if (orc.email) linhas.push(`${index++}. E-mail: *${orc.email}*`);
+    if (orc.email) linhas.push(`${index++}. E-mail: ${orc.email}`);
     if (orc.dataNascimento) linhas.push(`${index++}. Data de Nascimento: *${orc.dataNascimento}*`);
 
     if (orc.celebracaoId) {
@@ -3121,14 +3513,28 @@ async function enviarResumoCliente(chatId, session) {
       }
     }
 
+    // 🎁 2+ serviços distintos? Cabine (1), Totem (2) e Foto Lembrança (5)
+    // são similares e contam como 1 (o cliente escolhe apenas um deles)
+    const SERVICOS_SIMILARES = [1, 2, 5];
+    const distintos = new Set(
+      servicosIds.map(id => (SERVICOS_SIMILARES.includes(id) ? "similar" : id))
+    );
+    const multiServicos = distintos.size >= 2;
+
     // 🚗 Deslocamento — após todos os serviços
-    if (orc.deslocamento?.valor != null && !isNaN(orc.deslocamento.valor)) {
+    if (orc.deslocamento?.gratis) {
+      linhas.push(
+        "\n🚗 *Deslocamento GRÁTIS!* 🎉\n" +
+        `Este mês estamos com uma *condição super especial* para eventos em *${orc.deslocamento.cidade}*: ` +
+        "o deslocamento está saindo *Grátis*!"
+      );
+    } else if (orc.deslocamento?.valor != null && !isNaN(orc.deslocamento.valor) && orc.deslocamento.valor > 0) {
       const valorFmt = Number(orc.deslocamento.valor)
         .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       linhas.push(
         "\n🚗 *Deslocamento*\n" +
-        `Valor do deslocamento para *${orc.deslocamento.bairro} — ${orc.deslocamento.cidade}*: *R$ ${valorFmt}*\n` +
-        "_Este valor não está incluso nos orçamentos acima._"
+        `Deslocamento para *${orc.deslocamento.bairro} — ${orc.deslocamento.cidade}*: ` +
+        `Custo do Pacote Escolhido + *R$ ${valorFmt}*`
       );
     } else {
       linhas.push(
@@ -3136,6 +3542,39 @@ async function enviarResumoCliente(chatId, session) {
         "O custo de deslocamento *não está incluso* neste orçamento.\n" +
         "Ele será calculado e enviado posteriormente de acordo com o local informado."
       );
+    }
+
+    // 🎁 Desconto para 2+ serviços
+    if (multiServicos) {
+      const desloc = orc.deslocamento;
+      if (desloc?.gratis) {
+        // Deslocamento já é grátis (promoção) → desconto + reforça o grátis
+        linhas.push(
+          "\n🎁 *Vantagem exclusiva!*\n" +
+          "Ao contratar *2 ou mais serviços*, você garante *R$ 100,00 de desconto* a partir do segundo serviço — " +
+          "e o seu deslocamento *permanece totalmente grátis*!"
+        );
+      } else if (desloc && Number(desloc.valor) > 100) {
+        linhas.push(
+          "\n🎁 *Vantagem exclusiva!*\n" +
+          "Ao contratar *2 ou mais serviços*, você garante *R$ 100,00 de desconto* a partir do segundo serviço " +
+          "e ainda aproveita o *desconto de R$ 100,00 no deslocamento*!"
+        );
+      } else if (desloc && Number(desloc.valor) > 0) {
+        // Deslocamento de até R$ 100,00 → sai grátis com 2+ serviços
+        linhas.push(
+          "\n🎁 *Vantagem exclusiva!*\n" +
+          "Ao contratar *2 ou mais serviços*, você garante *R$ 100,00 de desconto* a partir do segundo serviço " +
+          "e ainda aproveita *deslocamento totalmente grátis*!"
+        );
+      } else {
+        // Local sem cadastro de deslocamento → NÃO promete deslocamento
+        // (o valor ainda será calculado; promessa errada geraria conflito)
+        linhas.push(
+          "\n🎁 *Vantagem exclusiva!*\n" +
+          "Ao contratar *2 ou mais serviços*, você garante *R$ 100,00 de desconto* a partir do segundo serviço!"
+        );
+      }
     }
 
     // Multi-dia: nota de orçamento personalizado em preparo
@@ -3148,7 +3587,7 @@ async function enviarResumoCliente(chatId, session) {
     }
 
     linhas.push(`\n${index++}. Origem: *PhotoMusic Produções*`);
-    linhas.push(`${index++}. Enviado em: *${new Date().toLocaleString("pt-BR")}*`);
+    linhas.push(`${index++}. Enviado em: *${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}*`);
 
     await sendTyping(chatId);
     await sendText(chatId, linhas.join("\n"));
@@ -3161,13 +3600,14 @@ async function enviarResumoCliente(chatId, session) {
 // ======================================================
 // RESUMO PARA O OPERADOR (APÓS ENVIO MANUAL)
 // ======================================================
-async function enviarResumoOperador(chatIdCliente, session) {
+async function enviarResumoOperador(chatIdCliente, session, quemEnviou = "") {
   try {
     const orc = session.orcamento || {};
 
     const linhas = [];
     linhas.push("📊 *RESUMO DO ENVIO MANUAL*\n");
 
+    if (quemEnviou) linhas.push(`- Comando enviado por: *${quemEnviou}*`);
     linhas.push(`- Cliente: *${chatIdCliente}*`);
     
     if (orc.celebracaoId) {
@@ -3185,7 +3625,9 @@ async function enviarResumoOperador(chatIdCliente, session) {
     }
 
     if (orc.local) linhas.push(`- Local: *${orc.local}*`);
-    if (orc.deslocamento?.valor != null) {
+    if (orc.deslocamento?.gratis) {
+      linhas.push(`- Deslocamento: *GRÁTIS — promoção* (${orc.deslocamento.cidade})`);
+    } else if (orc.deslocamento?.valor != null && orc.deslocamento.valor > 0) {
       const valorDesloc = Number(orc.deslocamento.valor)
         .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       linhas.push(`- Deslocamento: *R$ ${valorDesloc}* (${orc.deslocamento.bairro}/${orc.deslocamento.cidade})`);
@@ -3209,7 +3651,7 @@ async function enviarResumoOperador(chatIdCliente, session) {
       linhas.push(`- Serviço(s): *${servicos}*`);
     }
 
-    linhas.push(`- Enviado em: *${new Date().toLocaleString("pt-BR")}*`);
+    linhas.push(`- Enviado em: *${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}*`);
 
     await sendTyping(OPERADOR_TELEFONE_ID);
     await sendText(OPERADOR_TELEFONE_ID, linhas.join("\n"));
