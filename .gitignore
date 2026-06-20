@@ -50,6 +50,12 @@ build/
 *.swo
 
 # ============================
+# ESTADO DE RUNTIME (não versionar — contém dados de clientes)
+# Em produção (Fly.io) as sessões ficam no volume /data
+# ============================
+sessions.json
+
+# ============================
 # FLY.IO
 # ============================
 .fly/
