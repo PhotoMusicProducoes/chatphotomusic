@@ -5,6 +5,7 @@ const bodyParser = require("body-parser");
 const { handleIncomingMessage } = require("./index");
 const { inicializarScheduler } = require("./jobs/mensagensComemorativas");
 const { inicializarFollowupLeads } = require("./jobs/followupLeads");
+const { inicializarLembreteOrcamento } = require("./jobs/lembreteOrcamento");
 const { inicializarPausaEspecial } = require("./utils/index.js");
 
 const app = express();
@@ -15,6 +16,7 @@ console.log("\n🚀 Iniciando sistema integrado (ChatBot + Comemorações + Paus
 inicializarPausaEspecial();
 inicializarScheduler();
 inicializarFollowupLeads();
+inicializarLembreteOrcamento();
 
 // ================= FILA SEQUENCIAL POR USUÁRIO =================
 // Garante que duas mensagens do mesmo número nunca sejam processadas
