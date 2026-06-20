@@ -157,6 +157,7 @@ async function executarLembreteOrcamento() {
   console.log("\n⏰ ===== LEMBRETE DE ORÇAMENTO ABANDONADO =====");
   const agora = Date.now();
   let enviados = 0, avisosOperador = 0, erros = 0;
+  let idxEnvio = 0; // p/ o intervalo anti-bloqueio entre envios do mesmo ciclo
 
   for (const chatId of Object.keys(sessions)) {
     const s = sessions[chatId];
@@ -199,7 +200,12 @@ async function executarLembreteOrcamento() {
         console.log(`   ✅ Lembrete ${devido} enviado para ${chatId} (parou em ${s.step})`);
       }
 
-      await new Promise(r => setTimeout(r, 800));
+      // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
+      // a partir do 2º, varia aleatoriamente entre 5 e 15s — assim a Meta
+      // entende como envio humano e não restringe o número.
+      idxEnvio++;
+      const espera = idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001);
+      await new Promise(r => setTimeout(r, espera));
     } catch (e) {
       erros++;
       console.error(`   ❌ Erro no lembrete de ${chatId}: ${e.message}`);

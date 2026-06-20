@@ -179,6 +179,7 @@ async function executarEnvioComemoracoes() {
     let enviadas = 0;
     let erros = 0;
     let duplicadas = 0;  // ✅ NOVO: Contador de duplicatas
+    let idxEnvio = 0;    // p/ o intervalo anti-bloqueio entre envios do mesmo ciclo
 
     for (const registro of registros) {
       console.log(`\n📋 Verificando registro: ${registro.categoria || "sem categoria"}`);
@@ -269,7 +270,11 @@ async function executarEnvioComemoracoes() {
         erros++;
       }
 
-      await new Promise(r => setTimeout(r, 500));
+      // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
+      // a partir do 2º, varia aleatoriamente entre 5 e 15s — parece humano.
+      idxEnvio++;
+      const espera = idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001);
+      await new Promise(r => setTimeout(r, espera));
     }
 
     console.log(`\n📊 ========== RESUMO FINAL ==========`);

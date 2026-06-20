@@ -384,6 +384,7 @@ async function executarEnvioComemoracoes() {
     let enviadas = 0;
     let erros = 0;
     let duplicadas = 0;
+    let idxEnvio = 0; // p/ o intervalo anti-bloqueio entre envios (vale p/ os 2 loops do ciclo)
     let bloqueadas_por_prioridade = 0; // NOVO: Contador de bloqueios por prioridade
 
     // ✅ NOVO: Separar registros em 2 grupos
@@ -545,7 +546,10 @@ async function executarEnvioComemoracoes() {
         erros++;
       }
 
-      await new Promise(r => setTimeout(r, 500));
+      // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
+      // a partir do 2º, varia aleatoriamente entre 5 e 15s — parece humano.
+      idxEnvio++;
+      await new Promise(r => setTimeout(r, idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001)));
     }
 
     console.log(`\n📌 Processando ${registrosSemAno.length} registros SEM ANO...`);
@@ -652,7 +656,10 @@ async function executarEnvioComemoracoes() {
         erros++;
       }
 
-      await new Promise(r => setTimeout(r, 500));
+      // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
+      // a partir do 2º, varia aleatoriamente entre 5 e 15s — parece humano.
+      idxEnvio++;
+      await new Promise(r => setTimeout(r, idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001)));
     }
 
     console.log(`\n📊 ========== RESUMO FINAL ==========`);

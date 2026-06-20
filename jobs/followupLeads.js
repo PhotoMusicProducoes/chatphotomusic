@@ -152,6 +152,7 @@ async function executarFollowupLeads() {
     console.log(`📋 ${leads.length} lead(s) com follow-up devido.`);
 
     let enviados = 0, erros = 0;
+    let idxEnvio = 0; // p/ o intervalo anti-bloqueio entre envios do mesmo ciclo
 
     for (const lead of leads) {
       try {
@@ -173,7 +174,11 @@ async function executarFollowupLeads() {
         console.log(`   ✅ Follow-up ${rotulos[tipo] || tipo} enviado para ${lead.nome} (${lead.telefone})`);
         enviados++;
 
-        await new Promise(r => setTimeout(r, 800));
+        // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
+        // a partir do 2º, varia aleatoriamente entre 5 e 15s — parece humano.
+        idxEnvio++;
+        const espera = idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001);
+        await new Promise(r => setTimeout(r, espera));
       } catch (e) {
         console.error(`   ❌ Erro no lead #${lead.id}: ${e.message}`);
         erros++;
