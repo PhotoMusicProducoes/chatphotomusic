@@ -489,6 +489,18 @@ const mensagemBoasVindas3 =
   "*6* - Não sou cliente, mas preciso falar com você\n" +
   "*7* - Estou em um evento e desejo baixar minha foto";
 
+// Rótulos curtos de cada opção do menu — usados na tela de confirmação
+// (evita o erro de digitar a opção errada e já entrar no fluxo errado).
+const LABELS_MENU = {
+  "1": "Solicitar um orçamento",
+  "2": "Fotografia 1ª Eucaristia",
+  "3": "Estou em processo de contratação",
+  "4": "Tenho um serviço contratado e preciso de suporte",
+  "5": "Outros assuntos",
+  "6": "Não sou cliente, mas preciso falar com você",
+  "7": "Baixar minha foto do evento"
+};
+
   // FOTOGRAFIA 1ª EUCARISTIA — dados em services/eucaristia.js
 
 // ======================================================
@@ -650,6 +662,65 @@ async function mostrarMenuInicial(chatId) {
     enviandoOrcamentos: sessions[chatId].enviandoOrcamentos ?? false,
     lembreteOrcamentoEnviado: sessions[chatId].lembreteOrcamentoEnviado ?? false
   };
+}
+
+// ======================================================
+// ROTEAMENTO DA OPÇÃO DO MENU (chamado após a confirmação)
+// ======================================================
+async function executarOpcaoMenu(chatId, session, opcaoMenu, chatIdNormalizado) {
+  switch (opcaoMenu) {
+    case "1":
+      await sendTyping(chatId);
+      await sendText(chatId, "Você deseja *Solicitar um Orçamento*😍.");
+      session.step = "orcamento_nome";
+      session.orcamento = { servicosEnviados: [] };
+      session.servicosEnviados = [];
+      session.lembreteOrcamentoEnviado = false;
+
+      await sendTyping(chatId);
+      await sendText(chatId, "Perfeito! Vamos começar seu orçamento.\nQual o seu nome?");
+      return;
+
+    case "2":
+      await sendTyping(chatId);
+      await sendText(
+        chatId,
+        "Parabéns pelo(a) catequisando(a) está se preparando para receber Jesus Cristo na Santíssima Eucaristia. 😍\n\n" +
+        "Perfeito! Vamos começar.\nQual o nome do Responsável?"
+      );
+      session.step = "eucaristia_nome";
+      session.eucaristia = {};
+      return;
+
+    case "3":
+      await sendTyping(chatId);
+      await sendText(chatId, "Você está em processo de contratação.\nComo posso ajudar?");
+      pausarCliente(chatIdNormalizado);
+      return;
+
+    case "4":
+      await sendTyping(chatId);
+      await sendText(chatId, "Você já tem um serviço contratado.\nComo posso te ajudar?");
+      pausarCliente(chatIdNormalizado);
+      return;
+
+    case "5":
+      await sendTyping(chatId);
+      await sendText(chatId, "Claro! Me diga qual é o assunto.");
+      pausarCliente(chatIdNormalizado);
+      return;
+
+    case "6":
+      await sendTyping(chatId);
+      await sendText(chatId, "Sem problemas! Como posso te ajudar?");
+      pausarCliente(chatIdNormalizado);
+      return;
+
+    case "7":
+      await sendTyping(chatId);
+      await fluxoEventos(chatId, session);
+      return;
+  }
 }
 
 // ======================================================
@@ -2140,80 +2211,69 @@ async function handleIncomingMessage(message) {
     if (opcaoMenu === "") return;
   }
 
-  switch (opcaoMenu) {
-      case "1":
-        await sendTyping(chatId);
-        await sendText(chatId, "Você deseja *Solicitar um Orçamento*😍.");
-        session.step = "orcamento_nome";
-        session.orcamento = { servicosEnviados: [] };
-        session.servicosEnviados = [];
-        session.lembreteOrcamentoEnviado = false;
+  // ✅ CONFIRMAÇÃO DA OPÇÃO: antes de entrar no fluxo, o cliente confirma
+  // que escolheu mesmo aquela opção (evita digitar 2 em vez de 1 e cair
+  // no fluxo errado, precisando resetar a sessão).
+  if (["1","2","3","4","5","6","7"].includes(opcaoMenu)) {
+    session.opcaoMenuPendente = opcaoMenu;
+    session.step = "confirmar_opcao_menu";
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `Só pra confirmar 😊 você escolheu:\n\n` +
+      `*${opcaoMenu}* - *${LABELS_MENU[opcaoMenu]}*\n\n` +
+      `Está certo? *(Digite somente número)*\n` +
+      `*1* - Sim, é isso\n` +
+      `*2* - Não, quero escolher outra opção`
+    );
+    return;
+  }
 
-        await sendTyping(chatId);
-        await sendText(chatId, "Perfeito! Vamos começar seu orçamento.\nQual o seu nome?");
-        return;
+  // Texto puro (ex.: "oi") → reenvia boas-vindas; número inválido → avisa
+  if (opcaoMenu === "") {
+    session.menuInicialEnviado = false;
+    await mostrarMenuInicial(chatId);
+  } else {
+    await sendText(
+      chatId,
+      "*⚠ Opção inválida!* Escolha uma das opções do menu digitando apenas o número: *(Digite somente número)*\n\n" +
+      mensagemBoasVindas3.split("\n").slice(2).join("\n")
+    );
+  }
+  return;
+  }
 
-      case "2":
-        await sendTyping(chatId);
-        await sendText(
-          chatId,
-          "Parabéns pelo(a) catequisando(a) está se preparando para receber Jesus Cristo na Santíssima Eucaristia. 😍\n\n" +
-          "Perfeito! Vamos começar.\nQual o nome do Responsável?"
-        );
-        session.step = "eucaristia_nome";
-        session.eucaristia = {};
-        return;
+  // ======================================================
+  // CONFIRMAÇÃO DA OPÇÃO DO MENU
+  // ======================================================
+  if (session.step === "confirmar_opcao_menu") {
+    const resp = (corpoMensagem || "").replace(/\D+/g, "");
 
-      case "3":
-        await sendTyping(chatId);
-        await sendText(chatId, "Você está em processo de contratação.\nComo posso ajudar?");
-        pausarCliente(chatIdNormalizado);
-        return;
-
-      case "4":
-        await sendTyping(chatId);
-        await sendText(chatId, "Você já tem um serviço contratado.\nComo posso te ajudar?");
-        pausarCliente(chatIdNormalizado);
-        return;
-
-      case "5":
-        await sendTyping(chatId);
-        await sendText(chatId, "Claro! Me diga qual é o assunto.");
-        pausarCliente(chatIdNormalizado);
-        return;
-
-      case "6":
-        await sendTyping(chatId);
-        await sendText(chatId, "Sem problemas! Como posso te ajudar?");
-        pausarCliente(chatIdNormalizado);
-        return;
-
-      case "7":
-        await sendTyping(chatId);
-        await fluxoEventos(chatId, session);
-        return;
-
-      default:
-        // Se o cliente mandou texto puro (ex.: "oi", "olá", "tudo bem") em vez de número,
-        // reenvia o menu de boas-vindas em vez de mostrar "opção inválida"
-        if (opcaoMenu === "") {
-          session.menuInicialEnviado = false;
-          await mostrarMenuInicial(chatId);
-        } else {
-          await sendText(
-            chatId,
-            "*⚠ Opção inválida!* Escolha uma das opções do menu digitando apenas o número: *(Digite somente número)*\n\n" +
-            "*1* - Solicitar um orçamento\n" +
-            "*2* - Fotografia 1ª Eucaristia\n" +
-            "*3* - Estou em processo de contratação\n" +
-            "*4* - Tenho um serviço contratado e preciso de suporte\n" +
-            "*5* - Outros assuntos\n" +
-            "*6* - Não sou cliente, mas preciso falar com você\n" +
-            "*7* - Estou em um evento e desejo baixar minha foto"
-          );
-        }
-        return;
+    if (resp === "1") {
+      const op = session.opcaoMenuPendente;
+      session.opcaoMenuPendente = null;
+      await executarOpcaoMenu(chatId, session, op, chatIdNormalizado);
+      return;
     }
+
+    if (resp === "2") {
+      session.opcaoMenuPendente = null;
+      session.step = "aguardando_opcao";
+      session.menuInicialEnviado = true;
+      await sendTyping(chatId);
+      await sendText(chatId, "Sem problema! 😊 Escolha a opção desejada:");
+      await sendTyping(chatId);
+      await sendText(chatId, mensagemBoasVindas3);
+      return;
+    }
+
+    // resposta inválida na confirmação
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      "Por favor, responda apenas *1* (Sim, é isso) ou *2* (Não, escolher outra opção). 😊"
+    );
+    return;
   }
 
   // ======================================================
