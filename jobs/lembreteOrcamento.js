@@ -11,6 +11,14 @@
 //   72h → 3º lembrete (última chamada)
 //   96h → avisa o OPERADOR para um contato manual (e encerra os lembretes)
 //
+// ESPAÇAMENTO MÍNIMO (GAP_MIN ~20h): nunca manda dois lembretes colados. Se o
+// de 2h "vence" de madrugada e só sai às 7h, o de 24h NÃO sai poucas horas
+// depois — espera ~1 dia (na prática o de 24h vira ~48h); o de 72h segue normal.
+//
+// CORTE POR DATA DO EVENTO (se o cliente já informou a data): a última msg sai
+// até ~2 dias antes do evento. A <=3 dias, a última chamada é antecipada; a <=2
+// dias, para de incomodar o cliente e avisa o operador; evento já passado encerra.
+//
 // Regras: NUNCA envia entre 20h e 7h (Brasília); respeita a pausa especial;
 // cada estágio sai só uma vez; se o cliente avança de pergunta, o ciclo de
 // lembretes reinicia naquele novo passo; sessões com mais de 7 dias de
@@ -26,11 +34,26 @@ const TIMEZONE = "America/Sao_Paulo";
 const OPERADOR_TELEFONE_ID = "5521964428172@c.us";
 
 // Limiares (ms)
+const DIA    = 24 * 60 * 60 * 1000;
 const H2     = 2  * 60 * 60 * 1000;
 const H24    = 24 * 60 * 60 * 1000;
 const H72    = 72 * 60 * 60 * 1000;
 const H_OP   = 96 * 60 * 60 * 1000; // 72h + 24h de tolerância → avisa operador
-const H_MAX  = 7  * 24 * 60 * 60 * 1000; // > 7 dias parado = ignora (sessão velha)
+const H_MAX  = 7  * DIA; // > 7 dias parado = ignora (sessão velha)
+
+// Espaçamento mínimo ENTRE lembretes enviados ao mesmo cliente. Sem isso, se
+// o lembrete de 2h "vence" de madrugada e só sai às 7h, o de 24h (medido desde
+// a última msg do cliente) vence poucas horas depois e os dois saem colados —
+// parece chato. Com este intervalo, o 2º só sai ~1 dia após o 1º (na prática,
+// o de 2h vira "manhã seguinte" e o de 24h vira ~48h). O de 72h segue no 72h.
+const GAP_MIN = 20 * 60 * 60 * 1000; // ~20h entre um lembrete e o próximo
+
+// Corte por proximidade do evento: a ÚLTIMA mensagem deve sair até 2 dias antes
+// do evento — depois disso o cliente (e a gente) precisa de tempo para organizar.
+// Se faltam <= 3 dias e ainda não enviamos a última chamada, antecipamos ela;
+// dentro de 2 dias do evento, paramos com o cliente e avisamos o operador.
+const CORTE_DIAS_ANTES   = 2; // não enviar lembrete ao cliente nos 2 dias finais
+const ANTECIPA_DIAS_ANTES = 3; // a <=3 dias do evento, dispara a última chamada já
 
 // Passos de COLETA do orçamento (antes da entrega dos valores). Quem está
 // aqui e ficou em silêncio é um abandono recuperável.
@@ -94,6 +117,18 @@ function dentroDaJanela() {
   return h >= 7 && h < 20; // permitido 7h–19h59; bloqueado 20h–6h59
 }
 
+// Lê a data do evento da sessão ("DD/MM/AAAA" em orcamento.data) → Date 00:00,
+// ou null se não informada/!inválida. (orcamento.data é sempre o 1º dia, mesmo
+// em eventos de vários dias.)
+function dataEvento(s) {
+  const str = s.orcamento && s.orcamento.data;
+  if (!str) return null;
+  const m = String(str).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const d = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00`);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function perguntaPendente(s) {
   return (s.ultimaPerguntaNaoRespondida && String(s.ultimaPerguntaNaoRespondida).trim())
     || PERGUNTA_POR_PASSO[s.step]
@@ -133,18 +168,32 @@ function montarMensagem(devido, s) {
   }
 }
 
-function montarMensagemOperador(chatId, s) {
+function montarMensagemOperador(chatId, s, dEvento) {
   const nome       = (s.orcamento && s.orcamento.nome) || "(sem nome)";
   const celebracao = (s.orcamento && s.orcamento.celebracao) || "(não informado)";
   const passo      = DESCRICAO_PASSO[s.step] || s.step;
+
+  let linhaData = "", motivo;
+  if (dEvento) {
+    const dataStr = (s.orcamento && s.orcamento.data) || "";
+    const hojeZero = new Date(); hojeZero.setHours(0, 0, 0, 0);
+    const faltam = Math.round((dEvento.getTime() - hojeZero.getTime()) / DIA);
+    linhaData = `Data do evento: ${dataStr}${faltam >= 0 ? ` (faltam ${faltam} dia(s))` : ""}\n`;
+    motivo = `O evento está se aproximando e o cliente não finalizou o orçamento. ` +
+             `Vale um contato manual enquanto ainda dá tempo de organizar. 🙏`;
+  } else {
+    motivo = `O cliente não respondeu aos 3 lembretes automáticos do orçamento. ` +
+             `Vale um contato manual. 🙏`;
+  }
+
   return (
     `🙋 *Lead de orçamento parado*\n` +
     `${chatId}\n` +
     `Nome: ${nome}\n` +
     `Evento: ${celebracao}\n` +
+    linhaData +
     `Parou em: ${passo}\n\n` +
-    `O cliente não respondeu aos 3 lembretes automáticos do orçamento. ` +
-    `Vale um contato manual. 🙏`
+    motivo
   );
 }
 
@@ -173,28 +222,64 @@ async function executarLembreteOrcamento() {
       if (s.lembreteOrcStep !== s.step) {
         s.lembreteOrcStep = s.step;
         s.lembreteOrcEstagio = 0;
+        s.lembreteOrcUltimoEnvio = 0;
       }
-      const estagio = s.lembreteOrcEstagio || 0;
+      const estagio      = s.lembreteOrcEstagio || 0;
+      const ultimoEnvio  = s.lembreteOrcUltimoEnvio || 0;
+      const dEvento      = dataEvento(s);
 
-      let devido = 0;
-      if (inativo >= H2)   devido = 1;
-      if (inativo >= H24)  devido = 2;
-      if (inativo >= H72)  devido = 3;
-      if (inativo >= H_OP) devido = 4; // avisar operador
-      if (devido <= estagio) continue; // nada novo para este
+      // Evento já passou → encerra silenciosamente (não incomoda ninguém)
+      if (dEvento) {
+        const hojeZero = new Date(); hojeZero.setHours(0, 0, 0, 0);
+        if (dEvento < hojeZero) { s.lembreteOrcEstagio = 4; continue; }
+      }
 
-      if (devido === 4) {
+      // Decide a AÇÃO deste ciclo: 'operador' | 'cliente' | null (nada agora)
+      let acao = null, devido = 0;
+      const naFaixaCorte = dEvento && (agora >= dEvento.getTime() - CORTE_DIAS_ANTES * DIA);
+
+      if (naFaixaCorte) {
+        // Faltam <= 2 dias p/ o evento: não incomoda mais o cliente; chama o
+        // operador (1x) p/ um contato manual enquanto ainda dá tempo de organizar.
+        if (estagio < 4) acao = 'operador';
+      } else {
+        // Limiares normais de inatividade (medidos desde a última msg do cliente)
+        if (inativo >= H2)   devido = 1;
+        if (inativo >= H24)  devido = 2;
+        if (inativo >= H72)  devido = 3;
+        if (inativo >= H_OP) devido = 4; // avisar operador
+
+        // Se faltam <= 3 dias p/ o evento, antecipa a ÚLTIMA chamada (não dá
+        // pra esperar o 72h chegar): garante que a última msg saia antes do corte.
+        let forcaUltima = false;
+        if (dEvento && agora >= dEvento.getTime() - ANTECIPA_DIAS_ANTES * DIA && estagio < 3) {
+          devido = 3; forcaUltima = true;
+        }
+
+        if (devido > estagio) {
+          if (devido === 4) {
+            acao = 'operador';
+          } else if (forcaUltima || !ultimoEnvio || (agora - ultimoEnvio) >= GAP_MIN) {
+            // Respeita o espaçamento mínimo entre lembretes (exceto última chamada
+            // forçada) e a pausa especial do cliente.
+            if (!estaPausadoEspecial(chatId)) acao = 'cliente';
+          }
+        }
+      }
+
+      if (!acao) continue; // nada a enviar para este neste ciclo
+
+      if (acao === 'operador') {
         // Aviso ao operador — vai independentemente da pausa especial do cliente
-        await sendText(OPERADOR_TELEFONE_ID, montarMensagemOperador(chatId, s));
+        await sendText(OPERADOR_TELEFONE_ID, montarMensagemOperador(chatId, s, dEvento));
         s.lembreteOrcEstagio = 4;
         s.lembreteOrcamentoEnviado = true;
         avisosOperador++;
         console.log(`   🙋 Operador avisado sobre lead parado: ${chatId}`);
       } else {
-        // Lembrete ao cliente — respeita a pausa especial (não envia; tenta depois)
-        if (estaPausadoEspecial(chatId)) continue;
         await sendText(chatId, montarMensagem(devido, s));
         s.lembreteOrcEstagio = devido;
+        s.lembreteOrcUltimoEnvio = agora;
         s.lembreteOrcamentoEnviado = true;
         enviados++;
         console.log(`   ✅ Lembrete ${devido} enviado para ${chatId} (parou em ${s.step})`);
