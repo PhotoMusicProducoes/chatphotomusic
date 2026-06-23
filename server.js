@@ -11,6 +11,44 @@ const { inicializarPausaEspecial } = require("./utils/index.js");
 const app = express();
 app.use(bodyParser.json());
 
+// ======================================================
+// NORMALIZAÇÃO DO TEXTO RECEBIDO
+// Alguns aparelhos/encaminhamentos entregam o texto percent-encoded
+// (%20, %C3%A1...) e/ou com acento quebrado (UTF-8 lido como Latin-1:
+// "OlÃ¡" em vez de "Olá"). Sem tratar, uma mensagem como
+// "Olá! Recebi seu orçamento e desejo contratar" chega ilegível e o bot
+// não entende a intenção. Esta função conserta os dois casos com segurança.
+// ======================================================
+function temMojibakeUtf8(s){
+  // marcadores de UTF-8 lido como Latin-1: 0xC2/0xC3 seguidos de 0x80-0xBF
+  for (let i = 0; i < s.length - 1; i++) {
+    const a = s.charCodeAt(i), b = s.charCodeAt(i + 1);
+    if ((a === 0xC2 || a === 0xC3) && b >= 0x80 && b <= 0xBF) return true;
+  }
+  return false;
+}
+
+function normalizarTextoRecebido(raw) {
+  let s = String(raw == null ? "" : raw);
+
+  // 1) Percent-encoding (%20, %C3%A1...). So tenta se houver o padrao %XX.
+  if (/%[0-9A-Fa-f]{2}/.test(s)) {
+    try { s = decodeURIComponent(s); } catch (_) { /* mantem como esta */ }
+  }
+
+  // 2) Mojibake: UTF-8 lido como Latin-1 ("OlÃ¡" -> "Ola"). So age se houver
+  //    marcadores e se o conserto NAO introduzir caractere de substituicao
+  //    (evita corromper texto que ja estava correto).
+  if (temMojibakeUtf8(s)) {
+    try {
+      const fixed = Buffer.from(s, "latin1").toString("utf8");
+      if (fixed.indexOf(String.fromCharCode(0xFFFD)) === -1) s = fixed;
+    } catch (_) { /* mantem como esta */ }
+  }
+
+  return s;
+}
+
 // ================= INICIALIZAR SISTEMAS =================
 console.log("\n🚀 Iniciando sistema integrado (ChatBot + Comemorações + Pausa Especial)...\n");
 inicializarPausaEspecial();
@@ -61,9 +99,11 @@ async function processarWebhook(req, res) {
       // Número da instância (bot)
       to: payload.connectedPhone ? payload.connectedPhone + "@c.us" : null,
 
-      // Texto da mensagem
-      body: payload.text?.message || payload.body || "",
-      text: payload.text || null,
+      // Texto da mensagem (normalizado: corrige percent-encoding e mojibake)
+      body: normalizarTextoRecebido(payload.text?.message || payload.body || ""),
+      text: payload.text
+        ? { ...payload.text, message: normalizarTextoRecebido(payload.text.message || "") }
+        : null,
 
       // Indica se é grupo
       isGroup: payload.isGroup || false,

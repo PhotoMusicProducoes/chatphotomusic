@@ -419,6 +419,57 @@ async function consultarDeslocamento(session) {
 // ======================================================
 const OPERADOR_TELEFONE_ID = "5521964428172@c.us";
 
+// ======================================================
+// CLIENTE RESPONDEU → pausa o follow-up automático no funil (PhotoMusic Pro)
+// Regra do operador: qualquer resposta do cliente PAUSA o follow-up (o card
+// fica "⏸️ bot pausado" e o operador reativa com 1 clique). Se a mensagem
+// sinalizar intenção de contratar, o lead vai para "Negociando" e o operador
+// é avisado.
+// ======================================================
+function clienteQuerContratar(texto) {
+  let t = String(texto || "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, ""); // tira acentos
+  if (!t) return false;
+  // negação explícita → não é intenção ("não quero contratar", "ainda não vou fechar")
+  if (/\bnao\b[^.!?]*\b(contrat|fechar)/.test(t)) return false;
+  return /\bcontrat(ar|o)\b/.test(t)
+      || /\b(quero|desejo|gostaria|vamos|podemos|pode|vou)\b[^.!?]*\bfechar\b/.test(t)
+      || /\bfechar\b[^.!?]*\bcontrat/.test(t);
+}
+
+async function avisarLeadRespondeu(telefone, texto) {
+  const querContratar = clienteQuerContratar(texto);
+  try {
+    const resp = await axios.post(
+      `${PM_API_BASE}/lead-cliente-respondeu`,
+      {
+        telefone,
+        contratar: querContratar,
+        mensagem: String(texto || "").slice(0, 120),
+      },
+      { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 6000 }
+    );
+    const data = resp.data || {};
+    if (data.status === "negociando") {
+      console.log(`🤝 Lead #${data.id} (${data.nome || "?"}) → Negociando: cliente deseja contratar.`);
+    } else if (data.status === "pausado") {
+      console.log(`⏸️ Lead #${data.id} (${data.nome || "?"}): follow-up pausado (cliente respondeu).`);
+    }
+    // Avisa o operador quando o cliente sinaliza que quer fechar.
+    if (querContratar && (data.status === "negociando" || data.status === "pausado")) {
+      const nome = data.nome ? `*${data.nome}*` : `o cliente ${telefone}`;
+      await sendText(
+        OPERADOR_TELEFONE_ID,
+        `🟢 *Cliente quer CONTRATAR!*\n\n${nome} respondeu sinalizando que deseja fechar contrato.\n📱 ${telefone}\n\nO lead foi movido para *Negociando* e o follow-up automático foi pausado. Assuma a conversa. 🙌`
+      );
+    }
+    return data;
+  } catch (e) {
+    console.warn(`⚠️ avisarLeadRespondeu falhou (${telefone}): ${e.message}`);
+    return null;
+  }
+}
+
 // Operadores autorizados a enviar comandos (além da própria linha do bot,
 // reconhecida por fromMe). Funciona no privado e em grupos.
 // Para adicionar/remover, edite este mapa (número → nome).
@@ -1180,6 +1231,11 @@ async function handleIncomingMessage(message) {
     if (chatId && chatId !== operadorNum) {
       sessions["__ultimo_cliente__"] = chatId; // chatId já está normalizado (só números)
       console.log(`🧷 Último cliente atualizado (cliente falou): ${chatId}`);
+
+      // O cliente respondeu → pausa o follow-up automático no funil do
+      // PhotoMusic Pro (e move p/ Negociando + avisa operador se quer
+      // contratar). Fire-and-forget para não atrasar o processamento.
+      avisarLeadRespondeu(chatId, corpoMensagem);
     }
   }
 
