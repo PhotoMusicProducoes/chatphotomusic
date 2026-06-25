@@ -3708,10 +3708,24 @@ async function enviarResumoCliente(chatId, session) {
     await sendTyping(chatId);
     await sendText(chatId, linhas.join("\n"));
 
+    // 📝 Como contratar (informação de contratação, sempre após o resumo)
+    await new Promise(r => setTimeout(r, 600));
+    await sendTyping(chatId);
+    await sendText(chatId, MSG_COMO_CONTRATAR);
+
   } catch (erro) {
     console.error("Erro ao enviar resumo para o cliente:", erro);
   }
 }
+
+// Texto padrão "como contratar" — usado no WhatsApp (resumo) e no e-mail do orçamento.
+const MSG_COMO_CONTRATAR =
+  "📝 *Para contratar nossos serviços*, é só nos enviar:\n\n" +
+  "• O(s) *serviço(s)* desejado(s)\n" +
+  "• O *pacote* e o *tempo* de cada serviço\n" +
+  "• A *forma de pagamento*\n\n" +
+  "Com essas informações, enviamos o *link do formulário* já com os seus dados para gerar o contrato. " +
+  "Todo o processo de assinatura é *100% digital*, feito aqui no nosso sistema. ✍️";
 
 // ======================================================
 // RESUMO PARA O OPERADOR (APÓS ENVIO MANUAL)
