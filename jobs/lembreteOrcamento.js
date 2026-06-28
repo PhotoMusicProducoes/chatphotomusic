@@ -65,7 +65,10 @@ const PASSOS_QUESTIONARIO = new Set([
   "orcamento_dia_data", "orcamento_dia_hora_inicio", "orcamento_dia_hora_fim",
   "orcamento_data", "orcamento_hora_inicio", "orcamento_hora_fim",
   "orcamento_bairro", "orcamento_cidade", "orcamento_salao",
-  "orcamento_onde_encontrou", "orcamento_detalhes", "orcamento_detalhes_texto"
+  "orcamento_onde_encontrou", "orcamento_detalhes", "orcamento_detalhes_texto",
+  // Etapas opcionais finais (e-mail/nascimento): o orçamento só é ENTREGUE depois
+  // delas, então quem para aqui também abandona o orçamento (caso Rayane 2026-06-26).
+  "coletar_email_opcional", "coletar_nascimento_opcional"
 ]);
 
 // Pergunta amigável por passo (usada se a sessão não guardou o texto exato)
@@ -89,7 +92,9 @@ const PERGUNTA_POR_PASSO = {
   "orcamento_salao": "Qual o nome do salão/local? (ou digite *pular*)",
   "orcamento_onde_encontrou": "Só uma curiosidade: como você nos conheceu?",
   "orcamento_detalhes": "Quer adicionar algum detalhe sobre o evento? (1 - Sim / 2 - Não)",
-  "orcamento_detalhes_texto": "Pode me contar os detalhes do seu evento."
+  "orcamento_detalhes_texto": "Pode me contar os detalhes do seu evento.",
+  "coletar_email_opcional": "Falta pouco para finalizar seu orçamento! Me passa um *e-mail* para enviar o orçamento em PDF, ou responda *pular*.",
+  "coletar_nascimento_opcional": "Falta pouco para finalizar seu orçamento! Sua data de nascimento (ex: 01/02/1985), ou responda *pular*."
 };
 
 // Descrição curta do passo para o aviso do operador
@@ -104,7 +109,9 @@ const DESCRICAO_PASSO = {
   "orcamento_hora_fim": "horário de término",
   "orcamento_bairro": "bairro", "orcamento_cidade": "cidade", "orcamento_salao": "salão/local",
   "orcamento_onde_encontrou": "como nos conheceu", "orcamento_detalhes": "detalhes do evento",
-  "orcamento_detalhes_texto": "detalhes do evento"
+  "orcamento_detalhes_texto": "detalhes do evento",
+  "coletar_email_opcional": "e-mail (opcional, falta finalizar)",
+  "coletar_nascimento_opcional": "nascimento (opcional, falta finalizar)"
 };
 
 function horaSaoPaulo() {
