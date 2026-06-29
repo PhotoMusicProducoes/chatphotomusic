@@ -1555,6 +1555,7 @@ async function handleIncomingMessage(message) {
       function parsearConversa(texto, clienteNum) {
         const clienteDigits = clienteNum.replace(/\D/g, "");
         const msgs = [];
+        let ultimaFoiBot = false; // a ÚLTIMA fala colada foi do bot (não do cliente)?
         for (const linha of texto.split("\n")) {
           // Formato: [HH:MM, DD/MM/YYYY] Speaker: conteudo
           //      ou  [HH:MM] Speaker: conteudo
@@ -1565,17 +1566,25 @@ async function handleIncomingMessage(message) {
           if (!conteudo) continue;
           // Verifica se o speaker é o cliente comparando dígitos finais
           const speakerDigits = speaker.replace(/\D/g, "");
-          if (speakerDigits.length < 6) continue; // nome do bot sem números
           const isCliente =
-            speakerDigits === clienteDigits ||
-            clienteDigits.endsWith(speakerDigits.slice(-10)) ||
-            speakerDigits.endsWith(clienteDigits.slice(-10));
-          if (isCliente) msgs.push(conteudo);
+            speakerDigits.length >= 6 && (
+              speakerDigits === clienteDigits ||
+              clienteDigits.endsWith(speakerDigits.slice(-10)) ||
+              speakerDigits.endsWith(clienteDigits.slice(-10))
+            );
+          if (isCliente) {
+            msgs.push(conteudo);
+            ultimaFoiBot = false;
+          } else {
+            // Linha do bot (nome sem número) ou de terceiro: a conversa, até aqui,
+            // terminou numa fala que NÃO é do cliente.
+            ultimaFoiBot = true;
+          }
         }
-        return msgs;
+        return { msgs, ultimaFoiBot };
       }
 
-      const mensagensCliente = parsearConversa(corpoConversa, numeroCliente);
+      const { msgs: mensagensCliente, ultimaFoiBot } = parsearConversa(corpoConversa, numeroCliente);
 
       if (mensagensCliente.length === 0) {
         await sendText(OPERADOR_TELEFONE_ID,
@@ -1621,20 +1630,34 @@ async function handleIncomingMessage(message) {
         ultimaPerguntaNaoRespondida: null
       };
 
+      // Se a conversa colada TERMINA com mensagem do bot, a próxima pergunta JÁ foi
+      // enviada ao cliente (está colada) — então reproduzimos TODAS as respostas em
+      // SILÊNCIO e NÃO reenviamos nada (senão o bot manda a mesma pergunta de novo,
+      // caso Rayane 29/06). Só quando a conversa termina numa resposta do CLIENTE
+      // (ele respondeu e o bot não respondeu de volta, ex.: sistema reiniciou) é que
+      // a última vai em modo NORMAL, p/ o cliente receber a próxima pergunta.
+      const reenviarProxima = !ultimaFoiBot;
+      const qtdSilenciosa = reenviarProxima
+        ? mensagensCliente.length - 1
+        : mensagensCliente.length;
+
       await sendText(OPERADOR_TELEFONE_ID,
         `🔄 Reconstruindo sessão de *${numeroCliente}*...\n` +
-        `📋 ${mensagensCliente.length} mensagens encontradas:\n` +
-        mensagensCliente.map((m, i) => `${i + 1}. "${m}"`).join("\n")
+        `📋 ${mensagensCliente.length} mensagens do cliente encontradas:\n` +
+        mensagensCliente.map((m, i) => `${i + 1}. "${m}"`).join("\n") +
+        (reenviarProxima
+          ? `\n\n➡️ A conversa termina numa resposta do cliente — vou reenviar a próxima pergunta.`
+          : `\n\n🤫 A conversa termina numa mensagem do bot — a última pergunta já foi enviada, então NÃO vou reenviar nada.`)
       );
 
-      // --- Replay silencioso (N-1 mensagens) ---
+      // --- Replay silencioso ---
       ativarModoSilencioso(numeroCliente);
       let replayOk = true;
       try {
-        for (let i = 0; i < mensagensCliente.length - 1; i++) {
+        for (let i = 0; i < qtdSilenciosa; i++) {
           const msg = mensagensCliente[i];
           const stepAntes = sessions[numeroCliente]?.step;
-          console.log(`🔇 [Replay ${i + 1}/${mensagensCliente.length - 1}] step=${stepAntes} msg="${msg}"`);
+          console.log(`🔇 [Replay ${i + 1}/${qtdSilenciosa}] step=${stepAntes} msg="${msg}"`);
           await handleIncomingMessage(criarSimulada(numeroCliente, msg));
           await new Promise(r => setTimeout(r, 80)); // pequena pausa anti-race
         }
@@ -1648,20 +1671,31 @@ async function handleIncomingMessage(message) {
 
       if (!replayOk) return;
 
-      // --- Última mensagem em modo normal (cliente recebe a próxima pergunta) ---
-      const ultima = mensagensCliente[mensagensCliente.length - 1];
-      const stepFinal = sessions[numeroCliente]?.step || "?";
-      console.log(`▶️ [Replay FINAL] step=${stepFinal} msg="${ultima}"`);
+      if (reenviarProxima) {
+        // --- Última mensagem em modo normal (cliente recebe a próxima pergunta) ---
+        const ultima = mensagensCliente[mensagensCliente.length - 1];
+        const stepFinal = sessions[numeroCliente]?.step || "?";
+        console.log(`▶️ [Replay FINAL] step=${stepFinal} msg="${ultima}"`);
 
-      await handleIncomingMessage(criarSimulada(numeroCliente, ultima));
+        await handleIncomingMessage(criarSimulada(numeroCliente, ultima));
 
-      await sendText(OPERADOR_TELEFONE_ID,
-        `✅ Sessão reconstruída com sucesso!\n\n` +
-        `👤 Cliente: *${numeroCliente}*\n` +
-        `📩 Última resposta reproduzida: *"${ultima}"*\n` +
-        `📍 Step final: *${sessions[numeroCliente]?.step || "?"}*\n\n` +
-        `O cliente acabou de receber a próxima pergunta e pode continuar normalmente.`
-      );
+        await sendText(OPERADOR_TELEFONE_ID,
+          `✅ Sessão reconstruída com sucesso!\n\n` +
+          `👤 Cliente: *${numeroCliente}*\n` +
+          `📩 Última resposta reproduzida: *"${ultima}"*\n` +
+          `📍 Step final: *${sessions[numeroCliente]?.step || "?"}*\n\n` +
+          `O cliente acabou de receber a próxima pergunta e pode continuar normalmente.`
+        );
+      } else {
+        // Conversa terminou numa msg do bot: tudo reproduzido em silêncio, nada reenviado.
+        await sendText(OPERADOR_TELEFONE_ID,
+          `✅ Sessão reconstruída com sucesso!\n\n` +
+          `👤 Cliente: *${numeroCliente}*\n` +
+          `📍 Step final: *${sessions[numeroCliente]?.step || "?"}*\n\n` +
+          `A última pergunta já tinha sido enviada ao cliente, então *nada foi reenviado*. ` +
+          `É só aguardar a resposta dele a partir desse ponto.`
+        );
+      }
       return;
     }
 
