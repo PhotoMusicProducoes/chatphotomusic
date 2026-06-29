@@ -287,19 +287,19 @@ const CAMPOS_CORRIGIVEIS = [
 
 function valorCampoResumo(orc, tipo) {
   switch (tipo) {
-    case "celebracao": return orc.celebracaoId ? (celebracoes[orc.celebracaoId] || orc.celebracao || "—") : (orc.celebracao || "—");
-    case "numero":     return orc.convidados || "—";
-    case "data":       return orc.data       || "—";
-    case "hora_ini":   return orc.horaInicio || "—";
-    case "hora_fim":   return orc.horaFim     || "—";
-    case "bairro":     return orc.bairro      || "—";
-    case "cidade":     return orc.cidade      || "—";
+    case "celebracao": return orc.celebracaoId ? (celebracoes[orc.celebracaoId] || orc.celebracao || "(não informado)") : (orc.celebracao || "(não informado)");
+    case "numero":     return orc.convidados || "(não informado)";
+    case "data":       return orc.data       || "(não informado)";
+    case "hora_ini":   return orc.horaInicio || "(não informado)";
+    case "hora_fim":   return orc.horaFim     || "(não informado)";
+    case "bairro":     return orc.bairro      || "(não informado)";
+    case "cidade":     return orc.cidade      || "(não informado)";
     case "salao":      return orc.salao       || "(não informado)";
     case "onde":       return orc.ondeEncontrou || "(não informado)";
     case "detalhes":   return orc.detalhes    || "(nenhum)";
     case "email":      return orc.email       || "(não informado)";
     case "nascimento": return orc.dataNascimento || "(não informado)";
-    default: return "—";
+    default: return "(não informado)";
   }
 }
 
@@ -582,9 +582,19 @@ function extrairNumerosCampos(texto, max) {
   const t = (texto || "").trim();
   let nums;
   if (/[,;.\s]/.test(t)) {
+    // Com separador: cada token é um número inteiro (suporta 10, 11, 12...)
     nums = t.split(/[,;.\s]+/).map(s => parseInt(s.replace(/\D+/g, ""), 10));
   } else {
-    nums = t.replace(/\D+/g, "").split("").map(s => parseInt(s, 10));
+    const limpo = t.replace(/\D+/g, "");
+    const comoNumero = parseInt(limpo, 10);
+    if (Number.isInteger(comoNumero) && comoNumero >= 1 && comoNumero <= max) {
+      // Token único que CABE na faixa → trata como UM número (ex.: "11" = item 11,
+      // não [1,1]). Corrige o menu de correção, que vai até 12.
+      nums = [comoNumero];
+    } else {
+      // Não cabe como número único (ex.: "124" num menu 1-8) → quebra em dígitos.
+      nums = limpo.split("").map(s => parseInt(s, 10));
+    }
   }
   return [...new Set(nums)].filter(n => Number.isInteger(n) && n >= 1 && n <= max);
 }
