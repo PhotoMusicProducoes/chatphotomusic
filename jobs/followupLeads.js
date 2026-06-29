@@ -1,7 +1,8 @@
 // jobs/followupLeads.js — Fase 4 do funil de marketing
 // Follow-up automático dos leads de orçamento que não fecharam.
 // Fase A (a partir do orçamento):
-//   24h  → mensagem de relacionamento (sem desconto)
+//   24h  → mensagem de relacionamento + emoção (sem desconto)
+//   48h  → mensagem emotiva p/ entender/quebrar a objeção (sem desconto)
 //   72h  → condição especial: R$ 50,00 de desconto no fechamento (válida 48h)
 //   7d   → condição: R$ 100,00 de desconto no fechamento (válida 48h)
 // Fase B (após os 7 dias, ancorada na data do evento, mantendo a promo R$ 100):
@@ -74,23 +75,40 @@ function montarMensagemFollowup(lead) {
 
   switch (tipo) {
     case "24h":
-      // 24h — relacionamento, sem desconto
+      // 24h — relacionamento + emoção, sem desconto
       return (
-        `Olá, *${nome}*! 😊 Aqui é da *PhotoMusic Produções*.\n\n` +
-        `Preparamos o orçamento de *${servicos}* para *${celebracao}*${dataTxt} e queria saber: ` +
-        `ficou alguma dúvida? Posso ajudar em algo?\n\n` +
-        `Estou por aqui! É só responder esta mensagem. 🙏`
+        `Oi, *${nome}*! ❤️ Aqui é da *PhotoMusic Produções*.\n\n` +
+        `Preparei com muito carinho o orçamento de *${servicos}* para o seu *${celebracao}*${dataTxt}. ` +
+        `Mais do que fotos e equipamentos, o que a gente entrega é emoção, aquele momento que fica guardado pra sempre. ❤️\n\n` +
+        `Ficou alguma dúvida? Tem algo que eu possa te explicar melhor pra te ajudar a decidir? ` +
+        `Estou bem aqui, é só me responder. 🙏`
+      );
+
+    case "48h":
+      // 48h — emotiva, abre a objeção (sem desconto). Pedido da Adriana 2026-06-29.
+      return (
+        `Oi, *${nome}*! ❤️ Aqui é da *PhotoMusic Produções*.\n\n` +
+        `Sabe o que mais me marca no nosso trabalho? Não são as câmeras nem os equipamentos. ` +
+        `É ver a emoção no rosto das pessoas, o abraço apertado, a risada que fica guardada pra sempre. ` +
+        `O que a gente faz de verdade é cuidar das suas memórias com todo o carinho. ❤️\n\n` +
+        `Quando você falou com a gente sobre o seu *${celebracao}*${dataTxt}, deu pra sentir o quanto esse dia é especial pra você. ` +
+        `E eu não queria que nada pequeno ficasse no caminho da gente viver isso junto.\n\n` +
+        `Se tiver alguma coisa te segurando, seja o valor, a data, ou qualquer outro detalhe, me conta de coração aberto. ` +
+        `Sem pressa e sem pressão. Vou fazer o possível pra achar um jeito que caiba pra você. 🙏\n\n` +
+        `Posso te ajudar com isso?`
       );
 
     case "72h":
-      // 72h — R$ 50,00, condição pessoal, válida 48h
+      // 72h — R$ 50,00, condição pessoal (48h), com emoção + abrir objeção
       return (
-        `Olá, *${nome}*! Tudo bem? 😊\n\n` +
-        `Conversei com a equipe aqui e *consegui uma condição especial* para *${celebracao}*${dataTxt}:\n\n` +
+        `Oi, *${nome}*! ❤️ Tudo bem?\n\n` +
+        `Fiquei pensando no seu *${celebracao}*${dataTxt} e fui conversar com a equipe pra tentar facilitar pra você. ` +
+        `Consegui uma *condição especial, feita com carinho*:\n\n` +
         `🎁 *R$ 50,00 de desconto no fechamento* do contrato!\n` +
-        `⏳ Essa condição é válida por *48 horas*.\n` +
+        `⏳ Reservei essa condição por *48 horas* pra você.\n` +
         linhaMulti +
-        `Vamos garantir essa condição para o seu evento? É só me responder por aqui! 🙌`
+        `Mas, mais importante que o desconto: se tiver alguma coisa te deixando em dúvida, me conta. ` +
+        `A gente quer muito fazer parte desse dia tão especial com você. Vamos juntos? 🙌❤️`
       );
 
     case "promo_mensal":
@@ -124,15 +142,17 @@ function montarMensagemFollowup(lead) {
 
     case "7dias":
     default:
-      // 7 dias — R$ 100,00, válida 48h
+      // 7 dias — R$ 100,00 (48h), com emoção + abrir objeção (última condição)
       return (
-        `Olá, *${nome}*! 😊\n\n` +
-        `Não quero que você fique sem garantir a sua data${dataTxt ? ` ${dataTxt.trim()}` : ""}! ` +
-        `Liberei a *melhor condição que consigo* para *${celebracao}*:\n\n` +
+        `Oi, *${nome}*! ❤️\n\n` +
+        `Não quero mesmo que você fique sem viver o seu *${celebracao}*${dataTxt} do jeito que sonhou. ` +
+        `Então liberei a *melhor condição que consigo*, de coração:\n\n` +
         `🎁 *R$ 100,00 de desconto no fechamento* do contrato!\n` +
         `⏳ Válida por *48 horas*.\n` +
         linhaMulti +
-        `Posso reservar a sua data? Me responde por aqui que deixamos tudo certo! 🙌✨`
+        `E se ainda tiver algo te segurando, seja o valor ou qualquer outro motivo, me fala com sinceridade. ` +
+        `O que mais quero é encontrar um caminho pra cuidar das suas memórias com todo o carinho que a gente tem. ` +
+        `Posso reservar a sua data? 🙌❤️`
       );
   }
 }
@@ -168,7 +188,7 @@ async function executarFollowupLeads() {
         encerrarFluxoLead(lead.telefone);
 
         const rotulos = {
-          "24h": "24h", "72h": "72h (R$50)", "7dias": "7d (R$100)",
+          "24h": "24h", "48h": "48h (objeção)", "72h": "72h (R$50)", "7dias": "7d (R$100)",
           "promo_mensal": "mensal (R$100)", "promo_30dias": "30d (R$100)", "promo_15dias": "15d (R$100)"
         };
         console.log(`   ✅ Follow-up ${rotulos[tipo] || tipo} enviado para ${lead.nome} (${lead.telefone})`);
