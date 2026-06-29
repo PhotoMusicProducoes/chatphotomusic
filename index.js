@@ -329,6 +329,7 @@ async function mostrarConfirmacaoOrcamento(chatId, session) {
   session.step = "orcamento_confirmar";
   await sendTyping(chatId);
   await sendText(chatId, txt);
+  session.ultimaPerguntaNaoRespondida = txt;
 }
 
 // Recalcula os valores derivados após uma correção (duração e deslocamento)
@@ -3097,8 +3098,7 @@ const resumoEucaristia =
     ].filter(Boolean).join(", ");
 
     session.step = "orcamento_onde_encontrou";
-    await sendTyping(chatId);
-    await sendText(chatId, "Onde nos encontrou?");
+    await enviarPerguntaESalvar(chatId, session, "Onde nos encontrou?");
     return;
   }
 
@@ -3109,9 +3109,9 @@ const resumoEucaristia =
     session.orcamento.ondeEncontrou = capitalizarPalavras(corpoMensagem);
     session.step = "orcamento_detalhes";
 
-    await sendTyping(chatId);
-    await sendText(
+    await enviarPerguntaESalvar(
       chatId,
+      session,
       "Deseja informar mais detalhes do seu evento?\n*1* - Sim\n*2* - Não"
     );
     return;
@@ -3140,8 +3140,7 @@ const resumoEucaristia =
 
     if (respDetalhes === "1") {
       session.step = "orcamento_detalhes_texto";
-      await sendTyping(chatId);
-      await sendText(chatId, "*Digite os detalhes adicionais:*");
+      await enviarPerguntaESalvar(chatId, session, "*Digite os detalhes adicionais:*");
       return;
     }
 
@@ -3151,15 +3150,14 @@ const resumoEucaristia =
     await sendTyping(chatId);
     await sendText(
       chatId,
-      "*Para deixar seu orçamento ainda mais completo, posso te pedir duas informações rápidas?*"      
+      "*Para deixar seu orçamento ainda mais completo, posso te pedir duas informações rápidas?*"
     );
 
     await sendTyping(chatId);
-    await sendText(
-      chatId,      
-      "Um *e-mail* para enviar o *orçamento em PDF* também, caso tenha dificuldade pelo *WhatsApp*.\n" +
-      "Ou responda *pular*."
-    );
+    const perguntaEmail = "Um *e-mail* para enviar o *orçamento em PDF* também, caso tenha dificuldade pelo *WhatsApp*.\n" +
+      "Ou responda *pular*.";
+    await sendText(chatId, perguntaEmail);
+    session.ultimaPerguntaNaoRespondida = perguntaEmail;
     return;
   }
 
@@ -3174,15 +3172,14 @@ const resumoEucaristia =
     await sendTyping(chatId);
     await sendText(
       chatId,
-      "*Para deixar seu orçamento ainda mais completo, posso te pedir duas informações rápidas?*"      
+      "*Para deixar seu orçamento ainda mais completo, posso te pedir duas informações rápidas?*"
     );
 
     await sendTyping(chatId);
-    await sendText(
-      chatId,      
-      "Um *e-mail* para enviar o *orçamento em PDF* também, caso tenha dificuldade pelo *WhatsApp*.\n" +
-      "Ou responda *pular*."
-    );
+    const perguntaEmail2 = "Um *e-mail* para enviar o *orçamento em PDF* também, caso tenha dificuldade pelo *WhatsApp*.\n" +
+      "Ou responda *pular*.";
+    await sendText(chatId, perguntaEmail2);
+    session.ultimaPerguntaNaoRespondida = perguntaEmail2;
     return;
   }
 
@@ -3209,11 +3206,10 @@ const resumoEucaristia =
     session.step = "coletar_nascimento_opcional";
 
     await sendTyping(chatId);
-    await sendText(
-      chatId,
-      "Sua data de nascimento *(exemplo: 01/02/1985)*.\n" +
-      "Ou responda *pular*."
-    );
+    const perguntaNascimento = "Sua data de nascimento *(exemplo: 01/02/1985)*.\n" +
+      "Ou responda *pular*.";
+    await sendText(chatId, perguntaNascimento);
+    session.ultimaPerguntaNaoRespondida = perguntaNascimento;
 
     return;
   }
@@ -3264,8 +3260,7 @@ const resumoEucaristia =
       session.correcaoFila = null;
       session.correcaoAtual = null;
       session.step = "orcamento_escolher_servico";
-      await sendTyping(chatId);
-      await sendText(chatId, textoMenuServicos());
+      await enviarPerguntaESalvar(chatId, session, textoMenuServicos());
       return;
     }
     // r === "2" → pede os números dos campos a corrigir

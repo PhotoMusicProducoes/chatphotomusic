@@ -68,7 +68,13 @@ const PASSOS_QUESTIONARIO = new Set([
   "orcamento_onde_encontrou", "orcamento_detalhes", "orcamento_detalhes_texto",
   // Etapas opcionais finais (e-mail/nascimento): o orçamento só é ENTREGUE depois
   // delas, então quem para aqui também abandona o orçamento (caso Rayane 2026-06-26).
-  "coletar_email_opcional", "coletar_nascimento_opcional"
+  "coletar_email_opcional", "coletar_nascimento_opcional",
+  // Reta final: revisar os dados (confirmar) e ESCOLHER OS SERVIÇOS. O orçamento
+  // só sai DEPOIS de escolher o serviço, então quem para aqui também abandonou
+  // sem receber nada (caso real 28/06). OBS: orcamento_escolher_servico é
+  // reaproveitado no "deseja mais serviços?" — nesse caso o cliente JÁ recebeu um
+  // orçamento; a guarda em executar...() ignora esse reuso (não é abandono).
+  "orcamento_confirmar", "orcamento_escolher_servico"
 ]);
 
 // Pergunta amigável por passo (usada se a sessão não guardou o texto exato)
@@ -94,7 +100,11 @@ const PERGUNTA_POR_PASSO = {
   "orcamento_detalhes": "Quer adicionar algum detalhe sobre o evento? (1 - Sim / 2 - Não)",
   "orcamento_detalhes_texto": "Pode me contar os detalhes do seu evento.",
   "coletar_email_opcional": "Falta pouco para finalizar seu orçamento! Me passa um *e-mail* para enviar o orçamento em PDF, ou responda *pular*.",
-  "coletar_nascimento_opcional": "Falta pouco para finalizar seu orçamento! Sua data de nascimento (ex: 01/02/1985), ou responda *pular*."
+  "coletar_nascimento_opcional": "Falta pouco para finalizar seu orçamento! Sua data de nascimento (ex: 01/02/1985), ou responda *pular*.",
+  "orcamento_confirmar": "Faltou só revisar os dados e confirmar pra eu enviar o orçamento. Está tudo certo?\n*1* - Sim, quero o orçamento\n*2* - Corrigir algo",
+  "orcamento_escolher_servico": "Falta só escolher os serviços que deseja orçamento (para mais de um, separe por vírgula, ex: *1,3,5*):\n\n" +
+    "*1* - Foto Cabine\n*2* - Totem Fotográfico\n*3* - Plataforma 360º\n*4* - Foto Paparazzi Digital\n" +
+    "*5* - Foto Lembrança\n*6* - Cobertura Fotográfica\n*7* - Som Completo com DJ\n*8* - Iluminação para Pista de Dança"
 };
 
 // Descrição curta do passo para o aviso do operador
@@ -111,7 +121,8 @@ const DESCRICAO_PASSO = {
   "orcamento_onde_encontrou": "como nos conheceu", "orcamento_detalhes": "detalhes do evento",
   "orcamento_detalhes_texto": "detalhes do evento",
   "coletar_email_opcional": "e-mail (opcional, falta finalizar)",
-  "coletar_nascimento_opcional": "nascimento (opcional, falta finalizar)"
+  "coletar_nascimento_opcional": "nascimento (opcional, falta finalizar)",
+  "orcamento_confirmar": "confirmar os dados", "orcamento_escolher_servico": "escolher os serviços"
 };
 
 function horaSaoPaulo() {
@@ -137,8 +148,11 @@ function dataEvento(s) {
 }
 
 function perguntaPendente(s) {
-  return (s.ultimaPerguntaNaoRespondida && String(s.ultimaPerguntaNaoRespondida).trim())
-    || PERGUNTA_POR_PASSO[s.step]
+  // A pergunta CANÔNICA do passo atual tem prioridade: o campo guardado
+  // (ultimaPerguntaNaoRespondida) podia ficar DESATUALIZADO e reenviar uma pergunta
+  // que o cliente já respondeu (caso Rayane: parou no e-mail, lembrete mandava o salão).
+  return PERGUNTA_POR_PASSO[s.step]
+    || (s.ultimaPerguntaNaoRespondida && String(s.ultimaPerguntaNaoRespondida).trim())
     || null;
 }
 
@@ -220,6 +234,12 @@ async function executarLembreteOrcamento() {
     try {
       if (!s || !PASSOS_QUESTIONARIO.has(s.step)) continue;
       if (!s.ultimaInteracao) continue;
+
+      // O passo "escolher serviço" é reaproveitado no "deseja mais serviços?":
+      // se o cliente JÁ recebeu algum orçamento, não é abandono — não incomoda.
+      if (s.step === "orcamento_escolher_servico"
+          && s.orcamento && Array.isArray(s.orcamento.servicosEnviados)
+          && s.orcamento.servicosEnviados.length > 0) continue;
 
       const inativo = agora - s.ultimaInteracao;
       if (inativo < H2) continue;       // ainda cedo
