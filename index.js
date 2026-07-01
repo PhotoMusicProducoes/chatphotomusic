@@ -3668,13 +3668,18 @@ async function enviarResumoCliente(chatId, session) {
       }
     }
 
-    // 🎁 2+ serviços distintos? Cabine (1), Totem (2) e Foto Lembrança (5)
-    // são similares e contam como 1 (o cliente escolhe apenas um deles)
-    const SERVICOS_SIMILARES = [1, 2, 5];
+    // Contagem de serviços p/ a Vantagem (regra do Mario):
+    // Grupo Foto (Cabine 1, Totem 2, Paparazzi 4, Foto Lembrança 5) conta como 1
+    // serviço só (o cliente escolhe apenas um deles). Iluminação (8) é add-on/
+    // brinde (vai junto do Som/DJ) e NÃO conta na contagem.
+    const SERVICOS_SIMILARES = [1, 2, 4, 5];
+    const ID_ILUMINACAO = 8;
     const distintos = new Set(
-      servicosIds.map(id => (SERVICOS_SIMILARES.includes(id) ? "similar" : id))
+      servicosIds
+        .filter(id => id !== ID_ILUMINACAO)
+        .map(id => (SERVICOS_SIMILARES.includes(id) ? "similar" : id))
     );
-    const multiServicos = distintos.size >= 2;
+    const nServicos = distintos.size;
 
     // 🚗 Deslocamento — após todos os serviços
     if (orc.deslocamento?.gratis) {
@@ -3699,38 +3704,8 @@ async function enviarResumoCliente(chatId, session) {
       );
     }
 
-    // 🎁 Desconto para 2+ serviços
-    if (multiServicos) {
-      const desloc = orc.deslocamento;
-      if (desloc?.gratis) {
-        // Deslocamento já é grátis (promoção) → desconto + reforça o grátis
-        linhas.push(
-          "\n🎁 *Vantagem exclusiva!*\n" +
-          "Ao contratar *2 ou mais serviços*, você garante *R$ 100,00 de desconto* a partir do segundo serviço — " +
-          "e o seu deslocamento *permanece totalmente grátis*!"
-        );
-      } else if (desloc && Number(desloc.valor) > 100) {
-        linhas.push(
-          "\n🎁 *Vantagem exclusiva!*\n" +
-          "Ao contratar *2 ou mais serviços*, você garante *R$ 100,00 de desconto* a partir do segundo serviço " +
-          "e ainda aproveita o *desconto de R$ 100,00 no deslocamento*!"
-        );
-      } else if (desloc && Number(desloc.valor) > 0) {
-        // Deslocamento de até R$ 100,00 → sai grátis com 2+ serviços
-        linhas.push(
-          "\n🎁 *Vantagem exclusiva!*\n" +
-          "Ao contratar *2 ou mais serviços*, você garante *R$ 100,00 de desconto* a partir do segundo serviço " +
-          "e ainda aproveita *deslocamento totalmente grátis*!"
-        );
-      } else {
-        // Local sem cadastro de deslocamento → NÃO promete deslocamento
-        // (o valor ainda será calculado; promessa errada geraria conflito)
-        linhas.push(
-          "\n🎁 *Vantagem exclusiva!*\n" +
-          "Ao contratar *2 ou mais serviços*, você garante *R$ 100,00 de desconto* a partir do segundo serviço!"
-        );
-      }
-    }
+    // 🎁 A Vantagem Exclusiva saiu daqui: agora vai como MENSAGEM SEPARADA,
+    // logo depois do resumo, e em TODOS os orçamentos (ver mais abaixo).
 
     // Multi-dia: nota de orçamento personalizado em preparo
     if ((orc.dias || 1) > 1 && (orc.diasDetalhes?.length || orc.datasCorporativo?.length)) {
@@ -3747,6 +3722,12 @@ async function enviarResumoCliente(chatId, session) {
     await sendTyping(chatId);
     await sendText(chatId, linhas.join("\n"));
 
+    // 🎁 Vantagem Exclusiva — mensagem SEPARADA, logo após o resumo, em TODOS
+    // os orçamentos (mesmo com 1 serviço, como isca p/ incluir mais um).
+    await new Promise(r => setTimeout(r, 600));
+    await sendTyping(chatId);
+    await sendText(chatId, montarVantagemExclusiva(nServicos, orc.deslocamento));
+
     // 📝 Como contratar (informação de contratação, sempre após o resumo)
     await new Promise(r => setTimeout(r, 600));
     await sendTyping(chatId);
@@ -3755,6 +3736,35 @@ async function enviarResumoCliente(chatId, session) {
   } catch (erro) {
     console.error("Erro ao enviar resumo para o cliente:", erro);
   }
+}
+
+// 🎁 Vantagem Exclusiva — enviada como mensagem própria, após o resumo, em TODOS
+// os orçamentos. Parcelamento sem juros conforme o nº de serviços (regra do Mario):
+// 1 serviço = isca p/ incluir o 2º (6x); 2 serviços = 6x; 3 serviços = 9x.
+// R$ 100 de desconto no Pix a partir do 2º serviço (quando há 2+).
+function montarVantagemExclusiva(nServicos, deslocamento) {
+  const gratis = !!(deslocamento && deslocamento.gratis);
+  const fimDesloc = gratis
+    ? ", e o seu deslocamento continua *totalmente grátis*! 🚗🎉"
+    : "!";
+
+  let corpo;
+  if (nServicos >= 3) {
+    corpo =
+      "Contratando *3 serviços*, você garante *R$ 100,00 de desconto* a partir do " +
+      "segundo serviço no *Pix*, ou *9x sem juros* no cartão de crédito";
+  } else if (nServicos === 2) {
+    corpo =
+      "Contratando *2 serviços*, você garante *R$ 100,00 de desconto* a partir do " +
+      "segundo serviço no *Pix*, ou *6x sem juros* no cartão de crédito";
+  } else {
+    // 1 serviço — isca p/ o cliente incluir mais um
+    corpo =
+      "Incluindo *mais um serviço*, você garante *R$ 100,00 de desconto* no segundo " +
+      "e ainda pode parcelar em *6x sem juros* no cartão de crédito";
+  }
+
+  return "🎁 *Vantagem exclusiva!*\n" + corpo + fimDesloc;
 }
 
 // Texto padrão "como contratar" — usado no WhatsApp (resumo) e no e-mail do orçamento.
