@@ -155,6 +155,37 @@ function normalizarTelefone(telefone) {
   return normalizarNumero(telefone);
 }
 
+// Últimos 8 dígitos — mesma técnica usada em jobs/followupLeads.js
+// (acharSessaoPorTelefone) para tolerar variação de DDI/9º dígito entre o
+// que foi cadastrado (JSON/DB) e o número que chega de fato pelo WhatsApp.
+function ultimos8(numero) {
+  return String(numero || "").replace(/\D/g, "").slice(-8);
+}
+
+// Acha o registro do JSON cujo telefone bate com o telefonNorm, primeiro
+// por igualdade EXATA e, se não achar, pelos últimos 8 dígitos (fuzzy).
+// Retorna { registro, fuzzy } ou null.
+function encontrarNoJSON(telefonNorm) {
+  const exato = pausadosEspeciais.find(p => normalizarTelefone(p.telefone) === telefonNorm);
+  if (exato) return { registro: exato, fuzzy: false };
+
+  const alvo8 = ultimos8(telefonNorm);
+  if (alvo8.length < 8) return null;
+  const porUltimos8 = pausadosEspeciais.find(p => ultimos8(p.telefone) === alvo8);
+  return porUltimos8 ? { registro: porUltimos8, fuzzy: true } : null;
+}
+
+// Mesma lógica para o cache do DB.
+function encontrarNoDB(telefonNorm) {
+  const exato = buscarNoCacheDB(telefonNorm);
+  if (exato) return { registro: exato, fuzzy: false };
+
+  const alvo8 = ultimos8(telefonNorm);
+  if (alvo8.length < 8) return null;
+  const porUltimos8 = pausadosEspeciaisDB.find(p => ultimos8(p.telefone) === alvo8);
+  return porUltimos8 ? { registro: porUltimos8, fuzzy: true } : null;
+}
+
 // ================= VERIFICAR SE ESTÁ PAUSADO =================
 // ✅ ORDEM CORRETA:
 // 1. Está no JSON?
@@ -162,30 +193,35 @@ function normalizarTelefone(telefone) {
 //    └─ NÃO → Está no DB com pausado=1?
 //       ├─ SIM → Tem sessão retomada? → SIM = passa ✅ / NÃO = bloqueia 🔒
 //       └─ NÃO → deixa passar ✅
+// Cada etapa casa primeiro por número EXATO e, se não achar, pelos últimos
+// 8 dígitos (fuzzy) — protege contra variação de formatação/DDI entre o
+// que foi cadastrado e o número real que o WhatsApp entrega na mensagem.
 
 function estaPausadoEspecial(chatId) {
   const telefonNorm = normalizarTelefone(chatId);
 
   // --- 1. Verificar JSON ---
-  const registroJSON = pausadosEspeciais.find(p =>
-    normalizarTelefone(p.telefone) === telefonNorm
-  );
-
-  if (registroJSON) {
-    if (sessoesRetomadas[telefonNorm] === true) {
+  const achadoJSON = encontrarNoJSON(telefonNorm);
+  if (achadoJSON) {
+    // A sessão retomada é chaveada pelo número NORMALIZADO do próprio
+    // registro achado (não pelo chatId recebido) — assim um match fuzzy
+    // usa a mesma chave que retomarEspecial() gravou.
+    const chaveSessao = normalizarTelefone(achadoJSON.registro.telefone);
+    if (sessoesRetomadas[chaveSessao] === true) {
       return false; // Retomado temporariamente
     }
-    console.log(`🔒 PAUSADO (JSON): ${telefonNorm}`);
+    console.log(`🔒 PAUSADO (JSON${achadoJSON.fuzzy ? ", match por últimos 8 dígitos" : ""}): ${telefonNorm}`);
     return true;
   }
 
   // --- 2. Verificar DB (cache em memória) ---
-  const registroDB = buscarNoCacheDB(telefonNorm);
-  if (registroDB && registroDB.pausado) {
-    if (sessoesRetomadas[telefonNorm] === true) {
+  const achadoDB = encontrarNoDB(telefonNorm);
+  if (achadoDB && achadoDB.registro.pausado) {
+    const chaveSessao = achadoDB.registro.telefoneNorm || normalizarTelefone(achadoDB.registro.telefone);
+    if (sessoesRetomadas[chaveSessao] === true) {
       return false; // Retomado temporariamente
     }
-    console.log(`🔒 PAUSADO (DB): ${telefonNorm}`);
+    console.log(`🔒 PAUSADO (DB${achadoDB.fuzzy ? ", match por últimos 8 dígitos" : ""}): ${telefonNorm}`);
     return true;
   }
 
@@ -200,47 +236,49 @@ async function retomarEspecial(telefone) {
   }
   const telefonNorm = normalizarTelefone(telefone);
 
-  console.log(`\n✅ RETOMANDO: ${telefone}`);
+  console.log(`\n✅ RETOMANDO: ${telefone} (normalizado: ${telefonNorm})`);
 
-  // --- 1. Verificar JSON (comportamento original) ---
-  const registroJSON = pausadosEspeciais.find(p =>
-    normalizarTelefone(p.telefone) === telefonNorm
-  );
+  // --- 1. Verificar JSON (exato ou por últimos 8 dígitos) ---
+  const achadoJSON = encontrarNoJSON(telefonNorm);
 
-  if (registroJSON) {
-    sessoesRetomadas[telefonNorm] = true;
+  if (achadoJSON) {
+    const { registro: registroJSON, fuzzy } = achadoJSON;
+    const chaveSessao = normalizarTelefone(registroJSON.telefone);
+    sessoesRetomadas[chaveSessao] = true;
     salvarSessoesRetomadas();
-    console.log(`✅ ${registroJSON.nome} (${registroJSON.telefone}) RETOMADO (JSON)`);
-    console.log(`   Sessão criada: sessoesRetomadas[${telefonNorm}] = true\n`);
+    console.log(`✅ ${registroJSON.nome} (${registroJSON.telefone}) RETOMADO (JSON${fuzzy ? ", match por últimos 8 dígitos" : ""})`);
+    console.log(`   Sessão criada: sessoesRetomadas[${chaveSessao}] = true\n`);
     exibirEstadoPausas();
     return true;
   }
 
-  // --- 2. Verificar DB ---
-  let registroDB = buscarNoCacheDB(telefonNorm);
+  // --- 2. Verificar DB (exato ou por últimos 8 dígitos) ---
+  let achadoDB = encontrarNoDB(telefonNorm);
 
   // Se o cache está vazio (ex: primeiro start), tenta recarregar do DB
-  if (!registroDB && pausadosEspeciaisDB.length === 0) {
+  if (!achadoDB && pausadosEspeciaisDB.length === 0) {
     await carregarPausadosDB();
-    registroDB = buscarNoCacheDB(telefonNorm);
+    achadoDB = encontrarNoDB(telefonNorm);
   }
 
-  if (registroDB) {
+  if (achadoDB) {
+    const { registro: registroDB, fuzzy } = achadoDB;
     // Marca como retomado no DB (pausado=0)
     const ok = await upsertNoDB(registroDB.telefone, registroDB.nome, 0);
     if (ok) {
       registroDB.pausado = false;
       // Remove sessão retomada se existir (não necessária, mas limpa)
-      if (sessoesRetomadas[telefonNorm]) {
-        delete sessoesRetomadas[telefonNorm];
+      const chaveSessao = registroDB.telefoneNorm || normalizarTelefone(registroDB.telefone);
+      if (sessoesRetomadas[chaveSessao]) {
+        delete sessoesRetomadas[chaveSessao];
         salvarSessoesRetomadas();
       }
-      console.log(`✅ ${telefone} RETOMADO (DB)\n`);
+      console.log(`✅ ${telefone} RETOMADO (DB${fuzzy ? ", match por últimos 8 dígitos" : ""})\n`);
       return true;
     }
   }
 
-  console.log(`⚠️ Número NÃO encontrado no JSON nem no DB`);
+  console.log(`⚠️ Número NÃO encontrado no JSON nem no DB (normalizado: ${telefonNorm}, últimos 8: ${ultimos8(telefonNorm)})`);
   return false;
 }
 
@@ -252,19 +290,19 @@ async function pausarEspecial(telefone) {
   }
   const telefonNorm = normalizarTelefone(telefone);
 
-  console.log(`\n🔒 PAUSANDO: ${telefone}`);
+  console.log(`\n🔒 PAUSANDO: ${telefone} (normalizado: ${telefonNorm})`);
 
-  // --- 1. Verificar JSON (comportamento original) ---
-  const registroJSON = pausadosEspeciais.find(p =>
-    normalizarTelefone(p.telefone) === telefonNorm
-  );
+  // --- 1. Verificar JSON (exato ou por últimos 8 dígitos) ---
+  const achadoJSON = encontrarNoJSON(telefonNorm);
 
-  if (registroJSON) {
-    if (sessoesRetomadas[telefonNorm]) {
-      delete sessoesRetomadas[telefonNorm];
+  if (achadoJSON) {
+    const { registro: registroJSON, fuzzy } = achadoJSON;
+    const chaveSessao = normalizarTelefone(registroJSON.telefone);
+    if (sessoesRetomadas[chaveSessao]) {
+      delete sessoesRetomadas[chaveSessao];
       salvarSessoesRetomadas();
-      console.log(`✅ ${registroJSON.nome} (${registroJSON.telefone}) PAUSADO (JSON)`);
-      console.log(`   Sessão removida: sessoesRetomadas[${telefonNorm}] deletado\n`);
+      console.log(`✅ ${registroJSON.nome} (${registroJSON.telefone}) PAUSADO (JSON${fuzzy ? ", match por últimos 8 dígitos" : ""})`);
+      console.log(`   Sessão removida: sessoesRetomadas[${chaveSessao}] deletado\n`);
     } else {
       console.log(`ℹ️ ${registroJSON.nome} (${registroJSON.telefone}) já estava pausado (JSON)\n`);
     }
