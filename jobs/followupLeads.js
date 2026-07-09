@@ -76,7 +76,11 @@ function montarMensagemFollowup(lead) {
   switch (tipo) {
     case "24h":
       // 24h — relacionamento + emoção + 4x sem juros
+      // Título/gancho na 1ª linha: aparece no preview da lista de conversas
+      // do WhatsApp e motiva o cliente a abrir a mensagem. Sugestão da
+      // Adriana, 2026-07-07.
       return (
+        `*💳 4x no Cartão pra você!*\n\n` +
         `Oi, *${nome}*! ❤️ Aqui é da *PhotoMusic Produções*.\n\n` +
         `Preparei com muito carinho o orçamento de *${servicos}* para o seu *${celebracao}*${dataTxt}. ` +
         `Mais do que fotos e equipamentos, o que a gente entrega é emoção, aquele momento que fica guardado pra sempre. ❤️\n\n` +
@@ -88,6 +92,7 @@ function montarMensagemFollowup(lead) {
     case "48h":
       // 48h — emotiva, abre a objeção + 5x sem juros. Pedido da Adriana 2026-06-29.
       return (
+        `*💳 5x no Cartão pra você!*\n\n` +
         `Oi, *${nome}*! ❤️ Aqui é da *PhotoMusic Produções*.\n\n` +
         `Sabe o que mais me marca no nosso trabalho? Não são as câmeras nem os equipamentos. ` +
         `É ver a emoção no rosto das pessoas, o abraço apertado, a risada que fica guardada pra sempre. ` +
@@ -103,6 +108,7 @@ function montarMensagemFollowup(lead) {
     case "72h":
       // 72h — condição especial: 6x sem juros, com emoção + abrir objeção
       return (
+        `*💳 6x no Cartão: Condição especial!*\n\n` +
         `Oi, *${nome}*! ❤️ Tudo bem?\n\n` +
         `Fiquei pensando no seu *${celebracao}*${dataTxt} e fui conversar com a equipe pra tentar facilitar pra você. ` +
         `Consegui uma *condição especial, feita com carinho*:\n\n` +
@@ -115,6 +121,7 @@ function montarMensagemFollowup(lead) {
     case "promo_mensal":
       // Lembrete mensal — evento distante. Carinho + sondar objeção + 6x sem juros
       return (
+        `*💳 6x no Cartão continua valendo!*\n\n` +
         `Olá, *${nome}*! 😊 Passando com carinho para lembrar do seu *${celebracao}*${dataTxt}.\n\n` +
         `Aqui na PhotoMusic a gente é uma família que cuida de outras famílias, e ia adorar fazer parte desse seu dia. ❤️\n\n` +
         `Ficou alguma coisa te deixando na dúvida pra decidir? Me conta, sem compromisso, que a gente vê o melhor jeito juntos. 🙏\n` +
@@ -126,6 +133,7 @@ function montarMensagemFollowup(lead) {
     case "promo_30dias":
       // ~30 dias do evento — carinho + sondar objeção + urgência de agenda + 6x
       return (
+        `*💳 6x no Cartão: ⏳ Sua data está chegando!*\n\n` +
         `Olá, *${nome}*! ❤️ Falta *cerca de 1 mês* para *${celebracao}*${dataTxt}, e eu não quero que você perca a sua data!\n\n` +
         `Esse dia é muito especial, e a gente ia cuidar das suas memórias com todo o carinho, como se fosse da nossa própria família. 🥹\n\n` +
         `Tem algo te segurando pra fechar, o valor, a data, algum detalhe? Me fala de coração aberto, sem pressão, que eu te ajudo a achar um caminho. 🙏\n` +
@@ -138,6 +146,7 @@ function montarMensagemFollowup(lead) {
     case "promo_15dias":
       // ~15 dias do evento — reta final, carinho + sondar objeção + 6x
       return (
+        `*💳 6x no Cartão: ⏳ Última chance!*\n\n` +
         `Olá, *${nome}*! ❤️ Estamos a *cerca de 15 dias* de *${celebracao}*${dataTxt}!\n\n` +
         `Eu ia ficar muito feliz da PhotoMusic fazer parte de um momento tão importante pra você e pra sua família. 🥹\n\n` +
         `Se ainda tiver alguma coisa te impedindo de fechar, me conta com sinceridade, sem pressão, que a gente tenta achar um jeito. 🙏\n` +
@@ -150,6 +159,7 @@ function montarMensagemFollowup(lead) {
     default:
       // 7 dias — melhor condição: 6x sem juros, com emoção + abrir objeção
       return (
+        `*💳 6x no Cartão: sua melhor condição!*\n\n` +
         `Oi, *${nome}*! ❤️\n\n` +
         `Não quero mesmo que você fique sem viver o seu *${celebracao}*${dataTxt} do jeito que sonhou. ` +
         `Então, pra facilitar de vez, a *melhor condição que consigo*:\n\n` +

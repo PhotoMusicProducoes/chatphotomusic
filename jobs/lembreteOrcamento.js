@@ -77,6 +77,13 @@ const PASSOS_QUESTIONARIO = new Set([
   "orcamento_confirmar", "orcamento_escolher_servico"
 ]);
 
+// Passo do MENU INICIAL: cliente recebeu as boas-vindas (1-7 opções) e não
+// respondeu nada. Sem lembrete aqui o lead simplesmente some logo na entrada
+// do funil, antes mesmo de começar um orçamento (caso Heciomar/Susteiner,
+// 2026-07-07: reunião não avançava porque ele nunca respondia ao menu).
+const PASSO_MENU_INICIAL = "aguardando_opcao";
+PASSOS_QUESTIONARIO.add(PASSO_MENU_INICIAL);
+
 // Pergunta amigável por passo (usada se a sessão não guardou o texto exato)
 const PERGUNTA_POR_PASSO = {
   "orcamento_nome": "Qual o seu nome?",
@@ -122,7 +129,8 @@ const DESCRICAO_PASSO = {
   "orcamento_detalhes_texto": "detalhes do evento",
   "coletar_email_opcional": "e-mail (opcional, falta finalizar)",
   "coletar_nascimento_opcional": "nascimento (opcional, falta finalizar)",
-  "orcamento_confirmar": "confirmar os dados", "orcamento_escolher_servico": "escolher os serviços"
+  "orcamento_confirmar": "confirmar os dados", "orcamento_escolher_servico": "escolher os serviços",
+  "aguardando_opcao": "escolher a opção do menu inicial (nem começou o orçamento)"
 };
 
 function horaSaoPaulo() {
@@ -156,7 +164,38 @@ function perguntaPendente(s) {
     || null;
 }
 
+// Lembrete de quem PAROU NO MENU INICIAL (nunca respondeu 1-7). Título/gancho
+// na 1ª linha (aparece no preview da lista de conversas do WhatsApp) para
+// motivar o cliente a abrir a mensagem — pedido da Adriana, 2026-07-07.
+function montarMensagemMenu(devido) {
+  switch (devido) {
+    case 1: // 2h
+      return (
+        `*🎁 Digite 1 e receba seu orçamento!*\n\n` +
+        `Oi! 😊 Vi que você chegou aqui na *PhotoMusic Produções* mas não deu pra escolher a opção. Sem problema!\n\n` +
+        `Se quiser um orçamento rapidinho, é só digitar *1* que eu já te mostro os valores certinhos. ` +
+        `Ficou alguma dúvida de como funciona? Me conta que eu te explico! 🙏`
+      );
+    case 2: // 24h
+      return (
+        `*💬 Ainda por aqui pra te ajudar!*\n\n` +
+        `Oi! ❤️ Passando de novo, porque aqui na *PhotoMusic Produções* a gente gosta de cuidar de cada família que nos procura.\n\n` +
+        `Se quiser seguir com o seu orçamento, é só digitar *1*. Se tiver alguma coisa te deixando na dúvida, me fala, sem compromisso! 🙏`
+      );
+    case 3: // 72h — última chamada
+    default:
+      return (
+        `*⏳ Última chamada: seu orçamento te espera!*\n\n` +
+        `Oi! ❤️ Aqui é da *PhotoMusic Produções*. Não queria que você ficasse sem saber os valores pro seu evento.\n\n` +
+        `Se ainda tiver interesse, é só digitar *1* que eu monto o orçamento na hora. E se algo te segurou até aqui, ` +
+        `me conta com sinceridade, que a gente encontra um jeito juntos! 🙌`
+      );
+  }
+}
+
 function montarMensagem(devido, s) {
+  if (s.step === PASSO_MENU_INICIAL) return montarMensagemMenu(devido);
+
   const nome       = ((s.orcamento && s.orcamento.nome) || "").split(" ")[0] || "";
   const ola        = nome ? `Oi, *${nome}*!` : "Oi!";
   const celebracao = (s.orcamento && s.orcamento.celebracao) || "o seu evento";
@@ -240,6 +279,11 @@ async function executarLembreteOrcamento() {
       if (s.step === "orcamento_escolher_servico"
           && s.orcamento && Array.isArray(s.orcamento.servicosEnviados)
           && s.orcamento.servicosEnviados.length > 0) continue;
+
+      // "aguardando_opcao" também é reaproveitado (ex.: fim do atendimento de
+      // convidado/eucaristia, voltando ao hub). Só é abandono de verdade quando
+      // o menu de boas-vindas FOI mesmo mostrado nesta rodada e o cliente sumiu.
+      if (s.step === PASSO_MENU_INICIAL && !s.menuInicialEnviado) continue;
 
       const inativo = agora - s.ultimaInteracao;
       if (inativo < H2) continue;       // ainda cedo
