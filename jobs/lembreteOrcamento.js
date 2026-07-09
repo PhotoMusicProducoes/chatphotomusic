@@ -25,7 +25,7 @@
 // inatividade são ignoradas (velhas demais).
 
 const cron = require("node-cron");
-const { sendText, estaPausadoEspecial } = require("../utils/index.js");
+const { sendText, estaPausadoEspecial, estaPausado } = require("../utils/index.js");
 const { sessions } = require("../utils/sessions");
 
 const TIMEZONE = "America/Sao_Paulo";
@@ -332,8 +332,10 @@ async function executarLembreteOrcamento() {
             acao = 'operador';
           } else if (forcaUltima || !ultimoEnvio || (agora - ultimoEnvio) >= GAP_MIN) {
             // Respeita o espaçamento mínimo entre lembretes (exceto última chamada
-            // forçada) e a pausa especial do cliente.
-            if (!estaPausadoEspecial(chatId)) acao = 'cliente';
+            // forçada) e NÃO manda pro cliente se ele está em pausa especial OU em
+            // pausa do operador (atendimento manual em andamento) — caso real
+            // 2026-07-07: Heciomar e outros pausados receberam o lembrete indevido.
+            if (!estaPausadoEspecial(chatId) && !estaPausado(chatId)) acao = 'cliente';
           }
         }
       }
