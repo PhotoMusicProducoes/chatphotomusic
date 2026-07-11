@@ -1292,6 +1292,30 @@ async function handleIncomingMessage(message) {
     return apenasNumeros;
   }
 
+  // ======================================================
+  // Extrai um NÚMERO com formatação livre (+55, espaços, hífen, parênteses,
+  // ex.: "+55 21 97707-2974", "(21) 97707-2974", "21 977072974") do INÍCIO
+  // de um texto, separando do "resto" que vem depois na mesma linha.
+  // Usado por comandos como "responder NUMERO RESPOSTA", onde antes só o
+  // 1º token (separado por espaço) era considerado número — quebrava
+  // qualquer formato com espaço dentro do telefone. 2026-07-11.
+  // ======================================================
+  function extrairNumeroComResto(texto) {
+    const t = String(texto || "").trim();
+    // Telefone: começa e termina em dígito, com +, espaços, hífen, parênteses
+    // ou pontos no meio (comprimento generoso p/ cobrir DDI+DDD+9 dígitos).
+    // O "resto" é OBRIGATÓRIO no match (\s+([\s\S]+) sem "?"): isso força o
+    // regex a fazer backtrack e achar o MAIOR telefone válido que ainda deixe
+    // sobra pra resposta — sem isso, uma resposta de 1 dígito (ex: "2") era
+    // engolida pro final do número (greedy), esvaziando a resposta.
+    const m = t.match(/^(\+?\(?\d[\d\s\-\(\)\.]{4,18}\d)\s+([\s\S]+)$/);
+    if (m) return { numero: m[1].trim(), resto: m[2].trim() };
+    // Fallback: comportamento antigo (1º token = número) para não quebrar
+    // casos fora do padrão esperado (ex.: só o número, sem resposta).
+    const partes = t.split(/\s+/);
+    return { numero: partes[0] || "", resto: partes.slice(1).join(" ").trim() };
+  }
+
   // 🔹 AQUI: comandos do operador PRIMEIRO
   const ehComandoOperador =
     isOperador &&
@@ -1525,8 +1549,10 @@ async function handleIncomingMessage(message) {
       // --- Parsear cabeçalho e corpo ---
       const linhasCmd = corpoMensagem.split("\n");
       const primeiraLinha = linhasCmd[0] || "";
-      const partesCmd = primeiraLinha.split(/\s+/);
-      const numeroRaw = partesCmd[1] || "";
+      // Número = tudo que vem depois de "respondercliente" na 1ª linha (nada
+      // mais é esperado ali), então formatos com espaço (+55 21 97707-2974,
+      // (21) 97707-2974 etc.) funcionam — antes só o 1º token era usado.
+      const numeroRaw = primeiraLinha.replace(/^respondercliente/i, "").trim();
       const corpoConversa = linhasCmd.slice(1).join("\n");
 
       if (!numeroRaw) {
@@ -1716,10 +1742,11 @@ async function handleIncomingMessage(message) {
     //     responder 5521995021656 2
     // ======================================================
     if (corpoNormalizado.startsWith("responder")) {
-      // Extrai as partes: ["responder", "NUMERO", "resposta", "texto", ...]
-      const partes = corpoMensagem.trim().split(/\s+/);
-      const numeroRaw  = partes[1] || "";
-      const respostaTexto = partes.slice(2).join(" ").trim();
+      // Separa NUMERO (formatação livre: +55 21 97707-2974, (21) 97707-2974,
+      // 21 977072974 etc.) do resto da linha (a resposta em si) — antes só o
+      // 1º token era considerado número, quebrando formatos com espaço.
+      const corpoSemComando = corpoMensagem.trim().replace(/^responder\s+/i, "");
+      const { numero: numeroRaw, resto: respostaTexto } = extrairNumeroComResto(corpoSemComando);
 
       if (!numeroRaw || !respostaTexto) {
         await sendText(
