@@ -104,20 +104,13 @@ const eventosTotem = {
     nome: "15 anos",
     guestbook: {
       audio: urlBase + "guestbookaudio15anos.mp3",
+      // ✂️ ENXUGADO 2026-07-15: de 13 para 4 (1 vídeo + 3 fotos), igual ao
+      // fotoCabine.js. Ver comentário lá para o porquê e para reverter.
       imagens: [
         urlBase + "guestbook1.mp4",
         urlBase + "guestbook2.jpg",
         urlBase + "guestbook3.jpg",
-        urlBase + "guestbook4.jpg",
-        urlBase + "guestbook6.jpg",
-        urlBase + "guestbook7.jpg",
-        urlBase2 + "guestbook8.mp4",
-        urlBase2 + "guestbook9.mp4",
-        urlBase + "guestbook10.jpg",
-        urlBase + "guestbook11.jpg",
-        urlBase2 + "guestbook12.mp4",
-        urlBase + "guestbook13.jpg",
-        urlBase + "guestbook14.jpg"
+        urlBase + "guestbook4.jpg"
       ]
     }
   },
@@ -126,20 +119,13 @@ const eventosTotem = {
     nome: "Casamento",
     guestbook: {
       audio: urlBase + "guestbookaudiocasamento.mp3",
+      // ✂️ ENXUGADO 2026-07-15: de 13 para 4 (1 vídeo + 3 fotos), igual ao
+      // fotoCabine.js. Ver comentário lá para o porquê e para reverter.
       imagens: [
         urlBase + "guestbook1.mp4",
         urlBase + "guestbook2.jpg",
         urlBase + "guestbook3.jpg",
-        urlBase + "guestbook4.jpg",
-        urlBase + "guestbook6.jpg",
-        urlBase + "guestbook7.jpg",
-        urlBase2 + "guestbook8.mp4",
-        urlBase2 + "guestbook9.mp4",
-        urlBase + "guestbook10.jpg",
-        urlBase + "guestbook11.jpg",
-        urlBase2 + "guestbook12.mp4",
-        urlBase + "guestbook13.jpg",
-        urlBase + "guestbook14.jpg"
+        urlBase + "guestbook4.jpg"
       ]
     }
   },
@@ -148,20 +134,13 @@ const eventosTotem = {
     nome: "Bodas",
     guestbook: {
       audio: urlBase + "guestbookaudiobodas.mp3",
+      // ✂️ ENXUGADO 2026-07-15: de 13 para 4 (1 vídeo + 3 fotos), igual ao
+      // fotoCabine.js. Ver comentário lá para o porquê e para reverter.
       imagens: [
         urlBase + "guestbook1.mp4",
         urlBase + "guestbook2.jpg",
         urlBase + "guestbook3.jpg",
-        urlBase + "guestbook4.jpg",
-        urlBase + "guestbook6.jpg",
-        urlBase + "guestbook7.jpg",
-        urlBase2 + "guestbook8.mp4",
-        urlBase2 + "guestbook9.mp4",
-        urlBase + "guestbook10.jpg",
-        urlBase + "guestbook11.jpg",
-        urlBase2 + "guestbook12.mp4",
-        urlBase + "guestbook13.jpg",
-        urlBase + "guestbook14.jpg"
+        urlBase + "guestbook4.jpg"
       ]
     }
   }

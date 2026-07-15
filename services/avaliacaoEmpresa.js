@@ -80,17 +80,11 @@ async function enviarAvaliacaoEmpresa(chatId, sessions) {
       await sendFileByUrl(chatId, urlsAvaliacao.avaliacao3);
       await delay(800);
 
-      if (interromper()) return;
-      await sendFileByUrl(chatId, urlsAvaliacao.avaliacao4);
-      await delay(800);
-
-      if (interromper()) return;
-      await sendFileByUrl(chatId, urlsAvaliacao.avaliacao5);
-      await delay(800);
-
-      if (interromper()) return;
-      await sendFileByUrl(chatId, urlsAvaliacao.avaliacao6);
-      await delay(800);
+      // ✂️ ENXUGADO 2026-07-15: só as 3 primeiras avaliações.
+      // avaliacao4/5/6 saíram (as URLs continuam no objeto acima — se for pra
+      // voltar atrás, é só reinserir os 3 envios aqui). Motivo: o fluxo
+      // afogava o cliente em mensagem antes de ele ver o preço, e imagem
+      // demais gera reclamação. Prova social é para convencer, não cansar.
 
       await sendTyping(chatId);
       await delay(300);

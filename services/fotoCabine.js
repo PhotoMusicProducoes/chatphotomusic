@@ -62,20 +62,24 @@ function extrairHoras(duracao, clb) {
 // ======================================================
 // GUESTBOOK — Imagens/vídeos compartilhados por todas as celebrações
 // ======================================================
+// ✂️ ENXUGADO 2026-07-15: de 13 para 4 (1 vídeo + 3 fotos). Imagem demais
+// afoga o cliente e gera reclamação. Os 9 cortados continuam listados abaixo,
+// comentados, para reverter fácil se a adesão piorar.
 const GUESTBOOK_IMAGENS = [
   urlBase + "guestbook1.mp4",
   urlBase + "guestbook2.jpg",
   urlBase + "guestbook3.jpg",
-  urlBase + "guestbook4.jpg",
-  urlBase + "guestbook6.jpg",
-  urlBase + "guestbook7.jpg",
-  urlBase2 + "guestbook8.mp4",
-  urlBase2 + "guestbook9.mp4",
-  urlBase + "guestbook10.jpg",
-  urlBase + "guestbook11.jpg",
-  urlBase2 + "guestbook12.mp4",
-  urlBase + "guestbook13.jpg",
-  urlBase + "guestbook14.jpg"
+  urlBase + "guestbook4.jpg"
+  // Cortados 2026-07-15:
+  // urlBase  + "guestbook6.jpg",
+  // urlBase  + "guestbook7.jpg",
+  // urlBase2 + "guestbook8.mp4",
+  // urlBase2 + "guestbook9.mp4",
+  // urlBase  + "guestbook10.jpg",
+  // urlBase  + "guestbook11.jpg",
+  // urlBase2 + "guestbook12.mp4",
+  // urlBase  + "guestbook13.jpg",
+  // urlBase  + "guestbook14.jpg"
 ];
 
 // ======================================================

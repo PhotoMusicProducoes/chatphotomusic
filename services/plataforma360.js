@@ -242,37 +242,10 @@ async function enviarFluxoPlataforma360(chatId, clb) {
     await sendText(chatId, "🎞️ GIF Animado");
     await sendFileByUrl(chatId, base + "plataformaformatura1fotopaGif.mp4", "VIDEO", "");
 
-    // BLOCO 2
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎥 Vídeo 360º");
-    await sendFileByUrl(chatId, base + "plataformaformatura2.mp4", "VIDEO", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "📸 Foto Paparazzi Digital");
-    await sendFileByUrl(chatId, base + "plataformaformatura2fotopa.jpg", "IMAGE", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎞️ GIF Animado");
-    await sendFileByUrl(chatId, base + "plataformaformatura2fotopaGif.mp4", "VIDEO", "");
-
-    // BLOCO 3
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎥 Vídeo 360º");
-    await sendFileByUrl(chatId, base + "plataformaformatura3.mp4", "VIDEO", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "📸 Foto Paparazzi Digital");
-    await sendFileByUrl(chatId, base + "plataformaformatura3.jpg", "IMAGE", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎞️ GIF Animado");
-    await sendFileByUrl(chatId, base + "plataformaformatura3fotopaGif.mp4", "VIDEO", "");
+    // ✂️ ENXUGADO 2026-07-15: BLOCO 2 e BLOCO 3 cortados — 1 exemplo basta.
+    // Eram 3 exemplos x 3 arquivos = 9 envios só aqui. Para reverter, os
+    // arquivos são plataformaformatura2/2fotopa/2fotopaGif e
+    // plataformaformatura3/3(.jpg)/3fotopaGif, no mesmo padrão do BLOCO 1.
   }
 
   // ======================================================================
@@ -283,15 +256,14 @@ async function enviarFluxoPlataforma360(chatId, clb) {
     const base = urlBase1;
 
     // BLOCO 1
+    // ✂️ ENXUGADO 2026-07-15: eram 4 vídeos seguidos (corporativo1/2/3/3a);
+    // ficou 1. Os outros 3 continuam no servidor, é só reinserir a linha.
     await sendTyping(chatId); await delay(300);
     if (estaPausado(chatId)) return;
     await sendText(chatId, "🎥 Vídeo 360º");
     await sendFileByUrl(chatId, base + "plataformacorporativo1.mp4", "VIDEO", "");
-    await sendFileByUrl(chatId, base + "plataformacorporativo2.mp4", "VIDEO", "");
-    await sendFileByUrl(chatId, base + "plataformacorporativo3.mp4", "VIDEO", "");
-    await sendFileByUrl(chatId, base + "plataformacorporativo3a.mp4", "VIDEO", "");
 
-    // BLOCO 2
+    // BLOCO 2 — o exemplo completo (vídeo + foto + GIF) que fica.
     await sendTyping(chatId); await delay(300);
     if (estaPausado(chatId)) return;
     await sendText(chatId, "🎥 Vídeo 360º");
@@ -307,37 +279,8 @@ async function enviarFluxoPlataforma360(chatId, clb) {
     await sendText(chatId, "🎞️ GIF Animado");
     await sendFileByUrl(chatId, base + "plataformacorporativo4fotopaGif.mp4", "VIDEO", "");
 
-    // BLOCO 3
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎥 Vídeo 360º");
-    await sendFileByUrl(chatId, base + "plataformacorporativo5.mp4", "VIDEO", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "📸 Foto Paparazzi Digital");
-    await sendFileByUrl(chatId, base + "plataformacorporativo5fotopa.jpg", "IMAGE", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎞️ GIF Animado");
-    await sendFileByUrl(chatId, base + "plataformacorporativo5fotopaGif.mp4", "VIDEO", "");
-
-        // BLOCO 4
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎥 Vídeo 360º");
-    await sendFileByUrl(chatId, base + "plataformacorporativo6.mp4", "VIDEO", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "📸 Foto Paparazzi Digital");
-    await sendFileByUrl(chatId, base + "plataformacorporativo6fotopa.jpg", "IMAGE", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎞️ GIF Animado");
-    await sendFileByUrl(chatId, base + "plataformacorporativo6fotopaGif.mp4", "VIDEO", "");
+    // ✂️ ENXUGADO 2026-07-15: BLOCO 3 (corporativo5*) e BLOCO 4 (corporativo6*)
+    // cortados — mesmo padrão do BLOCO 2, é só recriar para reverter.
   }
 
   // ======================================================================
@@ -363,37 +306,8 @@ async function enviarFluxoPlataforma360(chatId, clb) {
     await sendText(chatId, "🎞️ GIF Animado");
     await sendFileByUrl(chatId, base + "plataforma1fotopaGif.mp4", "VIDEO", "");
 
-    // BLOCO 2
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎥 Vídeo 360º");
-    await sendFileByUrl(chatId, base + "plataforma2.mp4", "VIDEO", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "📸 Foto Paparazzi Digital");
-    await sendFileByUrl(chatId, base + "plataforma2fotopa.jpg", "IMAGE", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎞️ GIF Animado");
-    await sendFileByUrl(chatId, base + "plataforma2fotopaGif.mp4", "VIDEO", "");
-
-    // BLOCO 3
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎥 Vídeo 360º");
-    await sendFileByUrl(chatId, base + "plataforma4.mp4", "VIDEO", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "📸 Foto Paparazzi Digital");
-    await sendFileByUrl(chatId, base + "plataforma4fotopa.jpg", "IMAGE", "");
-
-    await sendTyping(chatId); await delay(300);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "🎞️ GIF Animado");
-    await sendFileByUrl(chatId, base + "plataforma4fotopaGif.mp4", "VIDEO", "");
+    // ✂️ ENXUGADO 2026-07-15: BLOCO 2 (plataforma2*) e BLOCO 3 (plataforma4*)
+    // cortados — mesmo padrão do BLOCO 1, é só recriar para reverter.
   }
 
   // ======================================================================

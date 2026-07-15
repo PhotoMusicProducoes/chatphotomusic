@@ -261,23 +261,9 @@ async function enviarFluxoPaparazzi(chatId, clb) {
     urlBase1 + "fotopaparazzidigital2Gif.mp4"
   );
 
-  await enviarMidiaPaparazzi(
-    "Foto Paparazzi Digital e GIF Animado",
-    urlBase1 + "fotopaparazzidigital3.jpg",
-    urlBase1 + "fotopaparazzidigital3Gif.mp4"
-  );
-
-  await enviarMidiaPaparazzi(
-    "Foto Paparazzi Digital e GIF Animado",
-    urlBase1 + "fotopaparazzidigital5.jpg",
-    urlBase1 + "fotopaparazzidigital5Gif.mp4"
-  );
-
-  await enviarMidiaPaparazzi(
-    "Foto Paparazzi Digital e GIF Animado",
-    urlBase1 + "fotopaparazzidigital6.jpg",
-    urlBase1 + "fotopaparazzidigital6Gif.mp4"
-  );
+  // ✂️ ENXUGADO 2026-07-15: eram 5 exemplos (1,2,3,5,6) x 3 msgs = 15 envios.
+  // Ficaram 2. Para reverter, é só repetir a chamada acima trocando o número
+  // (os arquivos 3, 5 e 6 continuam no servidor).
 
   // Moldura + Como contratar — suprimidos quando não for o último serviço
   const _mp4 = sessions[chatId]?._envioMultiplo || {};
