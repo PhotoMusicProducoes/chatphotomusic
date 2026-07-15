@@ -10,6 +10,7 @@ const axios = require("axios");
 
 const {
   sendText,
+  sendOptionList,
   sendTyping,
   sendFileByUrl,
   estaPausadoEspecial,
@@ -2446,11 +2447,19 @@ if (session.step === "eucaristia_nome") {
   session.step = "eucaristia_paroquia";
 
   await sendTyping(chatId);
-  await sendText(
+  // 🧪 TESTE DE BOTÕES (2026-07-15): a 1ª Eucaristia é o laboratório porque o
+  // fluxo está parado até 2027 — se a lista falhar, ninguém perde venda.
+  // O público aqui é o mesmo da paróquia (pais, avós, catequistas), e o
+  // sendOptionList já leva o menu numerado no texto: quem não vir a lista
+  // digita o número como sempre.
+  await sendOptionList(
     chatId,
-    "Por favor, escolha a Paróquia que seu filho faz catequese: *(Digite somente número)*\n\n" +
-    "*1* - Paróquia São José\n" +
-    "*2* - Paróquia São Sebastião"
+    "Por favor, escolha a Paróquia que seu filho faz catequese:",
+    Object.keys(paroquiasEucaristia).map(k => ({
+      id: String(k),
+      title: paroquiasEucaristia[k].nome
+    })),
+    { title: "Paróquias", buttonLabel: "Ver paróquias" }
   );
   return;
 }
@@ -2471,12 +2480,17 @@ if (session.step === "eucaristia_paroquia") {
   session.step = "eucaristia_capela";
 
   const capelas = paroquiasEucaristia[opcao].capelas;
-  const listaCapelas = Object.keys(capelas)
-    .map(k => `*${k}* - ${capelas[k]}`)
-    .join("\n");
 
   await sendTyping(chatId);
-  await sendText(chatId, "Qual a Capela? *(Digite somente número)*\n\n" + listaCapelas);
+  // Lista montada dinamicamente (5 capelas na São José, 3 na São Sebastião).
+  // É o mesmo padrão que o menu da paróquia vai usar — por isso este passo é
+  // o mais valioso do teste.
+  await sendOptionList(
+    chatId,
+    "Qual a Capela?",
+    Object.keys(capelas).map(k => ({ id: String(k), title: capelas[k] })),
+    { title: "Capelas", buttonLabel: "Ver capelas" }
+  );
   return;
 }
 

@@ -7,6 +7,7 @@ const { inicializarScheduler } = require("./jobs/mensagensComemorativas");
 const { inicializarFollowupLeads } = require("./jobs/followupLeads");
 const { inicializarLembreteOrcamento } = require("./jobs/lembreteOrcamento");
 const { inicializarPausaEspecial } = require("./utils/index.js");
+const { extrairRespostaDeClique } = require("./utils/webhookPayload.js");
 
 const app = express();
 app.use(bodyParser.json());
@@ -90,6 +91,13 @@ async function processarWebhook(req, res) {
 
     const payload = req.body;
 
+    // Clique em lista/botão vira o mesmo texto que a digitação produziria.
+    // Null quando a mensagem é comum (aí segue o caminho de sempre).
+    const respostaClique = extrairRespostaDeClique(payload);
+    if (respostaClique) {
+      console.log(`👆 [webhook] Clique recebido de ${payload.phone}: "${respostaClique}" (tratado como texto digitado)`);
+    }
+
     // Monta o objeto message no formato que o index.js espera
     const message = {
       // Número de quem enviou a mensagem
@@ -99,11 +107,15 @@ async function processarWebhook(req, res) {
       // Número da instância (bot)
       to: payload.connectedPhone ? payload.connectedPhone + "@c.us" : null,
 
-      // Texto da mensagem (normalizado: corrige percent-encoding e mojibake)
-      body: normalizarTextoRecebido(payload.text?.message || payload.body || ""),
-      text: payload.text
-        ? { ...payload.text, message: normalizarTextoRecebido(payload.text.message || "") }
-        : null,
+      // Texto da mensagem (normalizado: corrige percent-encoding e mojibake).
+      // `respostaClique` entra na frente: um clique em lista/botão é tratado
+      // exatamente como se o cliente tivesse digitado aquele número.
+      body: respostaClique || normalizarTextoRecebido(payload.text?.message || payload.body || ""),
+      text: respostaClique
+        ? { message: respostaClique }
+        : payload.text
+          ? { ...payload.text, message: normalizarTextoRecebido(payload.text.message || "") }
+          : null,
 
       // Indica se é grupo
       isGroup: payload.isGroup || false,
