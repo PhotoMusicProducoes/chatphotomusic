@@ -330,8 +330,11 @@ async function enviarFotoLembranca(chatId, clb, convidados, sessionsRef, operato
   try {
     const diasCorporativo = sessionsRef[chatId]?.orcamento?.dias || 1;
 
-    // 1) Fluxo completo
-    await enviarFluxoFotoLembranca(chatId, clb);
+    // 1) Fluxo completo (os DETALHES). apenasOrcamento = espelho do
+    // apenasFluxo: só o preço, sem a apresentação (fluxo novo 2026-07-15).
+    if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      await enviarFluxoFotoLembranca(chatId, clb);
+    }
     if (sessionsRef[chatId]?.pausado) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central

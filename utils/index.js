@@ -7,6 +7,7 @@ const {
   ativarModoSilencioso, desativarModoSilencioso, estaEmModoSilencioso
 } = require("./sendText.js");
 const { sendOptionList, textoNumerado } = require("./sendOptionList.js");
+const { sendButtonList } = require("./sendButtonList.js");
 const { sendTyping } = require("./sendTyping.js");
 const { sendFileByUrl } = require("./sendFileByUrl.js");
 const { sendFileFromUrl } = require("./sendFileFromUrl.js");
@@ -47,6 +48,7 @@ module.exports = {
   // Z-API send functions
   sendText,
   sendOptionList,
+  sendButtonList,
   textoNumerado,
   sendTyping,
   ativarModoSombra, desativarModoSombra, estaEmModoSombra,

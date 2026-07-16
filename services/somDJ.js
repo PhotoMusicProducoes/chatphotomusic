@@ -197,7 +197,11 @@ async function enviarSomDJ(chatId, clb, convidados, sessionsRef, operatorPaused)
     // ======================================================
     // FLUXO COMPLETO
     // ======================================================
-    await enviarFluxoSomDJ(chatId, clb);
+    // apenasOrcamento = espelho do apenasFluxo: só o preço, sem a
+    // apresentação (fluxo novo 2026-07-15).
+    if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      await enviarFluxoSomDJ(chatId, clb);
+    }
     if (estaPausado(chatId)) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central

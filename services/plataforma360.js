@@ -540,8 +540,11 @@ async function enviarPlataforma360(chatId, clb, convidados, sessionsRef, operato
     const duracao = orc.horas?.toString() || "";
     const diasCorporativo = orc.dias || 1;
 
-    // 1) Envia o fluxo
-    await enviarFluxoPlataforma360(chatId, clb);
+    // 1) Envia o fluxo (os DETALHES). apenasOrcamento = espelho do apenasFluxo:
+    // manda só o preço, sem a apresentação (fluxo novo 2026-07-15).
+    if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      await enviarFluxoPlataforma360(chatId, clb);
+    }
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;

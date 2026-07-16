@@ -776,8 +776,13 @@ async function enviarFotoCabine(chatId, clb, convidados, sessionsRef, operatorPa
     const duracao = sessionsRef[chatId]?.orcamento?.horas?.toString() || "";
     const diasCorporativo = sessionsRef[chatId]?.orcamento?.dias || 1;
 
-    // Fluxo completo da cabine
-    await enviarFluxoPadrao(chatId, evento, clb);
+    // Fluxo completo da cabine (as fotos/vídeos = os DETALHES).
+    // apenasOrcamento: manda só o preço, sem a apresentação. É o espelho do
+    // apenasFluxo abaixo, e serve ao fluxo novo (2026-07-15): o cliente
+    // recebe o orçamento primeiro e só vê os detalhes se pedir.
+    if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      await enviarFluxoPadrao(chatId, evento, clb);
+    }
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;

@@ -447,8 +447,11 @@ async function enviarFotoPaparazzi(chatId, clb, convidados, sessionsRef, operato
     const duracao = orc.horas?.toString() || "";
     const diasCorporativo = orc.dias || 1;
 
-    // 1) Envia fluxo completo
-    await enviarFluxoPaparazzi(chatId, clb);
+    // 1) Envia fluxo completo (os DETALHES). apenasOrcamento = espelho do
+    // apenasFluxo: só o preço, sem a apresentação (fluxo novo 2026-07-15).
+    if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      await enviarFluxoPaparazzi(chatId, clb);
+    }
     if (sessionsRef[chatId]?.pausado) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central

@@ -113,8 +113,11 @@ async function enviarIluminacao(chatId, clb, convidados, sessionsRef, operatorPa
       return;
     }
 
-    // Fluxo completo
-    await enviarFluxoIluminacao(chatId, clb);
+    // Fluxo completo (os DETALHES). apenasOrcamento = espelho do apenasFluxo:
+    // só o preço, sem a apresentação (fluxo novo 2026-07-15).
+    if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      await enviarFluxoIluminacao(chatId, clb);
+    }
     if (estaPausado(chatId)) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central

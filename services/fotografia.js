@@ -172,7 +172,11 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
     // 2) Eventos com orçamento pronto
     if (clb === 3 || clb === 4 || clb === 5) {
 
-      await enviarFluxoFotografia(chatId, clb);
+      // apenasOrcamento = espelho do apenasFluxo: só o preço, sem a
+      // apresentação (fluxo novo 2026-07-15).
+      if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+        await enviarFluxoFotografia(chatId, clb);
+      }
       if (estaPausado(chatId)) return;
 
       // Multi-dia: apenas apresentação, orçamento enviado no resumo central

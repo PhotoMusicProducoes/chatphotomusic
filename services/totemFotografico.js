@@ -676,8 +676,11 @@ async function enviarTotemFotografico(chatId, clb, convidados, sessionsRef, oper
     const duracao = sessionsRef[chatId]?.orcamento?.horas?.toString() || "";
     const diasCorporativo = sessionsRef[chatId]?.orcamento?.dias || 1;
 
-    // 1) Envia fluxo completo
-    await enviarFluxoTotem(chatId, clb);
+    // 1) Envia fluxo completo (os DETALHES). apenasOrcamento = espelho do
+    // apenasFluxo: só o preço, sem a apresentação (fluxo novo 2026-07-15).
+    if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      await enviarFluxoTotem(chatId, clb);
+    }
     if (estaPausado(chatId)) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central

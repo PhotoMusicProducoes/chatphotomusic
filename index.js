@@ -11,6 +11,7 @@ const axios = require("axios");
 const {
   sendText,
   sendOptionList,
+  sendButtonList,
   sendTyping,
   sendFileByUrl,
   estaPausadoEspecial,
@@ -912,6 +913,17 @@ async function enviarOrcamentoUnificado(
 // 4️⃣  MÚLTIPLOS + CLIENTE:
 //     #fotocabine 0,2,120,6,1, #somdj 0,2,120,6,1 -> 5521999999999
 //
+// 5️⃣  COM A APRESENTAÇÃO COMPLETA (fotos/vídeos):  +completo
+//     #fotocabine 0,2,120,6,1 +completo -> 5521999999999
+//
+//     Desde 2026-07-15 o comando manda SÓ O PREÇO por padrão, igual ao fluxo
+//     automático: o cliente recebe o orçamento e escolhe no menu se quer ver
+//     os detalhes. Use "+completo" quando o cliente NUNCA viu o serviço e
+//     você quer empurrar as fotos junto (lead frio que pediu por telefone).
+//     A flag vale para o LOTE inteiro e pode ir em qualquer posição, igual
+//     ao "->". Com ela, o menu não oferece "mais detalhes" do que já foi
+//     mostrado.
+//
 // ======================================================
 
 
@@ -1040,7 +1052,11 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
       }
 
       // Define flags de deduplicação (lidas pelos serviços via sessions[chatId]._envioMultiplo)
+      // apenasOrcamento (2026-07-15, ideia da Adriana): manda SÓ o preço/PDF.
+      // As fotos e vídeos viram opcionais e só vão se o cliente pedir no menu
+      // pós-orçamento. Antes, ele levava ~80 mensagens antes de ver um valor.
       sessions[chatId]._envioMultiplo = {
+        apenasOrcamento:   true,
         ehUltimo:          idx === listaServicos.length - 1,
         ehUltimoComMoldura: servico === ultimoComMoldura,
         servicosNaLista:   listaServicos
@@ -1081,14 +1097,16 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
     await sendTyping(chatId);
     await sendText(chatId, "Deus abençoe você e sua família, grandiosamente!!!");
 
-    session.step = "orcamento_mais_servicos";
     // Captura aniversário do cliente para sistema de comemorações (fire and forget)
     if (!session.orcamento?.capturado) {
       session.orcamento = session.orcamento || {};
       session.orcamento.capturado = true;
       capturarClienteOrcamento(chatId, session).catch(() => {});
     }
-    await perguntarMaisOrcamentos(chatId);
+
+    // Menu dinâmico: detalhes (se houver o que detalhar), mais orçamento
+    // (se houver o que orçar) e a saída. Define o step por dentro.
+    await perguntarPosOrcamento(chatId, session);
 
     return;
 
@@ -1110,6 +1128,115 @@ async function perguntarMaisOrcamentos(chatId) {
       "*1* - Sim, desejo mais orçamentos\n" +
       "*2* - Não, por enquanto é só"
   );
+}
+
+// ======================================================
+// SERVIÇOS — nome por id
+// ======================================================
+const SERVICOS_NOMES = {
+  1: "Foto Cabine",
+  2: "Totem Fotográfico",
+  3: "Plataforma 360º",
+  4: "Foto Paparazzi Digital",
+  5: "Foto Lembrança",
+  6: "Cobertura Fotográfica",
+  7: "Som Completo com DJ",
+  8: "Iluminação para Pista de Dança"
+};
+const TODOS_SERVICOS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+// ======================================================
+// MENU PÓS-ORÇAMENTO (dinâmico) — ideia da Adriana, 2026-07-15
+// ======================================================
+// O cliente recebe o ORÇAMENTO logo depois da prova social; os detalhes
+// (fotos/vídeos) só vão se ele PEDIR. Antes, ele levava ~80 mensagens antes
+// de ver um preço.
+//
+// O menu se monta a partir de 2 conjuntos:
+//   orçados    = session.orcamento.servicosEnviados
+//   detalhados = session.orcamento.servicosDetalhados
+// Regra:
+//   existe orçado ainda NÃO detalhado → "mais detalhes"
+//   existe serviço ainda NÃO orçado   → "mais orçamento"
+//   sempre                            → "por enquanto é só"
+//
+// Os 3 menus que o Mario desenhou são este MESMO menu em estados diferentes:
+// quando tudo já foi detalhado, a 1ª opção some sozinha e sobram 2. E cabe
+// em 3 botões, que é o limite do WhatsApp.
+function servicosParaDetalhar(session) {
+  const orcados    = session.orcamento?.servicosEnviados   || [];
+  const detalhados = session.orcamento?.servicosDetalhados || [];
+  return orcados.filter(s => !detalhados.includes(s));
+}
+
+function servicosParaOrcar(session) {
+  const orcados = session.orcamento?.servicosEnviados || [];
+  return TODOS_SERVICOS.filter(s => !orcados.includes(s));
+}
+
+function registrarServicoDetalhado(session, servico) {
+  session.orcamento = session.orcamento || {};
+  session.orcamento.servicosDetalhados = session.orcamento.servicosDetalhados || [];
+  if (!session.orcamento.servicosDetalhados.includes(servico)) {
+    session.orcamento.servicosDetalhados.push(servico);
+  }
+}
+
+function montarMenuPosOrcamento(session) {
+  const opcoes = [];
+  if (servicosParaDetalhar(session).length > 0) {
+    opcoes.push({ acao: "detalhes",  label: "Quero mais detalhes" });
+  }
+  if (servicosParaOrcar(session).length > 0) {
+    opcoes.push({ acao: "orcamento", label: "Quero mais orçamento" });
+  }
+  opcoes.push({ acao: "fim", label: "Está ótimo, por enquanto é só" });
+  return opcoes.map((o, i) => ({ ...o, id: String(i + 1) }));
+}
+
+async function perguntarPosOrcamento(chatId, session) {
+  const opcoes = montarMenuPosOrcamento(session);
+
+  // Sobrou só o "por enquanto é só": não há nada a oferecer, não pergunta.
+  if (opcoes.length === 1) {
+    await sendTyping(chatId);
+    await sendText(chatId, "Qualquer dúvida é só me chamar 😊");
+    session.step = "finalizado";
+    return;
+  }
+
+  // Guarda o menu montado: a resposta ("1","2","3") é posicional, e as opções
+  // mudam conforme o estado. Sem isso, não dá para traduzir o número na ação.
+  session._menuPos = opcoes.map(o => ({ id: o.id, acao: o.acao, label: o.label }));
+  session.step = "orcamento_pos";
+
+  await sendTyping(chatId);
+  await sendButtonList(
+    chatId,
+    "Posso te ajudar em mais alguma coisa?",
+    opcoes.map(o => ({ id: o.id, label: o.label }))
+  );
+}
+
+// Envia SÓ os detalhes (fotos/vídeos) de um serviço — sem repetir o preço.
+async function enviarDetalhesServico(chatId, session, servico) {
+  sessions[chatId]._envioMultiplo = {
+    apenasFluxo:        true,   // manda a apresentação, pula o PDF
+    ehUltimo:           true,
+    ehUltimoComMoldura: true,
+    servicosNaLista:    [servico]
+  };
+  try {
+    const celebracaoId = session.orcamento.celebracaoId;
+    const convidados   = session.orcamento.convidados;
+    const horas        = Number.parseInt(session.orcamento.duracao, 10) || session.orcamento.horas || 4;
+    const diasServ     = session.orcamento.dias || 1;
+
+    await enviarOrcamentoUnificado(chatId, servico, celebracaoId, convidados, horas, diasServ, true);
+    registrarServicoDetalhado(session, servico);
+  } finally {
+    delete sessions[chatId]?._envioMultiplo;
+  }
 }
 
 
@@ -1831,7 +1958,21 @@ async function handleIncomingMessage(message) {
     if (corpoNormalizado.startsWith("#")) {
       console.log("⚙️ Executando comando manual do operador:", corpoMensagem);
 
-      const comandos = corpoMensagem
+      // ======================================================
+      // FLAG "+completo" (2026-07-15)
+      // ======================================================
+      // Por padrão o comando manual agora manda SÓ O PREÇO, igual ao fluxo
+      // automático (o cliente pede os detalhes no menu se quiser). Com
+      // "+completo" em qualquer lugar do lote, manda a apresentação inteira
+      // (fotos/vídeos) como era antes — útil para lead frio que nunca viu o
+      // serviço. É flag do LOTE, não de cada comando, igual ao "->".
+      // Ex.: #fotocabine 0,2,120,6,1 +completo -> 5521999999999
+      const enviarCompleto = /\+completo\b/i.test(corpoMensagem);
+      // Tira a flag antes de parsear: senão ela entra nos parâmetros do
+      // último comando e quebra o split.
+      const corpoComandos = String(corpoMensagem).replace(/\+completo\b/gi, " ");
+
+      const comandos = corpoComandos
         .replace(/\n/g, " ")
         .replace(/;/g, " , ")
         .replace(/\s+#/g, " , #")
@@ -1946,6 +2087,8 @@ async function handleIncomingMessage(message) {
           "   `#fotocabine 0,1,50,4,1 +55 21 99999-9888`\n\n" +
           "3️⃣ *Seta (->):*\n" +
           "   `#fotocabine 0,1,50,4,1 -> 5521993290588`\n\n" +
+          "💡 *+completo* manda as fotos junto (padrão é só o preço):\n" +
+          "   `#fotocabine 0,1,50,4,1 +completo -> 5521993290588`\n\n" +
           "4️⃣ *Responda a mensagem do cliente* com o comando\n\n" +
           "5️⃣ *#cliente NUMERO* antes do comando\n\n" +
           "⚠ *Nunca envie comandos em grupos* — o bot não consegue identificar o cliente destino."
@@ -2091,22 +2234,41 @@ async function handleIncomingMessage(message) {
           session.enviouAvaliacao = true;
         }
 
-        // ✅ IMPORTANTE: Passar modoManual=true para NÃO re-enviar avaliação
-        await enviarOrcamentoUnificado(
-          chatIdCliente,
-          servicoId,
-          celebracaoId,
-          convidados,
-          horas,
-          dias,
-          true  // modoManual=true
-        );
+        // apenasOrcamento: manda só o preço (padrão novo). Com "+completo",
+        // vai a apresentação inteira, como era antes.
+        // ehUltimo/ehUltimoComMoldura ficam true = comportamento de hoje
+        // (cada comando manda sua moldura); só a flag nova muda algo.
+        sessions[chatIdCliente]._envioMultiplo = {
+          apenasOrcamento:    !enviarCompleto,
+          ehUltimo:           true,
+          ehUltimoComMoldura: true,
+          servicosNaLista:    [servicoId]
+        };
+
+        try {
+          // ✅ IMPORTANTE: Passar modoManual=true para NÃO re-enviar avaliação
+          await enviarOrcamentoUnificado(
+            chatIdCliente,
+            servicoId,
+            celebracaoId,
+            convidados,
+            horas,
+            dias,
+            true  // modoManual=true
+          );
+        } finally {
+          delete sessions[chatIdCliente]?._envioMultiplo;
+        }
 
         controlaMsgManual2++;
         await sendText(OPERADOR_TELEFONE_ID, `controlaMsgManual2 = ${controlaMsgManual2}`);
 
         // 📌 REGISTRAR SERVIÇO ENVIADO
         registrarServicoEnviado(session, servicoId);
+
+        // Com "+completo" o cliente JÁ viu as fotos: marca como detalhado para
+        // o menu não oferecer "mais detalhes" de algo que ele acabou de ver.
+        if (enviarCompleto) registrarServicoDetalhado(session, servicoId);
 
         // 📌 INCREMENTAR CONTADOR        
         console.log(`📌 Processado ${controlaMsgManual} de ${comandos.length} comandos`);
@@ -2135,6 +2297,12 @@ async function handleIncomingMessage(message) {
 
         await sendTyping(chatIdCliente);
         await sendText(chatIdCliente, "Deus abençoe você e sua família, grandiosamente!!!");
+
+        // Menu pós-orçamento, igual ao fluxo automático (antes o manual
+        // terminava sem menu e o cliente ficava sem caminho). O menu é
+        // dinâmico: com "+completo" ele não oferece detalhes do que o cliente
+        // acabou de ver.
+        await perguntarPosOrcamento(chatIdCliente, session);
 
         // 📌 ENVIAR RESUMO PARA O OPERADOR
         await new Promise(r => setTimeout(r, 500));
@@ -3554,6 +3722,107 @@ const resumoEucaristia =
   // ======================================================
   // ORÇAMENTO — MAIS SERVIÇOS (SEGUNDA RODADA)
   // ======================================================
+  // ======================================================
+  // MENU PÓS-ORÇAMENTO (dinâmico) — detalhes / mais orçamento / é só
+  // ======================================================
+  if (session.step === "orcamento_pos") {
+
+    const opcoes  = session._menuPos || montarMenuPosOrcamento(session);
+    const escolha = opcoes.find(o => o.id === String(corpoMensagem).trim());
+
+    if (!escolha) {
+      session.tentativasInvalidasPos = (session.tentativasInvalidasPos || 0) + 1;
+      if (session.tentativasInvalidasPos >= 3) {
+        await autoPausarFluxo(chatId, session, "respostas inválidas no menu pós-orçamento");
+        return;
+      }
+      await sendTyping(chatId);
+      await sendButtonList(
+        chatId,
+        "Não entendi. Escolha uma opção:",
+        opcoes.map(o => ({ id: o.id, label: o.label }))
+      );
+      return;
+    }
+
+    session.tentativasInvalidasPos = 0;
+
+    if (escolha.acao === "fim") {
+      await sendTyping(chatId);
+      await sendText(chatId, "Perfeito! Qualquer dúvida é só me chamar 😊");
+      session.step = "finalizado";
+      return;
+    }
+
+    if (escolha.acao === "detalhes") {
+      const paraDetalhar = servicosParaDetalhar(session);
+
+      // Um só: manda direto, sem obrigar a escolher do que já é óbvio.
+      if (paraDetalhar.length === 1) {
+        await enviarDetalhesServico(chatId, session, paraDetalhar[0]);
+        await perguntarPosOrcamento(chatId, session);
+        return;
+      }
+
+      // Vários: pergunta QUAL (decisão do Mario 15/07 — evita despejar tudo
+      // de uma vez, que era justamente o problema do fluxo antigo).
+      session.step = "orcamento_escolher_detalhe";
+      await sendTyping(chatId);
+      await sendOptionList(
+        chatId,
+        "De qual serviço você quer ver mais detalhes?",
+        paraDetalhar.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
+        { title: "Seus orçamentos", buttonLabel: "Ver serviços" }
+      );
+      return;
+    }
+
+    if (escolha.acao === "orcamento") {
+      const restantes = servicosParaOrcar(session);
+      session.step = "orcamento_escolher_servico";
+      await sendTyping(chatId);
+      await sendOptionList(
+        chatId,
+        "De qual outro serviço você deseja orçamento?",
+        restantes.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
+        { title: "Serviços", buttonLabel: "Ver serviços" }
+      );
+      return;
+    }
+
+    return;
+  }
+
+  // ======================================================
+  // ESCOLHER QUAL SERVIÇO DETALHAR
+  // ======================================================
+  if (session.step === "orcamento_escolher_detalhe") {
+
+    const escolhido    = parseInt(String(corpoMensagem).replace(/\D+/g, ""), 10);
+    const paraDetalhar = servicosParaDetalhar(session);
+
+    if (!paraDetalhar.includes(escolhido)) {
+      session.tentativasInvalidasDetalhe = (session.tentativasInvalidasDetalhe || 0) + 1;
+      if (session.tentativasInvalidasDetalhe >= 3) {
+        await autoPausarFluxo(chatId, session, "respostas inválidas ao escolher o detalhe");
+        return;
+      }
+      await sendTyping(chatId);
+      await sendOptionList(
+        chatId,
+        "Não entendi. De qual serviço você quer ver mais detalhes?",
+        paraDetalhar.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
+        { title: "Seus orçamentos", buttonLabel: "Ver serviços" }
+      );
+      return;
+    }
+
+    session.tentativasInvalidasDetalhe = 0;
+    await enviarDetalhesServico(chatId, session, escolhido);
+    await perguntarPosOrcamento(chatId, session);
+    return;
+  }
+
   if (session.step === "orcamento_mais_servicos") {
 
     if (corpoMensagem !== "1" && corpoMensagem !== "2") {

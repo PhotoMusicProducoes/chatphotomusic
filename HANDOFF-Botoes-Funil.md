@@ -144,6 +144,71 @@ O webhook da Z-API devolve `listResponseMessage.selectedRowId` / `buttonsRespons
 5. **Bônus:** pedir pra **Dani e Maju** testarem — são da São José, é o fluxo da paróquia delas, e elas veem o sistema de pé antes da reunião de 24/07.
 6. O resultado decide o desenho na paróquia **e** no orçamento.
 
+## 8c. 📚 LIÇÕES DO BOT DO PADRE PAULO RICARDO (observado pelo Mario, 15/07)
+
+Operação grande de vendas por WhatsApp. O que dá para roubar:
+
+| O que eles fazem | Por que importa |
+|---|---|
+| **Sempre 3 opções** ("Sim, podemos / Saber mais / Bloquear número") | **Confirma o limite: botão = máx. 3.** Acima disso, lista. |
+| **Botão de saída** ("Bloquear número") | Porta educada. Quem sai por ali **não denuncia como spam**. É o "Está ótimo, por enquanto é só" da Adriana — ela chegou sozinha na mesma conclusão de uma operação profissional. |
+| **Mensagens curtas em sequência**, ideia por ideia, e só então a pergunta | O oposto do nosso bloco de 80 arquivos. |
+| **Botão que vende** ("Link do Anual (40%)") | Fechamento em 1 toque. |
+
+**⚠️ Achado do Mario:** o **rótulo do botão não é texto copiável** (não tem hora, não dá para selecionar) — é metadado da mensagem, não conteúdo. **Regra que sai disso: NUNCA colocar no rótulo do botão informação que o cliente precise copiar** (chave PIX, link, valor). Isso vai no corpo da mensagem. Vale para o item 8 da paróquia (dados bancários).
+
+**Regra de ferramenta que ficou:** **2 ou 3 opções → botão** (à vista, 1 toque). **4 a 10 → lista** (precisa abrir).
+
+## 8d. ✅ FLUXO DA ADRIANA — CODADO 15/07, ⏳ FALTA DEPLOY + TESTE REAL
+
+**A ideia:** entregar o **orçamento logo depois da prova social** e deixar os detalhes (fotos/vídeos) **sob demanda**. É o espelho da regra do §4: antes do preço só vai o que muda o preço; **depois do preço, tudo é opcional**.
+
+### O que tornou isso barato
+1. Os 8 services **já separavam internamente** detalhes (`enviarFluxoX`) de orçamento (`enviarOrcamentoX`); o wrapper é que juntava.
+2. **Já existia a flag `_envioMultiplo.apenasFluxo`** (usada no multi-dia): manda fotos, pula o PDF. Bastou criar o **espelho `apenasOrcamento`**: manda o PDF, pula as fotos. Simétrico, e segue a convenção que o código já tinha.
+
+### Os 3 menus do Mario são 1 menu dinâmico
+```
+existe orçado ainda NÃO detalhado → "Quero mais detalhes"
+existe serviço ainda NÃO orçado   → "Quero mais orçamento"
+sempre                            → "Está ótimo, por enquanto é só"
+```
+Quando tudo foi detalhado, a 1ª opção **some sozinha** e sobram 2 — que é exatamente o 3º menu que ele desenhou. **Nunca passa de 3 opções → sempre cabe em botão.** Se sobrar só a saída, o bot **nem pergunta**, encerra.
+
+### Fluxo novo
+```
+prova social (enxuta) → orçamento de cada serviço (apenasOrcamento) → resumo
+   → MENU (botões)
+        "mais detalhes" → 1 serviço? manda direto : LISTA pra escolher qual
+                        → manda detalhes (apenasFluxo) → volta ao MENU
+        "mais orçamento" → LISTA dos não orçados → fluxo de sempre
+        "é só" → encerra
+```
+
+### Arquivos
+`utils/sendButtonList.js` (NOVO, até 3 botões, mesma regra de ouro do sendOptionList) · `utils/index.js` (exporta) · `index.js` (`SERVICOS_NOMES`, `servicosParaDetalhar/Orcar`, `registrarServicoDetalhado`, `montarMenuPosOrcamento`, `perguntarPosOrcamento`, `enviarDetalhesServico`, steps `orcamento_pos` e `orcamento_escolher_detalhe`, `apenasOrcamento` no envio) · os **8 services** (respeitam `apenasOrcamento`).
+
+### ✅ Testado / ❌ não testado
+- ✅ `node --check` em 11 arquivos, servidor sobe limpo, **6/6 testes** do menu dinâmico cobrindo os 3 cenários do Mario + 3 casos que ele não previu (1 serviço só; tudo orçado e detalhado; tudo orçado com 1 detalhado).
+- ❌ **Nenhum orçamento real passou pelo fluxo novo.** O step `orcamento_mais_servicos` (antigo) continua no código para não quebrar sessão em andamento, mas **ninguém mais cai nele** — vale remover depois de confirmar.
+
+## 8e. 🆕 COMANDO MANUAL `#` + FLAG `+completo` (codado 15/07)
+
+**O Mario achou o buraco:** o fluxo novo mudou o automático, mas o comando `#` chamava `enviarOrcamentoUnificado` **sem `_envioMultiplo`** → continuava mandando tudo (~80 msgs) **e terminava sem menu** (não definia step). Não era regressão, era **inconsistência**.
+
+**Decisão do Mario (opção C):** o `#` manda **só o preço por padrão**; a flag **`+completo`** manda a apresentação inteira, como antes.
+
+```
+#fotocabine 0,2,120,6,1 +completo -> 5521999999999
+```
+
+- Flag do **LOTE**, qualquer posição, case-insensitive, igual ao `->`.
+- Com `+completo`, chama `registrarServicoDetalhado` → **o menu não oferece "mais detalhes" do que o cliente acabou de ver**.
+- O manual agora **termina com o menu**, igual ao automático.
+- ⚠️ **Pegadinha:** a flag tem de sair do corpo **ANTES** do split dos comandos, senão vaza para os parâmetros do último e quebra o parse.
+- ✅ **9/9 testes:** sem a flag os comandos saem idênticos a hoje; com a flag os params não mudam; não confunde com telefone internacional (`+5521...`).
+- Documentado no cabeçalho do `index.js` e na mensagem de ajuda do operador.
+
 ## 9. Arquivos que serão tocados
 
 | Arquivo | O quê |
