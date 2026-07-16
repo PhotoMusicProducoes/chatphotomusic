@@ -183,9 +183,9 @@ const RESPOSTAS = {
     "Atende diariamente 50 crianças em horário integral, com educação infantil de qualidade, 4 refeições diárias e atividades de desenvolvimento social.\n\n" +
     "Venha visitar: Estrada Frei Orlando, 370 - Jacaré, Piratininga.\n\n" +
     "Para fazer uma *doação* (PIX):\n" +
-    "CNPJ: 30147995007949\n" +
-    "Celular: 21985560659\n" +
-    "Banco Sicredi (748) - Ag 0720 - C/C 69674-1",
+    "Chave Pix CNPJ: 30147995007949\n" +
+    "Chave Pix Celular: 21985560659\n\n" +
+    "Ou por *transferência*: Banco Sicredi (748) - Ag 0720 - C/C 69674-1",
 
   outros:
     "*Outros assuntos*\n\n" +
