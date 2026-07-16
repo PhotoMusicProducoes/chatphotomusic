@@ -14,6 +14,31 @@
 // isto é recorta-e-cola. Conteúdo real em ParoquiaPro/conteudo-saojose.md.
 
 const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
+const { pixBrCode } = require("../utils/pixBrCode.js");
+const { sendImageBase64 } = require("../utils/sendImageBase64.js");
+const QRCode = require("qrcode");
+
+// Contas para contribuição (item 7). Duas contas reais [OK 17/07, Maju]:
+// a da paróquia (dízimo/oferta) e a da Creche Santo Antônio (doação). Cada
+// uma com CNPJ/conta próprios. Do `chave` sai o Pix Copia e Cola + QR.
+const CONTAS = {
+  dizimo: {
+    titulo: "Dízimo e Oferta - Paróquia São José",
+    chave: "30147995009488",
+    chaves_alt: ["21984692112", "p84@arqnit.org.br"],
+    beneficiario: "PAROQUIA SAO JOSE",
+    cidade: "NITEROI",
+    banco: "Sicredi (748)", agencia: "0720", conta: "68527-1"
+  },
+  creche: {
+    titulo: "Doação - Creche Santo Antônio",
+    chave: "30147995007949",
+    chaves_alt: ["21985560659"],
+    beneficiario: "CRECHE STO ANTONIO",
+    cidade: "NITEROI",
+    banco: "Sicredi (748)", agencia: "0720", conta: "69674-1"
+  }
+};
 
 // ---------------------------------------------------------------------------
 // MENU DE 10 ITENS (organização do Mario, 17/07 — cabe na lista sem submenu de
@@ -30,7 +55,7 @@ const MENU = [
   { n: 4,  titulo: "Agendamento com o padre",    tipo: "rapida",  destino: "agenda_padre" },
   { n: 5,  titulo: "Catequese / Catecumenato",   tipo: "submenu", destino: "catequese_cat" },
   { n: 6,  titulo: "Dízimo",                     tipo: "rapida",  destino: "dizimo" },
-  { n: 7,  titulo: "Informações bancárias",      tipo: "fluxo",   destino: "banco" },
+  { n: 7,  titulo: "Informações bancárias",      tipo: "banco",   destino: "banco" },
   { n: 8,  titulo: "2ª vias e certidões",        tipo: "rapida",  destino: "certidoes" },
   { n: 9,  titulo: "Creche Santo Antônio",       tipo: "rapida",  destino: "creche" },
   { n: 10, titulo: "Outros assuntos",            tipo: "rapida",  destino: "outros" }
@@ -162,7 +187,6 @@ const RESPOSTAS = {
 // Fluxos ainda não construídos nesta bancada (próximas fatias).
 const EM_BREVE = {
   batismo:  "🙏 O fluxo de *Batismo* já já entra aqui. (em construção)",
-  banco:    "🙏 As *Informações bancárias* com PIX e QR Code já já entram aqui. (em construção)",
   intencao: "🙏 O *registro de intenção* na Missa já já entra aqui. (em construção)"
 };
 
@@ -240,6 +264,10 @@ async function tratarEscolhaMenu(chatId, sessions, corpo) {
     await mostrarSubmenu(chatId, sessions, item.destino);
     return;
   }
+  if (item.tipo === "banco") {
+    await abrirBanco(chatId, sessions);
+    return;
+  }
   await entregar(chatId, sessions, item);
 }
 
@@ -256,6 +284,72 @@ async function tratarEscolhaSubmenu(chatId, sessions, corpo) {
     return;
   }
   await entregar(chatId, sessions, op);
+}
+
+// ---------------------------------------------------------------------------
+// ITEM 7 — INFORMAÇÕES BANCÁRIAS (Pix Copia e Cola + QR no chat)
+// ---------------------------------------------------------------------------
+async function abrirBanco(chatId, sessions) {
+  sessions[chatId].step = "psj_banco";
+  await sendTyping(chatId);
+  await sendOptionList(
+    chatId,
+    "Para qual finalidade você deseja contribuir?",
+    [
+      { id: "1", title: "Dízimo e Oferta" },
+      { id: "2", title: "Creche Santo Antônio" }
+    ],
+    { title: "Contribuir", buttonLabel: "Ver opções" }
+  );
+}
+
+async function enviarPix(chatId, sessions, chaveConta) {
+  const c = CONTAS[chaveConta];
+  const copiaECola = pixBrCode({
+    chave: c.chave, beneficiario: c.beneficiario, cidade: c.cidade
+  });
+
+  await sendTyping(chatId);
+  await sendText(chatId, `*${c.titulo}*\n\nVocê escolhe o valor. Copie o código *Pix Copia e Cola* abaixo e cole no app do seu banco 👇`);
+
+  // O copia-e-cola vai SOZINHO num bloco de código, para o WhatsApp mostrar o
+  // botão de copiar (a pessoa não seleciona à mão um código enorme).
+  await sendText(chatId, "```" + copiaECola + "```");
+
+  // QR gerado do MESMO código, para quem prefere pagar de outro aparelho.
+  try {
+    const dataUrl = await QRCode.toDataURL(copiaECola, { margin: 1, width: 400 });
+    await sendImageBase64(chatId, dataUrl, "QR Code Pix - " + c.titulo);
+  } catch (e) {
+    console.error("🚨 [psj] Falha ao gerar QR:", e.message);
+    // Sem imagem, o copia-e-cola acima já resolve.
+  }
+
+  // Dados da conta para quem prefere depósito/transferência.
+  const alt = (c.chaves_alt && c.chaves_alt.length)
+    ? `\n\nOutras chaves Pix: ${c.chaves_alt.join(" · ")}` : "";
+  await sendTyping(chatId);
+  await sendText(
+    chatId,
+    "Se preferir *depósito ou transferência*:\n" +
+    `Banco: ${c.banco}\nAgência: ${c.agencia}\nConta: ${c.conta}\nCNPJ: ${c.chave}` +
+    alt +
+    "\n\n_Que Deus recompense a sua generosidade!_ 🙏"
+  );
+
+  await mostrarMenu(chatId, sessions, "Posso te ajudar em algo mais? (ou digite *sair*)");
+}
+
+async function tratarEscolhaBanco(chatId, sessions, corpo) {
+  const n = parseInt(String(corpo).replace(/\D+/g, ""), 10);
+  const mapa = { 1: "dizimo", 2: "creche" };
+  const conta = mapa[n];
+  if (!conta) {
+    await sendTyping(chatId);
+    await sendText(chatId, "Não entendi. Escolha *1* (Dízimo e Oferta) ou *2* (Creche).");
+    return;
+  }
+  await enviarPix(chatId, sessions, conta);
 }
 
 // ---------------------------------------------------------------------------
@@ -286,6 +380,7 @@ async function handleParoquia(chatId, sessions, corpoMensagem) {
   const step = sessions[chatId]?.step || "";
   if (!step.startsWith("psj_")) return false;
 
+  if (step === "psj_banco")   { await tratarEscolhaBanco(chatId, sessions, corpo);   return true; }
   if (step === "psj_submenu") { await tratarEscolhaSubmenu(chatId, sessions, corpo); return true; }
   if (step === "psj_menu")    { await tratarEscolhaMenu(chatId, sessions, corpo);    return true; }
 
