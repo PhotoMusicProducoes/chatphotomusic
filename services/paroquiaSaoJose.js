@@ -24,16 +24,24 @@ const QRCode = require("qrcode");
 const CONTAS = {
   dizimo: {
     titulo: "Dízimo e Oferta - Paróquia São José",
-    chave: "30147995009488",
-    chaves_alt: ["21984692112", "p84@arqnit.org.br"],
+    chave: "30147995009488",  // chave que gera o QR/copia-e-cola (CNPJ)
+    // Chaves alternativas rotuladas (a pessoa vê qual é qual e copia a que quiser).
+    chaves_alt: [
+      { rotulo: "CNPJ",    valor: "30147995009488" },
+      { rotulo: "Celular", valor: "21984692112" },
+      { rotulo: "E-mail",  valor: "p84@arqnit.org.br" }
+    ],
     beneficiario: "PAROQUIA SAO JOSE",
     cidade: "NITEROI",
     banco: "Sicredi (748)", agencia: "0720", conta: "68527-1"
   },
   creche: {
     titulo: "Doação - Creche Santo Antônio",
-    chave: "30147995007949",
-    chaves_alt: ["21985560659"],
+    chave: "30147995007949",  // CNPJ
+    chaves_alt: [
+      { rotulo: "CNPJ",    valor: "30147995007949" },
+      { rotulo: "Celular", valor: "21985560659" }
+    ],
     beneficiario: "CRECHE STO ANTONIO",
     cidade: "NITEROI",
     banco: "Sicredi (748)", agencia: "0720", conta: "69674-1"
@@ -325,15 +333,20 @@ async function enviarPix(chatId, sessions, chaveConta) {
     // Sem imagem, o copia-e-cola acima já resolve.
   }
 
-  // Dados da conta para quem prefere depósito/transferência.
-  const alt = (c.chaves_alt && c.chaves_alt.length)
-    ? `\n\nOutras chaves Pix: ${c.chaves_alt.join(" · ")}` : "";
+  // Chaves Pix separadas e rotuladas (a pessoa vê qual é qual e digita a que
+  // preferir no banco, caso não use o copia-e-cola).
+  const linhasChaves = (c.chaves_alt || [])
+    .map(k => `Chave Pix ${k.rotulo}: ${k.valor}`)
+    .join("\n");
+  await sendTyping(chatId);
+  await sendText(chatId, "Se preferir, use a *chave Pix* diretamente no seu banco:\n\n" + linhasChaves);
+
+  // Dados da conta para quem prefere depósito/transferência (diferente de Pix).
   await sendTyping(chatId);
   await sendText(
     chatId,
-    "Se preferir *depósito ou transferência*:\n" +
+    "Ou, se preferir *depósito ou transferência*:\n" +
     `Banco: ${c.banco}\nAgência: ${c.agencia}\nConta: ${c.conta}\nCNPJ: ${c.chave}` +
-    alt +
     "\n\n_Que Deus recompense a sua generosidade!_ 🙏"
   );
 
