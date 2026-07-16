@@ -68,7 +68,10 @@ const PASSOS_QUESTIONARIO = new Set([
   "orcamento_onde_encontrou", "orcamento_detalhes", "orcamento_detalhes_texto",
   // Etapas opcionais finais (e-mail/nascimento): o orçamento só é ENTREGUE depois
   // delas, então quem para aqui também abandona o orçamento (caso Rayane 2026-06-26).
+  // Desde 2026-07-15 cada uma tem 2 passos: a pergunta Sim/Não (_opcional) e a
+  // coleta do dado (_valor). Os dois abandonam igual.
   "coletar_email_opcional", "coletar_nascimento_opcional",
+  "coletar_email_valor", "coletar_nascimento_valor",
   // Reta final: revisar os dados (confirmar) e ESCOLHER OS SERVIÇOS. O orçamento
   // só sai DEPOIS de escolher o serviço, então quem para aqui também abandonou
   // sem receber nada (caso real 28/06). OBS: orcamento_escolher_servico é
@@ -106,8 +109,10 @@ const PERGUNTA_POR_PASSO = {
   "orcamento_onde_encontrou": "Só uma curiosidade: como você nos conheceu?",
   "orcamento_detalhes": "Quer adicionar algum detalhe sobre o evento? (1 - Sim / 2 - Não)",
   "orcamento_detalhes_texto": "Pode me contar os detalhes do seu evento.",
-  "coletar_email_opcional": "Falta pouco para finalizar seu orçamento! Me passa um *e-mail* para enviar o orçamento em PDF, ou responda *pular*.",
-  "coletar_nascimento_opcional": "Falta pouco para finalizar seu orçamento! Sua data de nascimento (ex: 01/02/1985), ou responda *pular*.",
+  "coletar_email_opcional": "Falta pouco para finalizar seu orçamento! Deseja informar seu *e-mail* para receber o orçamento em PDF também?\n*1* - Sim\n*2* - Não",
+  "coletar_email_valor": "Falta pouco para finalizar seu orçamento! Qual o seu *e-mail*?",
+  "coletar_nascimento_opcional": "Falta pouco para finalizar seu orçamento! Deseja informar sua *data de nascimento*?\n*1* - Sim\n*2* - Não",
+  "coletar_nascimento_valor": "Falta pouco para finalizar seu orçamento! Sua data de nascimento (ex: 01/02/1985).",
   "orcamento_confirmar": "Faltou só revisar os dados e confirmar pra eu enviar o orçamento. Está tudo certo?\n*1* - Sim, quero o orçamento\n*2* - Corrigir algo",
   "orcamento_escolher_servico": "Falta só escolher os serviços que deseja orçamento (para mais de um, separe por vírgula, ex: *1,3,5*):\n\n" +
     "*1* - Foto Cabine\n*2* - Totem Fotográfico\n*3* - Plataforma 360º\n*4* - Foto Paparazzi Digital\n" +
@@ -127,8 +132,10 @@ const DESCRICAO_PASSO = {
   "orcamento_bairro": "bairro", "orcamento_cidade": "cidade", "orcamento_salao": "salão/local",
   "orcamento_onde_encontrou": "como nos conheceu", "orcamento_detalhes": "detalhes do evento",
   "orcamento_detalhes_texto": "detalhes do evento",
-  "coletar_email_opcional": "e-mail (opcional, falta finalizar)",
-  "coletar_nascimento_opcional": "nascimento (opcional, falta finalizar)",
+  "coletar_email_opcional": "e-mail: quer informar? (opcional, falta finalizar)",
+  "coletar_email_valor": "e-mail (opcional, falta finalizar)",
+  "coletar_nascimento_opcional": "nascimento: quer informar? (opcional, falta finalizar)",
+  "coletar_nascimento_valor": "nascimento (opcional, falta finalizar)",
   "orcamento_confirmar": "confirmar os dados", "orcamento_escolher_servico": "escolher os serviços",
   "aguardando_opcao": "escolher a opção do menu inicial (nem começou o orçamento)"
 };

@@ -557,10 +557,19 @@ const mensagemBoasVindas1 =
   "*Olá! Seja bem-vindo(a) à PhotoMusic Produções!* 🎉🎊😍\n" +
   "*É um prazer falar com você!*";
 
+// Abertura em 3 tempos (2026-07-15, pedido do Mario): primeiro QUEM somos,
+// depois o COMPROMISSO, e só então a prova social. A nota do Google deixa de
+// ser um anúncio solto e vira a CONSEQUÊNCIA do jeito de atender ("por isso").
+// Números atualizados: 1.500+ avaliações e 15 anos (eram 1.400 e 14).
+const mensagemBoasVindas2a =
+  "*Somos uma família que atende famílias* ❤️";
+
+const mensagemBoasVindas2b =
+  "*Temos um compromisso com o atendimento aos nossos clientes e a cada convidado do seu evento.*";
+
 const mensagemBoasVindas2 =
-  "⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐\n" +
-  "*Somos a empresa de experiências fotográficas mais bem avaliada do Brasil, com mais de 1.400 avaliações 5 estrelas ⭐ e 14 anos transformando eventos em memórias inesquecíveis.*\n" +
-  "⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐";
+  "⭐⭐⭐⭐⭐\n" +
+  "*Por isso somos a empresa de experiências fotográficas mais bem avaliada do Brasil, com mais de 1.500 avaliações 5 estrelas e 15 anos transformando eventos em memórias inesquecíveis.*";
 
 const mensagemBoasVindas3 =
   "*Como posso te ajudar hoje?*\n\n" +
@@ -728,6 +737,12 @@ function interpretarSimNao(texto) {
 async function mostrarMenuInicial(chatId) {
   await sendTyping(chatId);
   await sendText(chatId, mensagemBoasVindas1);
+
+  await sendTyping(chatId);
+  await sendText(chatId, mensagemBoasVindas2a);
+
+  await sendTyping(chatId);
+  await sendText(chatId, mensagemBoasVindas2b);
 
   await sendTyping(chatId);
   await sendText(chatId, mensagemBoasVindas2);
@@ -1255,6 +1270,35 @@ async function perguntarPosOrcamento(chatId, session) {
     "Posso te ajudar em mais alguma coisa?",
     opcoes.map(o => ({ id: o.id, label: o.label }))
   );
+}
+
+// ======================================================
+// E-MAIL / NASCIMENTO — perguntar ANTES de pedir (2026-07-15, pedido do Mario)
+// ======================================================
+// Antes o bot pedia "seu e-mail... ou responda *pular*": obrigava a digitar a
+// palavra "pular" para NÃO dar o e-mail, o que é mais trabalho do que dar.
+// Agora pergunta Sim/Não no botão e só pede o dado se a pessoa quiser.
+// (Os dois campos são opcionais e não mudam o orçamento.)
+async function perguntarEmailOpcional(chatId, session) {
+  session.step = "coletar_email_opcional";
+  const p = "Deseja informar seu *e-mail* para receber o orçamento em *PDF* também, caso tenha dificuldade pelo WhatsApp?";
+  await sendTyping(chatId);
+  await sendButtonList(chatId, p, [
+    { id: "1", label: "Sim" },
+    { id: "2", label: "Não" }
+  ]);
+  session.ultimaPerguntaNaoRespondida = p + "\n*1* - Sim\n*2* - Não";
+}
+
+async function perguntarNascimentoOpcional(chatId, session) {
+  session.step = "coletar_nascimento_opcional";
+  const p = "Deseja informar sua *data de nascimento*? É para te enviarmos uma mensagem no seu aniversário 🎂";
+  await sendTyping(chatId);
+  await sendButtonList(chatId, p, [
+    { id: "1", label: "Sim" },
+    { id: "2", label: "Não" }
+  ]);
+  session.ultimaPerguntaNaoRespondida = p + "\n*1* - Sim\n*2* - Não";
 }
 
 // Envia SÓ os detalhes (fotos/vídeos) de um serviço — sem repetir o preço.
@@ -2915,11 +2959,13 @@ const resumoEucaristia =
     session.step = "orcamento_nome_confirmar";
 
     await sendTyping(chatId);
-    await sendText(
+    await sendButtonList(
       chatId,
-      `Seu nome é *${nome}*? (*Digite somente o número*)\n\n` +
-      "*1* - Sim\n" +
-      "*2* - Não"
+      `Seu nome é *${nome}*?`,
+      [
+        { id: "1", label: "Sim" },
+        { id: "2", label: "Não" }
+      ]
     );
     return;
   }
@@ -3439,7 +3485,6 @@ const resumoEucaristia =
     }
 
     session.orcamento.detalhes = null;
-    session.step = "coletar_email_opcional";
 
     await sendTyping(chatId);
     await sendText(
@@ -3447,11 +3492,7 @@ const resumoEucaristia =
       "*Para deixar seu orçamento ainda mais completo, posso te pedir duas informações rápidas?*"
     );
 
-    await sendTyping(chatId);
-    const perguntaEmail = "Um *e-mail* para enviar o *orçamento em PDF* também, caso tenha dificuldade pelo *WhatsApp*.\n" +
-      "Ou responda *pular*.";
-    await sendText(chatId, perguntaEmail);
-    session.ultimaPerguntaNaoRespondida = perguntaEmail;
+    await perguntarEmailOpcional(chatId, session);
     return;
   }
 
@@ -3461,19 +3502,13 @@ const resumoEucaristia =
   if (session.step === "orcamento_detalhes_texto") {
     session.orcamento.detalhes = capitalizarPalavras(corpoMensagem);
 
-    session.step = "coletar_email_opcional";
-
     await sendTyping(chatId);
     await sendText(
       chatId,
       "*Para deixar seu orçamento ainda mais completo, posso te pedir duas informações rápidas?*"
     );
 
-    await sendTyping(chatId);
-    const perguntaEmail2 = "Um *e-mail* para enviar o *orçamento em PDF* também, caso tenha dificuldade pelo *WhatsApp*.\n" +
-      "Ou responda *pular*.";
-    await sendText(chatId, perguntaEmail2);
-    session.ultimaPerguntaNaoRespondida = perguntaEmail2;
+    await perguntarEmailOpcional(chatId, session);
     return;
   }
 
@@ -3481,6 +3516,28 @@ const resumoEucaristia =
   // COLETAR E-MAIL OPCIONAL (NÃO BLOQUEANTE)
   // ======================================================
   if (session.step === "coletar_email_opcional") {
+    const r = String(corpoMensagem || "").trim();
+
+    if (r === "1") {
+      session.step = "coletar_email_valor";
+      const p = "Perfeito! Qual o seu *e-mail*?";
+      await sendTyping(chatId);
+      await sendText(chatId, p);
+      session.ultimaPerguntaNaoRespondida = p;
+      return;
+    }
+
+    // "2" (Não) ou qualquer outra coisa: segue sem e-mail. O campo é opcional,
+    // não pode travar a entrega do orçamento (caso Rayane, 26/06).
+    session.orcamento.email = null;
+    await perguntarNascimentoOpcional(chatId, session);
+    return;
+  }
+
+  // ======================================================
+  // E-MAIL — RECEBER O VALOR
+  // ======================================================
+  if (session.step === "coletar_email_valor") {
 
     // Remove asteriscos/formatação do WhatsApp e espaços — "*email@x.com" vira "email@x.com"
     const texto = corpoMensagem.trim().replace(/[*_~`'"<>()\[\]\s]/g, "");
@@ -3488,23 +3545,17 @@ const resumoEucaristia =
     // Valida com caracteres reais de e-mail (letras, números, . _ % + -)
     const regexEmail = /^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
 
-    if (texto.toLowerCase() === "pular") {
-      session.orcamento.email = null;
-    } else if (regexEmail.test(texto)) {
+    if (regexEmail.test(texto)) {
       session.orcamento.email = texto.toLowerCase();
     } else {
-      // qualquer outra coisa → ignora silenciosamente
+      // E-mail inválido: avisa UMA vez e segue. Nunca travar o orçamento por
+      // causa de um campo opcional.
       session.orcamento.email = null;
+      await sendTyping(chatId);
+      await sendText(chatId, "Não consegui ler esse e-mail, mas sem problema: seu orçamento vai pelo WhatsApp mesmo 😉");
     }
 
-    session.step = "coletar_nascimento_opcional";
-
-    await sendTyping(chatId);
-    const perguntaNascimento = "Sua data de nascimento *(exemplo: 01/02/1985)*.\n" +
-      "Ou responda *pular*.";
-    await sendText(chatId, perguntaNascimento);
-    session.ultimaPerguntaNaoRespondida = perguntaNascimento;
-
+    await perguntarNascimentoOpcional(chatId, session);
     return;
   }
 
@@ -3512,6 +3563,27 @@ const resumoEucaristia =
   // COLETAR NASCIMENTO OPCIONAL (NÃO BLOQUEANTE)
   // ======================================================
   if (session.step === "coletar_nascimento_opcional") {
+    const r = String(corpoMensagem || "").trim();
+
+    if (r === "1") {
+      session.step = "coletar_nascimento_valor";
+      const p = "Informe sua *data de nascimento* *(exemplo: 01/02/1985)*.";
+      await sendTyping(chatId);
+      await sendText(chatId, p);
+      session.ultimaPerguntaNaoRespondida = p;
+      return;
+    }
+
+    // "2" (Não) ou qualquer outra coisa: segue sem a data.
+    session.orcamento.dataNascimento = null;
+    await mostrarConfirmacaoOrcamento(chatId, session);
+    return;
+  }
+
+  // ======================================================
+  // NASCIMENTO — RECEBER O VALOR
+  // ======================================================
+  if (session.step === "coletar_nascimento_valor") {
 
     const texto = corpoMensagem.trim();
     const regexData = /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
@@ -3750,13 +3822,13 @@ const resumoEucaristia =
     await enviarMultiplosOrcamentos(chatId, servicos);
 
     session.primeiraRodadaFinalizada = true;
-    session.step = "orcamento_mais_servicos";
-    // Captura aniversário do cliente para sistema de comemorações (fire and forget)
-    if (!session.orcamento?.capturado) {
-      session.orcamento = session.orcamento || {};
-      session.orcamento.capturado = true;
-      capturarClienteOrcamento(chatId, session).catch(() => {});
-    }
+    // ⚠️ NÃO definir step aqui: quem manda é o perguntarPosOrcamento(), chamado
+    // no fim do enviarMultiplosOrcamentos. Havia um `step = "orcamento_mais_servicos"`
+    // nesta linha que SOBRESCREVIA o "orcamento_pos" recém-definido — o cliente
+    // via o menu novo (Quero mais detalhes) mas a resposta era processada pelo
+    // menu ANTIGO, onde "1" = "sim, quero mais orçamentos". Bug pego pelo Mario
+    // no teste de 16/07: clicou em "Quero mais detalhes" e caiu na lista de
+    // serviços. A captura de aniversário também já é feita lá dentro.
     return;
   }
 
