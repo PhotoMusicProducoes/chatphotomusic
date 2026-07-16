@@ -5,6 +5,9 @@
 // IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS
 // ======================================================
 const { fluxoEventos, apresentarEvento } = require("./services/eventos.js");
+// ⛪ Bancada de teste do Sistema Paroquial (gatilho oculto "#psj"). Módulo
+// isolado — ver services/paroquiaSaoJose.js. Só dados fictícios (roda em iad).
+const { handleParoquia } = require("./services/paroquiaSaoJose.js");
 const { INSTANCE_ID, TOKEN, API_URL, PM_API_BASE, PM_API_KEY } = require("./utils/config.js");
 const axios = require("axios");
 
@@ -1431,7 +1434,20 @@ async function handleIncomingMessage(message) {
   if (isBot) {
     console.log("⏭ Ignorando mensagem enviada pelo próprio bot.");
     return;
-  }  
+  }
+
+  // ======================================================
+  // ⛪ BANCADA DE TESTE DA PARÓQUIA (gatilho oculto "#psj")
+  // ======================================================
+  // Intercepta ANTES da lógica de operador/cliente: "#psj" começa com "#" e
+  // seria lido como comando de operador (número autorizado do Mario) e cairia
+  // em "comando não reconhecido". Uma vez dentro, os steps "psj_*" também são
+  // roteados aqui, isolando 100% o código da paróquia do resto do bot.
+  const _psjLow = (corpoMensagem || "").trim().toLowerCase();
+  if (_psjLow === "#psj" || String(sessions[chatId]?.step || "").startsWith("psj_")) {
+    const tratou = await handleParoquia(chatId, sessions, corpoMensagem);
+    if (tratou) return;
+  }
 
   // ======================================================
   // SALVAR ÚLTIMO CLIENTE (SOMENTE cliente real; ignora operador e ignora @lid)
