@@ -272,6 +272,27 @@ async function autoPausarFluxo(chatId, session, motivo) {
 // campos que quiser (estilo "escolher serviços") antes do
 // orçamento sair. Garante resumo correto p/ e-mail e PhotoMusic Pro.
 // ======================================================
+// Celebrações — fonte única (2026-07-15). Antes a lista estava escrita à mão
+// em 2 lugares (fluxo normal e menu de correção), com rótulos diferentes.
+const CELEBRACOES = [
+  { id: 1, label: "Aniversário de 15 anos"    },
+  { id: 2, label: "Casamento"                 },
+  { id: 3, label: "Aniversário Infantil"      },
+  { id: 4, label: "Aniversário Adolescente"   },
+  { id: 5, label: "Aniversário Adulto"        },
+  { id: 6, label: "Bodas"                     },
+  { id: 7, label: "Formatura"                 },
+  { id: 8, label: "Evento Corporativo"        },
+  { id: 9, label: "Outros"                    }
+];
+
+// ✂️ 2026-07-15: de 12 para 10 campos, para caber numa LISTA clicável do
+// WhatsApp (limite 10) e o cliente parar de digitar número aqui — era este o
+// menu do bug dos 2 dígitos (10/11/12 liam dígito solto, ver o fix do
+// extrairNumerosCampos).
+// Saíram "Onde nos encontrou" (pergunta nossa, de marketing — o cliente não
+// precisa corrigir) e "Data de nascimento" (é p/ mensagem de aniversário, não
+// muda o orçamento). Nenhum dos dois afeta preço ou entrega.
 const CAMPOS_CORRIGIVEIS = [
   { id: 1,  label: "Celebração",         tipo: "celebracao" },
   { id: 2,  label: "Convidados",         tipo: "numero"     },
@@ -281,10 +302,8 @@ const CAMPOS_CORRIGIVEIS = [
   { id: 6,  label: "Bairro",             tipo: "bairro"     },
   { id: 7,  label: "Cidade",             tipo: "cidade"     },
   { id: 8,  label: "Salão / Local",      tipo: "salao"      },
-  { id: 9,  label: "Onde nos encontrou", tipo: "onde"       },
-  { id: 10, label: "Detalhes do evento", tipo: "detalhes"   },
-  { id: 11, label: "E-mail",             tipo: "email"      },
-  { id: 12, label: "Data de nascimento", tipo: "nascimento" },
+  { id: 9,  label: "Detalhes do evento", tipo: "detalhes"   },
+  { id: 10, label: "E-mail",             tipo: "email"      },
 ];
 
 function valorCampoResumo(orc, tipo) {
@@ -327,11 +346,21 @@ async function mostrarConfirmacaoOrcamento(chatId, session) {
     const vFmt = String(v).includes("@") ? v : `*${v}*`;
     txt += `*${c.id}* - ${c.label}: ${vFmt}\n`;
   }
-  txt += "\nEstá tudo certo?\n*1* - Sim, quero o orçamento\n*2* - Corrigir algo";
+  // Botões (2026-07-15): é a RETA FINAL — o cliente já deu todos os dados e
+  // ainda não recebeu nada. Foi aqui que o caso de 28/06 abandonou, e é a
+  // fuga mais cara do funil. O sendButtonList põe o "1 - / 2 -" no corpo,
+  // então quem não vê o botão digita como sempre.
   session.step = "orcamento_confirmar";
   await sendTyping(chatId);
-  await sendText(chatId, txt);
-  session.ultimaPerguntaNaoRespondida = txt;
+  await sendButtonList(
+    chatId,
+    txt + "\nEstá tudo certo?",
+    [
+      { id: "1", label: "Sim, quero o orçamento" },
+      { id: "2", label: "Corrigir algo" }
+    ]
+  );
+  session.ultimaPerguntaNaoRespondida = txt + "\nEstá tudo certo?\n*1* - Sim, quero o orçamento\n*2* - Corrigir algo";
 }
 
 // Recalcula os valores derivados após uma correção (duração e deslocamento)
@@ -357,7 +386,8 @@ async function pedirProximaCorrecao(chatId, session) {
   session.correcaoAtual = campo;
   session.step = "orcamento_corrigir_valor";
   const perguntas = {
-    celebracao: "Qual a celebração? (*Digite o número*)\n*1* 15 anos · *2* Casamento · *3* Infantil · *4* Adolescente · *5* Adulto · *6* Bodas · *7* Formatura · *8* Corporativo · *9* Outros",
+    celebracao: "Qual a celebração? (*Digite o número*)\n" +
+                CELEBRACOES.map(c => `*${c.id}* ${c.label}`).join(" · "),
     numero:     "Quantos convidados? (*somente número*)",
     data:       "Qual a *data* do evento? (*Ex: 20/06/2026*)",
     hora_ini:   "Qual o *horário de início*? (*Ex: 18:00 ou 18h*)",
@@ -703,7 +733,16 @@ async function mostrarMenuInicial(chatId) {
   await sendText(chatId, mensagemBoasVindas2);
 
   await sendTyping(chatId);
-  await sendText(chatId, mensagemBoasVindas3);
+  // Lista clicável (2026-07-15): é a ENTRADA do funil, onde o lead some sem
+  // nem começar (caso Heciomar/Susteiner: a reunião não andava porque ele
+  // nunca respondia ao menu). O sendOptionList leva o menu numerado no corpo,
+  // então quem não vê a lista digita o número como sempre.
+  await sendOptionList(
+    chatId,
+    "*Como posso te ajudar hoje?*\n\nEscolha a opção que melhor descreve o motivo do seu contato:",
+    Object.keys(LABELS_MENU).map(k => ({ id: k, title: LABELS_MENU[k] })),
+    { title: "Como posso ajudar?", buttonLabel: "Ver opções" }
+  );
 
   // ✅ Não zera a sessão inteira; só garante os campos necessários
   if (!sessions[chatId]) sessions[chatId] = {};
@@ -2515,13 +2554,13 @@ async function handleIncomingMessage(message) {
     session.opcaoMenuPendente = opcaoMenu;
     session.step = "confirmar_opcao_menu";
     await sendTyping(chatId);
-    await sendText(
+    await sendButtonList(
       chatId,
-      `Só pra confirmar 😊 você escolheu:\n\n` +
-      `*${opcaoMenu}* - *${LABELS_MENU[opcaoMenu]}*\n\n` +
-      `Está certo? *(Digite somente número)*\n` +
-      `*1* - Sim, é isso\n` +
-      `*2* - Não, quero escolher outra opção`
+      `Só pra confirmar 😊 você escolheu:\n\n*${LABELS_MENU[opcaoMenu]}*\n\nEstá certo?`,
+      [
+        { id: "1", label: "Sim, é isso" },
+        { id: "2", label: "Quero outra opção" }
+      ]
     );
     return;
   }
@@ -2910,18 +2949,13 @@ const resumoEucaristia =
     await sendText(chatId, `Olá, *${session.orcamento.nome}*! \nAgora, me fale um pouco sobre o seu evento`);
 
     await sendTyping(chatId);
-    await sendText(
+    // 9 opções: cabe na lista (limite 10). O menu numerado vai no corpo pelo
+    // sendOptionList, então quem não vê a lista digita como sempre.
+    await sendOptionList(
       chatId,
-      "O que vai celebrar? (*Digite somente o número*)\n\n" +
-      "*1* - Aniversário de 15 anos\n" +
-      "*2* - Casamento\n" +
-      "*3* - Aniversário Infantil\n" +
-      "*4* - Aniversário Adolescente\n" +
-      "*5* - Aniversário Adulto\n" +
-      "*6* - Bodas\n" +
-      "*7* - Formatura\n" +
-      "*8* - Evento Corporativo\n" +
-      "*9* - Outros"
+      "O que vai celebrar?",
+      CELEBRACOES.map(c => ({ id: String(c.id), title: c.label })),
+      { title: "Celebrações", buttonLabel: "Ver opções" }
     );
     return;
   }
@@ -3023,12 +3057,14 @@ const resumoEucaristia =
     // Mais de 1 dia → verificar se horários são iguais
     session.step = "orcamento_horarios_iguais";
     await sendTyping(chatId);
-    await sendText(
+    await sendButtonList(
       chatId,
       `Seu evento terá *${dias} dias*. 📅\n\n` +
-      `Os horários de início e término serão os *mesmos em todos os dias*?\n\n` +
-      `*1* - Sim, os horários são iguais\n` +
-      `*2* - Não, os horários variam por dia`
+      `Os horários de início e término serão os *mesmos em todos os dias*?`,
+      [
+        { id: "1", label: "Sim, são iguais" },
+        { id: "2", label: "Variam por dia" }
+      ]
     );
     return;
   }
@@ -3362,11 +3398,16 @@ const resumoEucaristia =
     session.orcamento.ondeEncontrou = capitalizarPalavras(corpoMensagem);
     session.step = "orcamento_detalhes";
 
-    await enviarPerguntaESalvar(
+    await sendTyping(chatId);
+    await sendButtonList(
       chatId,
-      session,
-      "Deseja informar mais detalhes do seu evento?\n*1* - Sim\n*2* - Não"
+      "Deseja informar mais detalhes do seu evento?",
+      [
+        { id: "1", label: "Sim" },
+        { id: "2", label: "Não" }
+      ]
     );
+    session.ultimaPerguntaNaoRespondida = "Deseja informar mais detalhes do seu evento?\n*1* - Sim\n*2* - Não";
     return;
   }
 
