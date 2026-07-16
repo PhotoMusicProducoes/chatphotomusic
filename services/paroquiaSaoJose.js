@@ -9,36 +9,49 @@
 // Isolamento proposital:
 //  - módulo autocontido, ZERO acoplamento com o fluxo de orçamento;
 //  - estado num namespace próprio: sessions[chatId].psj (nunca .orcamento);
-//  - todo step começa com "psj_"; o index.js delega tudo pra cá por 1 gancho.
+//  - todo step começa com "psj_"; o index.js delega tudo por 1 gancho.
 // Migração: quando virar o repo da paróquia (Node separado, Postgres gru),
-// isto é recorta-e-cola. Escrito no padrão de lá.
-//
-// Conteúdo real da Paróquia São José em RaphaLumen/ParoquiaPro/conteudo-saojose.md
-// (fonte da verdade). O que é FLUXO (intenção, batismo, Pix) entra em fatias.
+// isto é recorta-e-cola. Conteúdo real em ParoquiaPro/conteudo-saojose.md.
 
 const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
 
 // ---------------------------------------------------------------------------
-// MENU (12 itens da Maju). tipo: "fluxo" | "rapida". "rapida" = manda o texto.
+// MENU DE 10 ITENS (organização do Mario, 17/07 — cabe na lista sem submenu de
+// "Outros"). "submenu" agrupa 2 assuntos irmãos.
 // ---------------------------------------------------------------------------
 const MENU = [
-  { n: 1,  titulo: "Missa (horários e intenções)", tipo: "fluxo",  destino: "missa" },
-  { n: 2,  titulo: "Batismo",                       tipo: "fluxo",  destino: "batismo" },
-  { n: 3,  titulo: "Casamento",                     tipo: "rapida", destino: "casamento" },
-  { n: 4,  titulo: "Agendamentos com o padre",      tipo: "rapida", destino: "agenda_padre" },
-  { n: 5,  titulo: "Catequese (Infantil)",          tipo: "rapida", destino: "catequese" },
-  { n: 6,  titulo: "Catecumenato (Jovens e adultos)", tipo: "rapida", destino: "catecumenato" },
-  { n: 7,  titulo: "Dízimo",                         tipo: "rapida", destino: "dizimo" },
-  { n: 8,  titulo: "Informações bancárias",          tipo: "fluxo",  destino: "banco" },
-  { n: 9,  titulo: "2ª vias, declarações e certidões", tipo: "rapida", destino: "certidoes" },
-  { n: 10, titulo: "Programação semanal",           tipo: "rapida", destino: "programacao" },
-  { n: 11, titulo: "Creche Santo Antônio",          tipo: "rapida", destino: "creche" },
-  { n: 12, titulo: "Outros assuntos",               tipo: "rapida", destino: "outros" }
+  { n: 1,  titulo: "Missa e programação",       tipo: "submenu", destino: "missa" },
+  { n: 2,  titulo: "Batismo",                    tipo: "fluxo",   destino: "batismo" },
+  { n: 3,  titulo: "Casamento",                  tipo: "rapida",  destino: "casamento" },
+  { n: 4,  titulo: "Agendamento com o padre",    tipo: "rapida",  destino: "agenda_padre" },
+  { n: 5,  titulo: "Catequese / Catecumenato",   tipo: "submenu", destino: "catequese_cat" },
+  { n: 6,  titulo: "Dízimo",                     tipo: "rapida",  destino: "dizimo" },
+  { n: 7,  titulo: "Informações bancárias",      tipo: "fluxo",   destino: "banco" },
+  { n: 8,  titulo: "2ª vias e certidões",        tipo: "rapida",  destino: "certidoes" },
+  { n: 9,  titulo: "Creche Santo Antônio",       tipo: "rapida",  destino: "creche" },
+  { n: 10, titulo: "Outros assuntos",            tipo: "rapida",  destino: "outros" }
 ];
 
+// Submenus (2 opções cada). Cada sub-opção é "rapida" (texto) ou "fluxo".
+const SUBMENUS = {
+  missa: {
+    titulo: "Missa",
+    opcoes: [
+      { titulo: "Horários e programação", tipo: "rapida", destino: "programacao" },
+      { titulo: "Registrar intenção",     tipo: "fluxo",  destino: "intencao" }
+    ]
+  },
+  catequese_cat: {
+    titulo: "Catequese e Catecumenato",
+    opcoes: [
+      { titulo: "Catequese (infantil)",           tipo: "rapida", destino: "catequese" },
+      { titulo: "Catecumenato (jovens e adultos)", tipo: "rapida", destino: "catecumenato" }
+    ]
+  }
+};
+
 // ---------------------------------------------------------------------------
-// RESPOSTAS RÁPIDAS — texto EXATO da Maju (17/07). Não reescrever: o jeito
-// delas é o jeito do sistema.
+// RESPOSTAS RÁPIDAS — texto EXATO da Maju (17/07). Não reescrever.
 // ---------------------------------------------------------------------------
 const RESPOSTAS = {
   casamento:
@@ -142,11 +155,11 @@ const RESPOSTAS = {
     "Me conte no que posso ajudar que eu encaminho para a secretaria. 🙏"
 };
 
-// Texto para os fluxos ainda não construídos nesta bancada (fatias seguintes).
+// Fluxos ainda não construídos nesta bancada (próximas fatias).
 const EM_BREVE = {
-  missa:   "🙏 O agendamento de *intenções de Missa* já já entra aqui. (em construção)",
-  batismo: "🙏 O fluxo de *Batismo* já já entra aqui. (em construção)",
-  banco:   "🙏 As *Informações bancárias* com PIX e QR Code já já entram aqui. (em construção)"
+  batismo:  "🙏 O fluxo de *Batismo* já já entra aqui. (em construção)",
+  banco:    "🙏 As *Informações bancárias* com PIX e QR Code já já entram aqui. (em construção)",
+  intencao: "🙏 O *registro de intenção* na Missa já já entra aqui. (em construção)"
 };
 
 // ---------------------------------------------------------------------------
@@ -158,94 +171,90 @@ function estado(sessions, chatId) {
   return sessions[chatId].psj;
 }
 
-async function mostrarMenu(chatId, sessions) {
+async function mostrarMenu(chatId, sessions, cabecalho) {
   sessions[chatId].step = "psj_menu";
+  sessions[chatId].psj.submenu = null;
   await sendTyping(chatId);
-  await sendText(
-    chatId,
-    "⛪ *Paróquia São José - Piratininga*\n_(bancada de teste Rapha Lumen)_"
-  );
-  // A lista do WhatsApp aceita no máx. 10 itens e o menu tem 12. Para NÃO cair
-  // no fallback de texto (perder o clique), a última linha é "Outros" e agrupa
-  // os 3 itens menos pedidos (creche, programação, 2ª vias) num submenu.
-  // Assim a lista principal fica com 10 itens clicáveis. Os números de 1 a 12
-  // continuam válidos digitando, então quem sabe o número não perde nada.
-  const principais = MENU.filter(m => ![9, 10, 11].includes(m.n));   // 9 itens
-  const linhas = principais.map(m => ({ id: String(m.n), title: m.titulo }));
-  linhas.push({ id: "outros_mais", title: "Outros (certidões, programação, creche)" }); // 10º
   await sendOptionList(
     chatId,
-    "Como posso te ajudar hoje?",
-    linhas,
+    cabecalho || "⛪ *Paróquia São José*\nComo posso te ajudar hoje?",
+    MENU.map(m => ({ id: String(m.n), title: m.titulo })),
     { title: "Secretaria", buttonLabel: "Ver opções" }
   );
 }
 
-async function mostrarSubmenuOutros(chatId, sessions) {
-  sessions[chatId].step = "psj_menu";
+// Entrega uma "rapida" (texto) ou um "fluxo" (em construção) e volta ao menu.
+async function entregar(chatId, sessions, item) {
+  await sendTyping(chatId);
+  if (item.tipo === "rapida") {
+    await sendText(chatId, RESPOSTAS[item.destino] || "(sem texto)");
+  } else {
+    await sendText(chatId, EM_BREVE[item.destino] || "(em construção)");
+  }
+  // Volta ao menu já como lista clicável (o botão fica sempre à mão).
+  await mostrarMenu(chatId, sessions, "Posso te ajudar em algo mais? (ou digite *sair*)");
+}
+
+async function mostrarSubmenu(chatId, sessions, destino) {
+  const sub = SUBMENUS[destino];
+  sessions[chatId].step = "psj_submenu";
+  sessions[chatId].psj.submenu = destino;
   await sendTyping(chatId);
   await sendOptionList(
     chatId,
-    "Sobre qual assunto?",
-    [
-      { id: "9",  title: "2ª vias, declarações e certidões" },
-      { id: "10", title: "Programação semanal" },
-      { id: "11", title: "Creche Santo Antônio" },
-      { id: "12", title: "Outros assuntos" }
-    ],
-    { title: "Outros", buttonLabel: "Ver opções" }
+    `*${sub.titulo}*\nEscolha uma opção:`,
+    sub.opcoes.map((o, i) => ({ id: String(i + 1), title: o.titulo })),
+    { title: sub.titulo, buttonLabel: "Ver opções" }
   );
 }
 
 async function tratarEscolhaMenu(chatId, sessions, corpo) {
-  // "Outros" da lista principal abre o submenu com os itens agrupados.
-  if (String(corpo).trim().toLowerCase() === "outros_mais") {
-    await mostrarSubmenuOutros(chatId, sessions);
-    return;
-  }
-
   const n = parseInt(String(corpo).replace(/\D+/g, ""), 10);
   const item = MENU.find(m => m.n === n);
 
   if (!item) {
     await sendTyping(chatId);
-    await sendText(chatId, "Não entendi. Escolha um número de *1 a 12* (ou toque em *Ver opções*).");
+    await sendText(chatId, "Não entendi. Escolha um número de *1 a 10* (ou toque em *Ver opções*).");
     return;
   }
 
-  if (item.tipo === "rapida") {
-    await sendTyping(chatId);
-    await sendText(chatId, RESPOSTAS[item.destino] || "(sem texto)");
-    await sendTyping(chatId);
-    await sendText(chatId, "Posso te ajudar em algo mais? Toque em *Ver opções* ou digite o número. Para sair, digite *sair*.");
-    sessions[chatId].step = "psj_menu";
+  if (item.tipo === "submenu") {
+    await mostrarSubmenu(chatId, sessions, item.destino);
     return;
   }
+  await entregar(chatId, sessions, item);
+}
 
-  // fluxo ainda em construção nesta bancada
-  await sendTyping(chatId);
-  await sendText(chatId, EM_BREVE[item.destino] || "(em construção)");
-  await sendText(chatId, "Toque em *Ver opções* para voltar ao menu, ou digite *sair*.");
-  sessions[chatId].step = "psj_menu";
+async function tratarEscolhaSubmenu(chatId, sessions, corpo) {
+  const destino = sessions[chatId]?.psj?.submenu;
+  const sub = SUBMENUS[destino];
+  if (!sub) { await mostrarMenu(chatId, sessions); return; }
+
+  const i = parseInt(String(corpo).replace(/\D+/g, ""), 10) - 1;
+  const op = sub.opcoes[i];
+  if (!op) {
+    await sendTyping(chatId);
+    await sendText(chatId, `Não entendi. Escolha *1* ou *2* (ou toque em *Ver opções*).`);
+    return;
+  }
+  await entregar(chatId, sessions, op);
 }
 
 // ---------------------------------------------------------------------------
-// Ponto de entrada. O index.js chama isto quando corpo == "#psj" OU o step
-// atual começa com "psj_". Retorna true se tratou a mensagem.
+// Ponto de entrada. index.js chama quando corpo == "#psj" OU step começa com
+// "psj_". Retorna true se tratou.
 // ---------------------------------------------------------------------------
 async function handleParoquia(chatId, sessions, corpoMensagem) {
   const corpo = String(corpoMensagem || "").trim();
   const low = corpo.toLowerCase();
 
-  estado(sessions, chatId); // garante o namespace
+  estado(sessions, chatId);
 
-  // Entrar / reiniciar a bancada
   if (low === "#psj") {
     await mostrarMenu(chatId, sessions);
     return true;
   }
 
-  // Sair da bancada e devolver o controle ao fluxo normal
   if (low === "sair") {
     sessions[chatId].step = "finalizado";
     delete sessions[chatId].psj;
@@ -254,14 +263,11 @@ async function handleParoquia(chatId, sessions, corpoMensagem) {
   }
 
   const step = sessions[chatId]?.step || "";
-  if (!step.startsWith("psj_")) return false; // não é comigo
+  if (!step.startsWith("psj_")) return false;
 
-  if (step === "psj_menu") {
-    await tratarEscolhaMenu(chatId, sessions, corpo);
-    return true;
-  }
+  if (step === "psj_submenu") { await tratarEscolhaSubmenu(chatId, sessions, corpo); return true; }
+  if (step === "psj_menu")    { await tratarEscolhaMenu(chatId, sessions, corpo);    return true; }
 
-  // step psj_ desconhecido: volta ao menu
   await mostrarMenu(chatId, sessions);
   return true;
 }
