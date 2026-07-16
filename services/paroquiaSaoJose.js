@@ -20,7 +20,9 @@ const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
 // "Outros"). "submenu" agrupa 2 assuntos irmãos.
 // ---------------------------------------------------------------------------
 const MENU = [
-  { n: 1,  titulo: "Missa e programação",       tipo: "submenu", destino: "missa" },
+  // Item 1 leva "intenções" no título (senão ninguém descobre que dá p/
+  // cadastrar) + descrição com as 3 coisas. Pedido do Mario, 17/07.
+  { n: 1,  titulo: "Missa e intenções", desc: "Horários, intenções e programação", tipo: "submenu", destino: "missa" },
   { n: 2,  titulo: "Batismo",                    tipo: "fluxo",   destino: "batismo" },
   { n: 3,  titulo: "Casamento",                  tipo: "rapida",  destino: "casamento" },
   { n: 4,  titulo: "Agendamento com o padre",    tipo: "rapida",  destino: "agenda_padre" },
@@ -37,8 +39,8 @@ const SUBMENUS = {
   missa: {
     titulo: "Missa",
     opcoes: [
-      { titulo: "Horários e programação", tipo: "rapida", destino: "programacao" },
-      { titulo: "Registrar intenção",     tipo: "fluxo",  destino: "intencao" }
+      { titulo: "Horários e programação",  tipo: "rapida", destino: "programacao" },
+      { titulo: "Cadastrar intenção",      tipo: "fluxo",  destino: "intencao" }
     ]
   },
   catequese_cat: {
@@ -192,7 +194,7 @@ async function mostrarMenu(chatId, sessions, cabecalho) {
   await sendOptionList(
     chatId,
     cabecalho || "Como posso te ajudar hoje?",
-    MENU.map(m => ({ id: String(m.n), title: m.titulo })),
+    MENU.map(m => ({ id: String(m.n), title: m.titulo, ...(m.desc ? { description: m.desc } : {}) })),
     { title: "Secretaria", buttonLabel: "Ver opções" }
   );
 }
