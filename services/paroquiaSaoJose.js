@@ -274,9 +274,12 @@ async function handleParoquia(chatId, sessions, corpoMensagem) {
   }
 
   if (low === "sair") {
-    sessions[chatId].step = "finalizado";
-    delete sessions[chatId].psj;
-    await sendText(chatId, "Você saiu da bancada de teste da Paróquia. 🙏");
+    // Zera a sessão inteira (não só o namespace .psj) para devolver o teste ao
+    // estado "nova conversa": assim a próxima mensagem ("oi") reabre o menu
+    // normal do PhotoMusic. Antes marcava "finalizado" e o bot ignorava o "oi"
+    // (o Mario ficava preso após sair da bancada, teste 16/07).
+    delete sessions[chatId];
+    await sendText(chatId, "Você saiu da bancada de teste da Paróquia. Para voltar, digite *#psj*. 🙏");
     return true;
   }
 
