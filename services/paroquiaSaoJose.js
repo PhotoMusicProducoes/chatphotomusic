@@ -20,9 +20,11 @@ const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
 // "Outros"). "submenu" agrupa 2 assuntos irmãos.
 // ---------------------------------------------------------------------------
 const MENU = [
-  // Item 1 leva "intenções" no título (senão ninguém descobre que dá p/
-  // cadastrar) + descrição com as 3 coisas. Pedido do Mario, 17/07.
-  { n: 1,  titulo: "Missa e intenções", desc: "Horários, intenções e programação", tipo: "submenu", destino: "missa" },
+  // Item 1 (pedido do Mario, 17/07): no CORPO da mensagem aparece o nome
+  // completo (label), e a LINHA clicável da lista fica curta (titulo, limite
+  // ~24 chars) com a descrição embaixo. Assim a pessoa lê "intenções" nas
+  // duas formas de render.
+  { n: 1,  titulo: "Missa e intenções", label: "Horário de Missa, intenções e Programação", desc: "Horários, intenções e programação", tipo: "submenu", destino: "missa" },
   { n: 2,  titulo: "Batismo",                    tipo: "fluxo",   destino: "batismo" },
   { n: 3,  titulo: "Casamento",                  tipo: "rapida",  destino: "casamento" },
   { n: 4,  titulo: "Agendamento com o padre",    tipo: "rapida",  destino: "agenda_padre" },
@@ -194,7 +196,7 @@ async function mostrarMenu(chatId, sessions, cabecalho) {
   await sendOptionList(
     chatId,
     cabecalho || "Como posso te ajudar hoje?",
-    MENU.map(m => ({ id: String(m.n), title: m.titulo, ...(m.desc ? { description: m.desc } : {}) })),
+    MENU.map(m => ({ id: String(m.n), title: m.titulo, ...(m.label ? { label: m.label } : {}), ...(m.desc ? { description: m.desc } : {}) })),
     { title: "Secretaria", buttonLabel: "Ver opções" }
   );
 }

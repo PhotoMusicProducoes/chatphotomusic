@@ -36,11 +36,15 @@ const MAX_OPCOES = 10;
 
 /**
  * Monta o texto numerado que acompanha a lista (e vira o fallback).
+ * Usa `label` (texto longo) quando existe, senão `title`. Isso deixa o CORPO
+ * da mensagem mostrar o nome completo ("Horário de Missa, intenções e
+ * Programação") enquanto a LINHA clicável da lista fica curta (limite ~24
+ * chars). Retrocompatível: quem não passa `label` continua igual.
  * @param {string} pergunta
- * @param {Array<{id:string, title:string}>} opcoes
+ * @param {Array<{id:string, title:string, label?:string}>} opcoes
  */
 function textoNumerado(pergunta, opcoes) {
-  const linhas = opcoes.map(o => `*${o.id}* - ${o.title}`).join("\n");
+  const linhas = opcoes.map(o => `*${o.id}* - ${o.label || o.title}`).join("\n");
   return `${pergunta}\n\n${linhas}`;
 }
 
