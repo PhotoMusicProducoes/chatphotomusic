@@ -171,13 +171,27 @@ function estado(sessions, chatId) {
   return sessions[chatId].psj;
 }
 
+// Saudação de abertura da Maju (só na 1ª tela; nas voltas ao menu usamos um
+// cabeçalho curto). "_(teste)_" é a marquinha discreta da bancada — some quando
+// migrar pro bot real da paróquia.
+const SAUDACAO =
+  "Olá! Seja bem-vindo(a) à secretaria da *Paróquia São José*! 😊\n" +
+  "É um prazer falar com você!\n_(bancada de teste Rapha Lumen)_";
+
 async function mostrarMenu(chatId, sessions, cabecalho) {
+  const primeiraTela = !cabecalho;
   sessions[chatId].step = "psj_menu";
   sessions[chatId].psj.submenu = null;
+
+  if (primeiraTela) {
+    await sendTyping(chatId);
+    await sendText(chatId, SAUDACAO);
+  }
+
   await sendTyping(chatId);
   await sendOptionList(
     chatId,
-    cabecalho || "⛪ *Paróquia São José*\nComo posso te ajudar hoje?",
+    cabecalho || "Como posso te ajudar hoje?",
     MENU.map(m => ({ id: String(m.n), title: m.titulo })),
     { title: "Secretaria", buttonLabel: "Ver opções" }
   );
