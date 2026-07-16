@@ -3,7 +3,7 @@
 // Versão 2.1 — lê da API WordPress (PhotoMusic Pro), N links por serviço
 
 const fetch = require("node-fetch");
-const { sendText, sendTyping } = require("../utils/index.js");
+const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
 
 // Número do ChatBot — aparece no cabeçalho da mensagem para o cliente salvar
@@ -202,19 +202,33 @@ async function fluxoEventos(chatId, session) {
   if (eventos.length === 1) {
     await sendTyping(chatId);
     await sendText(chatId, await apresentarEvento(eventos[0].numero, chatId));
+
+    // ⚠️ FIX 2026-07-16 (caso Sofia, convidada do evento da Rafaela 12/07):
+    // o convidado baixou a foto e DEPOIS recebeu "Digite 1 e receba seu
+    // orçamento!" — spam de orçamento para quem só queria a própria foto.
+    // Causa: o step voltava para "aguardando_opcao", que o lembrete de
+    // orçamento abandonado caça. O lembrete JÁ tem a proteção
+    // (`if (step === PASSO_MENU_INICIAL && !menuInicialEnviado) continue`) e o
+    // caminho de VÁRIOS eventos já zerava a flag; este, de 1 evento só,
+    // esquecia. Zerar aqui também: encerra o atendimento do convidado e faz a
+    // próxima mensagem dele reabrir as boas-vindas.
     session.step = "aguardando_opcao";
+    session.menuInicialEnviado = false;
     return;
   }
 
-  // Mais de 1 evento → monta menu de escolha
-  let mensagem = "Qual evento você está participando? Digite apenas o número:\n\n";
-
-  eventos.forEach((e) => {
-    mensagem += `*${e.numero}* - ${e.nome}\n`;
-  });
-
+  // Mais de 1 evento → menu de escolha em LISTA clicável (2026-07-16).
+  // O público aqui é o CONVIDADO da festa, muitas vezes no meio do evento e
+  // com pressa: clicar é bem melhor que digitar. O sendOptionList leva o menu
+  // numerado no corpo, então quem não vê a lista digita como sempre, e acima
+  // de 10 eventos ele cai sozinho para texto.
   await sendTyping(chatId);
-  await sendText(chatId, mensagem);
+  await sendOptionList(
+    chatId,
+    "Qual evento você está participando?",
+    eventos.map(e => ({ id: String(e.numero), title: e.nome })),
+    { title: "Eventos", buttonLabel: "Ver eventos" }
+  );
 
   session.step = "aguardando_numero_evento";
   session.eventosLista = eventos;
