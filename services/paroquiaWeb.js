@@ -76,7 +76,7 @@ function paginaCalendario(msg) {
         <button class="mini">remover</button></form></li>`).join("") || "<li class='vazio'>nenhuma</li>";
 
   const periodos = (cal.periodos || []).map(p => `
-    <li>${esc(p.escopo === "so_local" ? "só" : "suspende")} — ${esc(p.inicio)} a ${esc(p.fim)} — ${esc((p.locais || []).join(", "))} ${p.motivo ? "(" + esc(p.motivo) + ")" : ""}
+    <li>${esc(p.escopo === "so_local" ? "só" : "suspende")} — ${esc(p.inicio)} a ${esc(p.fim)} — ${esc((p.locais || []).join(", "))}${p.horario ? " às " + esc(p.horario) : ""} ${p.motivo ? "(" + esc(p.motivo) + ")" : ""}
       <form method="post" action="/psj/remover-periodo" style="display:inline">
         ${campoSenha()}<input type="hidden" name="id" value="${p.id}">
         <button class="mini">remover</button></form></li>`).join("") || "<li class='vazio'>nenhum</li>";
@@ -128,6 +128,7 @@ ${msg ? `<p class="ok">${esc(msg)}</p>` : ""}
       <label>De</label><input type="date" name="inicio" required>
       <label>Até</label><input type="date" name="fim" required>
       <label>Local em festa</label><select name="local">${opcoesLocal}</select>
+      <label>Horário da missa da festa</label><input type="time" name="horario" required>
       <label>Motivo</label><input type="text" name="motivo" placeholder="opcional">
       <button>Aplicar</button>
     </form>
@@ -193,8 +194,8 @@ function registrarRotasParoquia(app) {
   });
 
   app.post("/psj/festa", guard, (req, res) => {
-    const { inicio, fim, local, motivo } = req.body;
-    calendario.adicionarPeriodo({ inicio, fim, escopo: "so_local", locais: [local], motivo });
+    const { inicio, fim, local, horario, motivo } = req.body;
+    calendario.adicionarPeriodo({ inicio, fim, escopo: "so_local", locais: [local], horario, motivo });
     res.send(paginaCalendario("Festa de capela aplicada."));
   });
 

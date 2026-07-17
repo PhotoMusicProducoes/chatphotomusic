@@ -87,10 +87,24 @@ function gerarMissas(agora, dias) {
 
     // períodos que cobrem este dia
     const pers = (cal.periodos || []).filter(p => dentro(dataStr, p.inicio, p.fim));
-    const suspenso = (local) => pers.some(p =>
-      (p.escopo === "suspende_locais" && p.locais.includes(local)) ||
-      (p.escopo === "so_local" && !p.locais.includes(local))
-    );
+
+    // FESTA com horário próprio (só_local + horario): gera a missa da festa no
+    // local, TODO dia do período, e o padrão normal desse local é substituído
+    // por ela. Ex.: novena de Santa Teresinha, missa diária às 19h30.
+    const festasHora = pers.filter(p => p.escopo === "so_local" && p.horario);
+    const locaisFestaHora = new Set(festasHora.flatMap(p => p.locais));
+    festasHora.forEach(p =>
+      p.locais.forEach(local => push(out, base, p.horario, local, false)));
+
+    const suspenso = (local) => {
+      if (pers.some(p => p.escopo === "suspende_locais" && p.locais.includes(local))) return true;
+      // só_local: suspende quem não está em NENHUM só_local do dia
+      const soLocais = pers.filter(p => p.escopo === "so_local");
+      if (soLocais.length && !soLocais.some(p => p.locais.includes(local))) return true;
+      // local em festa-com-horário: padrão dele já foi substituído pela missa da festa
+      if (locaisFestaHora.has(local)) return true;
+      return false;
+    };
 
     // padrão do dia (respeita vigência)
     (cal.padrao || [])
@@ -142,13 +156,14 @@ function adicionarExcecao({ data, hora, local, tipo, intencao, motivo }) {
   salvarCalendario(cal);
 }
 
-function adicionarPeriodo({ inicio, fim, escopo, locais, motivo }) {
+function adicionarPeriodo({ inicio, fim, escopo, locais, horario, motivo }) {
   const cal = lerCalendario();
   cal.periodos = cal.periodos || [];
   cal.periodos.push({
     id: proximoId(cal.periodos),
     inicio, fim, escopo,
     locais: Array.isArray(locais) ? locais : [locais],
+    horario: horario || undefined,   // só na festa (só_local): missa diária nesse horário
     motivo: motivo || ""
   });
   salvarCalendario(cal);
