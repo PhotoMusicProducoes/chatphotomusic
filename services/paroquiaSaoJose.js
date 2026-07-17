@@ -540,6 +540,23 @@ async function intTipo(chatId, sessions, corpo) {
     return;
   }
   sessions[chatId].psj.intencao.tipo = tipo;
+  // Aniversário de casamento: os anos viram as bodas no relatório do padre.
+  if (tipo === intencoesDB.TIPO_CASAMENTO) {
+    sessions[chatId].step = "psj_int_anos";
+    await sendTyping(chatId);
+    await sendText(chatId, "Quantos *anos de casados*?\n_(só o número, ex: 25)_");
+    return;
+  }
+  await pedirNomeOracao(chatId, sessions);
+}
+
+async function intAnosCasamento(chatId, sessions, corpo) {
+  const anos = parseInt(String(corpo).replace(/\D+/g, ""), 10);
+  if (!anos || anos < 1 || anos > 100) {
+    await sendText(chatId, "Informe só o *número* de anos de casados (ex: *25*).");
+    return;
+  }
+  sessions[chatId].psj.intencao.anos_casamento = anos;
   await pedirNomeOracao(chatId, sessions);
 }
 
@@ -556,6 +573,10 @@ async function intOutros(chatId, sessions, corpo) {
 async function pedirNomeOracao(chatId, sessions) {
   sessions[chatId].step = "psj_int_nome";
   await sendTyping(chatId);
+  if (sessions[chatId].psj.intencao.tipo === intencoesDB.TIPO_CASAMENTO) {
+    await sendText(chatId, "Qual o *nome do casal*?\n_(ex: Mario e Adriana)_");
+    return;
+  }
   await sendText(
     chatId,
     "Qual o *nome* da pessoa por quem devemos rezar?\n\n" +
@@ -625,6 +646,7 @@ async function intMissa(chatId, sessions, corpo) {
     "Confira os dados da intenção:\n\n" +
     `*Tipo:* ${it.tipo}\n` +
     `*${rotuloNomes}:* ${juntarNomes(it.nomes || [it.nome])}\n` +
+    (it.anos_casamento ? `*Casados há:* ${intencoesDB.rotuloBodas(it.anos_casamento)}\n` : "") +
     `*Missa:* ${missa.rotulo}\n` +
     `*Quem está pedindo:* ${sessions[chatId].psj.solicitante || "-"}\n\n` +
     "Está tudo certo?",
@@ -658,6 +680,7 @@ async function intConfirma(chatId, sessions, corpo) {
     nomes: nomes,
     missa_iso: it.missa?.iso,
     missa_rotulo: it.missa?.rotulo,
+    anos_casamento: it.anos_casamento || null,
     solicitante_nome: sessions[chatId].psj.solicitante || "",
     ofertante_whatsapp: String(chatId).replace("@c.us", ""),
     origem: "chatbot",
@@ -725,6 +748,7 @@ async function handleParoquia(chatId, sessions, corpoMensagem) {
   if (step === "psj_int_solicitante") { await intSolicitante(chatId, sessions, corpo); return true; }
   if (step === "psj_int_tipo")     { await intTipo(chatId, sessions, corpo);     return true; }
   if (step === "psj_int_outros")   { await intOutros(chatId, sessions, corpo);   return true; }
+  if (step === "psj_int_anos")     { await intAnosCasamento(chatId, sessions, corpo); return true; }
   if (step === "psj_int_nome")     { await intNome(chatId, sessions, corpo);     return true; }
   if (step === "psj_int_missa")    { await intMissa(chatId, sessions, corpo);    return true; }
   if (step === "psj_int_confirma") { await intConfirma(chatId, sessions, corpo); return true; }

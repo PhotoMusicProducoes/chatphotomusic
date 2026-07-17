@@ -191,7 +191,7 @@ function paginaIntencoes(msg) {
     corpo = grupos.map(g => {
       const linhas = g.intencoes.map(i =>
         `<li>
-          <span>${esc(i.tipo)} — <b>${esc(i.nome_oracao)}</b>${pedidoPor(i)}${i.origem === "secretaria" ? " <span class='tag'>secretaria</span>" : ""}</span>
+          <span>${esc(i.tipo)} — <b>${esc(intencoesDB.nomesFormatados(i))}</b>${pedidoPor(i)}${i.origem === "secretaria" ? " <span class='tag'>secretaria</span>" : ""}</span>
           ${formExcluir(i, "intencoes")}
         </li>`).join("");
       return `
@@ -256,8 +256,12 @@ ${corpo}
   <form method="post" action="/psj/intencao-nova">
     ${campoSenha()}
     <label>Missa</label><select name="missa_iso" required>${opcoesMissa}</select>
-    <label>Tipo</label><select name="tipo" onchange="document.getElementById('outro').style.display=this.value==='__outro'?'block':'none'">${opcoesTipo}</select>
+    <label>Tipo</label><select name="tipo" onchange="tipoMudou(this.value)">${opcoesTipo}</select>
     <input type="text" id="outro" name="tipo_outro" placeholder="descreva a intenção" style="display:none;margin-top:.4rem">
+    <div id="casamento" style="display:none">
+      <label>Anos de casados</label>
+      <input type="number" name="anos_casamento" min="1" max="100" placeholder="ex: 25 — sai como Bodas de Prata no relatório">
+    </div>
     <label>Nome(s) — separe por vírgula se mais de um</label><input type="text" name="nomes" required placeholder="ex: Cléa Nazeanze, João da Silva">
     <label>Quem pediu</label><input type="text" name="solicitante" placeholder="opcional — nome de quem solicitou">
     <button>Cadastrar intenção</button>
@@ -265,6 +269,13 @@ ${corpo}
 </section>
 
 <h2>Encerramentos</h2><ul class="lista">${hist}</ul>
+<script>
+// "Outros" pede a descrição; aniversário de casamento pede os anos de casados.
+function tipoMudou(v) {
+  document.getElementById('outro').style.display = v === '__outro' ? 'block' : 'none';
+  document.getElementById('casamento').style.display = v === ${JSON.stringify(intencoesDB.TIPO_CASAMENTO)} ? 'block' : 'none';
+}
+</script>
 </div></body></html>`;
 }
 
@@ -286,13 +297,18 @@ function paginaRelatorio(corteId) {
   // nomes que a secretaria já imprimiu. (Regra do Mario, 17/07.)
   const linhasEscrita = `<div class="escrita">${'<span class="ln"></span>'.repeat(4)}</div>`;
 
-  // O "excluir" e o "(pediu: ...)" são da conferência na tela: somem na
-  // impressão, onde o papel só precisa do nome e do tipo p/ o celebrante ler.
+  // UMA linha por TIPO, com todos os nomes daquele tipo (o que se multiplica são
+  // os nomes, não a intenção). O excluir some na impressão e é por REGISTRO, não
+  // por tipo, então mora na lista de pendentes / na conferência de tela.
   const blocos = [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([iso, g]) => `
     <h3>${esc(g.rotulo)}</h3>
-    <ol>${g.itens.map(i => `<li><b>${esc(i.nome_oracao)}</b> — ${esc(i.tipo)}
-      <span class="tela">${pedidoPor(i)} ${formExcluir(i, "relatorio", corte.id)}</span>
+    <ol>${intencoesDB.porTipo(g.itens).map(t => `<li>
+      <span class="tipo">${esc(t.tipo)}</span> — ${esc(t.nomes)}
       ${linhasEscrita}</li>`).join("")}</ol>
+    <div class="tela conferencia">
+      <p class="cap">Conferir e excluir repetida (não sai na impressão):</p>
+      ${g.itens.map(i => `<span class="conf">${esc(i.tipo)}: ${esc(intencoesDB.nomesFormatados(i))}${pedidoPor(i)} ${formExcluir(i, "relatorio", corte.id)}</span>`).join("")}
+    </div>
   `).join("") || "<p>Sem intenções neste relatório.</p>";
 
   const geradoEm = new Date(corte.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -306,9 +322,14 @@ function paginaRelatorio(corteId) {
   .sub{text-align:center;color:#555;margin:0 0 1rem;font-size:.9rem}
   h3{border-bottom:2px solid #333;padding-bottom:.2rem;margin:1.2rem 0 .4rem;break-after:avoid}
   ol{margin:.2rem 0 .8rem 1.4rem} li{padding:.15rem 0;break-inside:avoid}
+  .tipo{font-weight:bold}
   /* Linhas p/ o comentarista continuar a lista à mão, antes da Missa. */
   .escrita{margin:.15rem 0 .5rem}
   .ln{display:block;border-bottom:1px solid #aaa;height:1.05rem}
+  /* Bloco de conferência: só na tela (o excluir é por registro, não por tipo). */
+  .conferencia{background:#f7f7f7;border-radius:6px;padding:.5rem .7rem;margin:0 0 1rem;font-family:system-ui,sans-serif}
+  .cap{font-size:.75rem;color:#555;margin:0 0 .3rem}
+  .conf{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.8rem;padding:.15rem 0;border-bottom:1px solid #ececec}
   .barra{text-align:center;margin:14px 0}
   button{font:inherit;padding:.5rem 1rem;border:1px solid #333;background:#f3f3f3;border-radius:6px;cursor:pointer}
   .quem{color:#666;font-size:.78rem;font-family:system-ui,sans-serif}
@@ -426,7 +447,7 @@ function registrarRotasParoquia(app) {
 
   // Cadastro de intenção pela secretaria (pedido presencial/telefone).
   app.post("/psj/intencao-nova", guard, (req, res) => {
-    const { missa_iso, tipo, tipo_outro, nomes, solicitante } = req.body;
+    const { missa_iso, tipo, tipo_outro, nomes, solicitante, anos_casamento } = req.body;
     const listaNomes = String(nomes || "").split(/[,;]+/).map(n => n.trim()).filter(n => n.length >= 2);
     if (!missa_iso || listaNomes.length === 0) {
       return res.send(paginaIntencoes("Informe a Missa e ao menos um nome."));
@@ -438,6 +459,7 @@ function registrarRotasParoquia(app) {
       nomes: listaNomes,
       missa_iso,
       missa_rotulo: rotuloIso(missa_iso),
+      anos_casamento: tipo === intencoesDB.TIPO_CASAMENTO ? parseInt(anos_casamento, 10) || null : null,
       solicitante_nome: String(solicitante || "").trim(),
       origem: "secretaria"
     });
