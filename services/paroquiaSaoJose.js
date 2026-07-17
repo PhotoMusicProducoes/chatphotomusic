@@ -13,10 +13,94 @@
 // Migração: quando virar o repo da paróquia (Node separado, Postgres gru),
 // isto é recorta-e-cola. Conteúdo real em ParoquiaPro/conteudo-saojose.md.
 
+const fs = require("fs");
+const path = require("path");
 const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
 const { pixBrCode } = require("../utils/pixBrCode.js");
 const { sendImageBase64 } = require("../utils/sendImageBase64.js");
 const QRCode = require("qrcode");
+
+// ---------------------------------------------------------------------------
+// INTENÇÕES DE MISSA — dados
+// ---------------------------------------------------------------------------
+// Tipos que a Maju passou (17/07) + "Outros" (a pessoa digita).
+const TIPOS_INTENCAO = [
+  "7º dia de falecido",
+  "1 mês de falecido",
+  "1 ano de falecido",
+  "15 anos - aniversário",
+  "Saúde",
+  "Outros"
+];
+
+// Calendário da MATRIZ (só as missas que aceitam intenção pelo chat). Capela
+// nunca entra (comentarista). dia: 0=dom 1=seg ... 6=sáb. [OK 17/07, Maju]
+// Segunda não tem 19h30. (Regra de corte do ciclo = fatia 3b; aqui, fatia 3a,
+// o fiel só escolhe a missa e a intenção é gravada.)
+const CALENDARIO_MATRIZ = [
+  { dia: 1, hora: "07:00" },
+  { dia: 2, hora: "07:00" }, { dia: 2, hora: "19:30" },
+  { dia: 3, hora: "07:00" }, { dia: 3, hora: "19:30" },
+  { dia: 4, hora: "07:00" }, { dia: 4, hora: "19:30" },
+  { dia: 5, hora: "07:00" }, { dia: 5, hora: "19:30" },
+  { dia: 0, hora: "10:00" }, { dia: 0, hora: "19:30" }
+];
+
+// "Agora" no horário de São Paulo (o servidor roda em UTC/iad). Truque simples,
+// suficiente p/ a bancada; timezone fino fica p/ a migração ao Postgres gru.
+function agoraSP() {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+}
+
+const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+function rotuloMissa(dt) {
+  const dia = DIAS_SEMANA[dt.getDay()];
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const h = dt.getHours();
+  const min = dt.getMinutes();
+  const hora = min ? `${h}h${String(min).padStart(2, "0")}` : `${h}h`;
+  return `${dia}, ${dd}/${mm} - ${hora}`;
+}
+
+// Próximas `qtd` missas da matriz a partir de agora (SP).
+function proximasMissas(qtd) {
+  const agora = agoraSP();
+  const lista = [];
+  for (let d = 0; d < 14 && lista.length < qtd; d++) {
+    const base = new Date(agora);
+    base.setDate(agora.getDate() + d);
+    const dow = base.getDay();
+    CALENDARIO_MATRIZ
+      .filter(m => m.dia === dow)
+      .forEach(m => {
+        const [h, mi] = m.hora.split(":").map(Number);
+        const dt = new Date(base);
+        dt.setHours(h, mi, 0, 0);
+        if (dt > agora) lista.push({ iso: dt.toISOString(), rotulo: rotuloMissa(dt) });
+      });
+  }
+  return lista.sort((a, b) => a.iso.localeCompare(b.iso)).slice(0, qtd);
+}
+
+// Persistência isolada (arquivo próprio, NUNCA o banco do PhotoMusic). Formato
+// = tabela `intencoes` do schema Rapha Lumen Pro, p/ migrar sem reescrever.
+const DIR_DADOS = fs.existsSync("/data") ? "/data" : __dirname;
+const ARQ_INTENCOES = path.join(DIR_DADOS, "psj-intencoes.json");
+
+function lerIntencoes() {
+  try { return JSON.parse(fs.readFileSync(ARQ_INTENCOES, "utf8")); }
+  catch { return []; }
+}
+
+function gravarIntencao(reg) {
+  const arr = lerIntencoes();
+  arr.push(reg);
+  try { fs.writeFileSync(ARQ_INTENCOES, JSON.stringify(arr, null, 2)); }
+  catch (e) { console.error("🚨 [psj] Falha ao gravar intenção:", e.message); }
+  return reg;
+}
 
 // Contas para contribuição (item 7). Duas contas reais [OK 17/07, Maju]:
 // a da paróquia (dízimo/oferta) e a da Creche Santo Antônio (doação). Cada
@@ -236,8 +320,14 @@ async function mostrarMenu(chatId, sessions, cabecalho) {
 // separadas, copiáveis). Reusa as chaves da mesma conta do item 7.
 const CHAVES_POR_DESTINO = { creche: CONTAS.creche.chaves_alt };
 
-// Entrega uma "rapida" (texto) ou um "fluxo" (em construção) e volta ao menu.
+// Entrega uma "rapida" (texto) ou um "fluxo" e volta ao menu.
 async function entregar(chatId, sessions, item) {
+  // Fluxo de intenção (fatia 3a): inicia a máquina de estados própria.
+  if (item.tipo === "fluxo" && item.destino === "intencao") {
+    await iniciarIntencao(chatId, sessions);
+    return;
+  }
+
   await sendTyping(chatId);
   if (item.tipo === "rapida") {
     await sendText(chatId, RESPOSTAS[item.destino] || "(sem texto)");
@@ -388,6 +478,144 @@ async function tratarEscolhaBanco(chatId, sessions, corpo) {
 }
 
 // ---------------------------------------------------------------------------
+// INTENÇÕES DE MISSA — fluxo do fiel (fatia 3a)
+// Passos: tipo -> [Outros: digita] -> nome de quem recebe a oração -> escolhe
+// a missa -> confirma -> grava no arquivo isolado.
+// ---------------------------------------------------------------------------
+async function iniciarIntencao(chatId, sessions) {
+  sessions[chatId].psj.intencao = {};
+  sessions[chatId].step = "psj_int_tipo";
+  await sendTyping(chatId);
+  await sendOptionList(
+    chatId,
+    "Vamos registrar sua intenção de Missa 🙏\n\nQual o tipo de intenção?",
+    TIPOS_INTENCAO.map((t, i) => ({ id: String(i + 1), title: t })),
+    { title: "Intenção", buttonLabel: "Ver opções" }
+  );
+}
+
+async function intTipo(chatId, sessions, corpo) {
+  const i = parseInt(String(corpo).replace(/\D+/g, ""), 10) - 1;
+  const tipo = TIPOS_INTENCAO[i];
+  if (!tipo) {
+    await sendTyping(chatId);
+    await sendText(chatId, "Não entendi. Escolha um número da lista (ou toque em *Ver opções*).");
+    return;
+  }
+  if (tipo === "Outros") {
+    sessions[chatId].step = "psj_int_outros";
+    await sendTyping(chatId);
+    await sendText(chatId, "Descreva a intenção (ex: *ação de graças*, *conversão*, *emprego*):");
+    return;
+  }
+  sessions[chatId].psj.intencao.tipo = tipo;
+  await pedirNomeOracao(chatId, sessions);
+}
+
+async function intOutros(chatId, sessions, corpo) {
+  const txt = String(corpo || "").trim();
+  if (txt.length < 2) {
+    await sendText(chatId, "Descreva a intenção, por favor.");
+    return;
+  }
+  sessions[chatId].psj.intencao.tipo = txt;
+  await pedirNomeOracao(chatId, sessions);
+}
+
+async function pedirNomeOracao(chatId, sessions) {
+  sessions[chatId].step = "psj_int_nome";
+  await sendTyping(chatId);
+  await sendText(chatId, "Qual o *nome* da pessoa por quem devemos rezar?");
+}
+
+async function intNome(chatId, sessions, corpo) {
+  const nome = String(corpo || "").trim();
+  if (nome.length < 2) {
+    await sendText(chatId, "Informe o nome, por favor.");
+    return;
+  }
+  sessions[chatId].psj.intencao.nome = nome;
+
+  const missas = proximasMissas(6);
+  if (missas.length === 0) {
+    await sendText(chatId, "No momento não há missas disponíveis para intenção pelo chat. Procure a secretaria. 🙏");
+    await mostrarMenu(chatId, sessions, "Posso te ajudar em algo mais? (ou digite *sair*)");
+    return;
+  }
+  sessions[chatId].psj.intencao.missasOferecidas = missas;
+  sessions[chatId].step = "psj_int_missa";
+  await sendTyping(chatId);
+  await sendOptionList(
+    chatId,
+    "Para qual Missa?",
+    missas.map((m, i) => ({ id: String(i + 1), title: m.rotulo })),
+    { title: "Missas", buttonLabel: "Ver missas" }
+  );
+}
+
+async function intMissa(chatId, sessions, corpo) {
+  const missas = sessions[chatId].psj.intencao.missasOferecidas || [];
+  const i = parseInt(String(corpo).replace(/\D+/g, ""), 10) - 1;
+  const missa = missas[i];
+  if (!missa) {
+    await sendTyping(chatId);
+    await sendText(chatId, "Não entendi. Escolha uma das missas da lista (ou toque em *Ver missas*).");
+    return;
+  }
+  sessions[chatId].psj.intencao.missa = missa;
+  sessions[chatId].step = "psj_int_confirma";
+
+  const it = sessions[chatId].psj.intencao;
+  await sendTyping(chatId);
+  await sendOptionList(
+    chatId,
+    "Confira os dados da intenção:\n\n" +
+    `*Tipo:* ${it.tipo}\n` +
+    `*Nome:* ${it.nome}\n` +
+    `*Missa:* ${missa.rotulo}\n\n` +
+    "Está tudo certo?",
+    [
+      { id: "1", title: "Sim, registrar" },
+      { id: "2", title: "Não, começar de novo" }
+    ],
+    { title: "Confirmar", buttonLabel: "Ver opções" }
+  );
+}
+
+async function intConfirma(chatId, sessions, corpo) {
+  const r = String(corpo).replace(/\D+/g, "");
+  if (r === "2") {
+    await iniciarIntencao(chatId, sessions);
+    return;
+  }
+  if (r !== "1") {
+    await sendText(chatId, "Responda *1* para registrar ou *2* para começar de novo.");
+    return;
+  }
+
+  const it = sessions[chatId].psj.intencao || {};
+  // Formato = tabela `intencoes` (Rapha Lumen Pro). paroquia_id fixo 1 (bancada).
+  gravarIntencao({
+    paroquia_id: 1,
+    tipo: it.tipo,
+    nome_oracao: it.nome,
+    missa_iso: it.missa?.iso,
+    missa_rotulo: it.missa?.rotulo,
+    ofertante_whatsapp: String(chatId).replace("@c.us", ""),
+    origem: "chatbot",
+    criada_em: new Date().toISOString()
+  });
+
+  delete sessions[chatId].psj.intencao;
+  await sendTyping(chatId);
+  await sendText(
+    chatId,
+    `🙏 Intenção registrada!\n\nRezaremos por *${it.nome}* na Missa de *${it.missa?.rotulo}*.\nQue Deus abençoe você e sua família!`
+  );
+  await mostrarMenu(chatId, sessions, "Posso te ajudar em algo mais? (ou digite *sair*)");
+}
+
+// ---------------------------------------------------------------------------
 // Ponto de entrada. index.js chama quando corpo == "#psj" OU step começa com
 // "psj_". Retorna true se tratou.
 // ---------------------------------------------------------------------------
@@ -415,6 +643,11 @@ async function handleParoquia(chatId, sessions, corpoMensagem) {
   const step = sessions[chatId]?.step || "";
   if (!step.startsWith("psj_")) return false;
 
+  if (step === "psj_int_tipo")     { await intTipo(chatId, sessions, corpo);     return true; }
+  if (step === "psj_int_outros")   { await intOutros(chatId, sessions, corpo);   return true; }
+  if (step === "psj_int_nome")     { await intNome(chatId, sessions, corpo);     return true; }
+  if (step === "psj_int_missa")    { await intMissa(chatId, sessions, corpo);    return true; }
+  if (step === "psj_int_confirma") { await intConfirma(chatId, sessions, corpo); return true; }
   if (step === "psj_banco")   { await tratarEscolhaBanco(chatId, sessions, corpo);   return true; }
   if (step === "psj_submenu") { await tratarEscolhaSubmenu(chatId, sessions, corpo); return true; }
   if (step === "psj_menu")    { await tratarEscolhaMenu(chatId, sessions, corpo);    return true; }

@@ -72,3 +72,7 @@ PhotoMusic Local Server (PMLS)/
 GUIA RÁPIDO*/
 PAROQUIAS_CAPELAS.md
 Documento*.log
+
+# Dados da bancada de teste da paróquia (nunca versionar)
+psj-intencoes.json
+services/psj-intencoes.json
