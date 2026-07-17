@@ -33,6 +33,14 @@ const DOCUMENTOS = [
 const DOC_LABEL = Object.fromEntries(DOCUMENTOS.map(d => [d.id, d.label]));
 const EXT_POR_MIME = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
 
+// Declaração que padrinho e madrinha assinam (texto da ficha da paróquia).
+const DECLARACAO =
+  "Declaro que tenho ciência da responsabilidade assumida perante Deus, a Igreja, " +
+  "meu afilhado(a) e de minha função enquanto padrinho/madrinha. Informo também que " +
+  "todas as declarações feitas por mim são verdadeiras e de boa fé, e que assumo o " +
+  "compromisso com Deus de encaminhar e zelar por esta criança, hoje e sempre.";
+const ASSINANTES = ["padrinho", "madrinha"];
+
 // URL pública da bancada (p/ montar o link que a secretaria copia). Na produção
 // vira o domínio da paróquia no gru.
 const BASE = process.env.PSJ_BASE || "https://chatphotomusic.fly.dev";
@@ -177,6 +185,57 @@ function arquivoDoc(token, docId) {
   return { caminho: path.join(DIR_DOCS, doc.arquivo), mime: doc.mime, nome: doc.nome };
 }
 
+// ---- assinatura digital (fatia 4c) ----
+// Padrinho e madrinha desenham a assinatura aceitando a DECLARAÇÃO. Guardamos a
+// imagem + nome + declaração (snapshot) + data + HASH de integridade (se algum
+// campo mudar, o hash não bate). Uma por tipo: reassinar substitui.
+function salvarAssinatura(token, { tipo, dataUrl }) {
+  const reg = acharPorToken(token);
+  if (!reg) return { erro: "Link inválido." };
+  if (!ASSINANTES.includes(tipo)) return { erro: "Assinante inválido." };
+  const nome = reg[tipo + "_nome"];
+  if (!nome) return { erro: "Preencha o nome do " + tipo + " no formulário antes de assinar." };
+  const m = /^data:image\/png;base64,(.+)$/.exec(String(dataUrl || ""));
+  if (!m) return { erro: "Assinatura inválida." };
+  const buf = Buffer.from(m[1], "base64");
+  if (buf.length < 200) return { erro: "Assine no quadro antes de confirmar." };
+  if (buf.length > 3 * 1024 * 1024) return { erro: "Assinatura muito grande." };
+
+  try { fs.mkdirSync(DIR_DOCS, { recursive: true }); } catch (_) {}
+  const arquivo = `${token}__assinatura__${tipo}.png`;
+  try { fs.writeFileSync(path.join(DIR_DOCS, arquivo), buf); }
+  catch (e) { console.error("🚨 [psj-batismo] assinatura:", e.message); return { erro: "Falha ao salvar a assinatura." }; }
+
+  const assinado_em = new Date().toISOString();
+  const hash = crypto.createHash("sha256")
+    .update([token, tipo, nome, DECLARACAO, assinado_em].join("|")).digest("hex");
+  const reg2 = { tipo, nome, declaracao: DECLARACAO, assinado_em, arquivo, hash };
+
+  const arr = lerInscricoes();
+  const i = arr.findIndex(x => x.token === token);
+  arr[i].assinaturas = (arr[i].assinaturas || []).filter(a => a.tipo !== tipo);
+  arr[i].assinaturas.push(reg2);
+  salvar(arr);
+  return { ok: true, assinatura: reg2 };
+}
+
+function removerAssinatura(token, tipo) {
+  const arr = lerInscricoes();
+  const i = arr.findIndex(x => x.token === token);
+  if (i < 0) return;
+  const a = (arr[i].assinaturas || []).find(x => x.tipo === tipo);
+  if (a) { try { fs.unlinkSync(path.join(DIR_DOCS, a.arquivo)); } catch (_) {} }
+  arr[i].assinaturas = (arr[i].assinaturas || []).filter(x => x.tipo !== tipo);
+  salvar(arr);
+}
+
+function arquivoAssinatura(token, tipo) {
+  const reg = acharPorToken(token);
+  const a = reg && (reg.assinaturas || []).find(x => x.tipo === tipo);
+  if (!a) return null;
+  return { caminho: path.join(DIR_DOCS, a.arquivo), mime: "image/png" };
+}
+
 // ---------------------------------------------------------------------------
 // Formulário PÚBLICO (o fiel preenche). Espelha a ficha de papel da paróquia.
 // ---------------------------------------------------------------------------
@@ -205,6 +264,13 @@ function estiloForm() {
   .add{display:inline-block;background:#eff6ff;color:#1d4ed8;border:1px dashed #93c5fd;border-radius:8px;padding:.5rem .8rem;font-size:.88rem;cursor:pointer;margin-top:.2rem}
   .ov{display:none;position:fixed;inset:0;background:#0006;align-items:center;justify-content:center;z-index:9}
   .ov-box{background:#fff;padding:1rem 1.4rem;border-radius:10px;font-size:.95rem}
+  .declaracao{font-size:.85rem;color:#374151;background:#f9fafb;border-left:3px solid #93c5fd;padding:.6rem .8rem;border-radius:6px;margin:.2rem 0 1rem}
+  .ass{border-top:1px solid #eef0f2;padding:.7rem 0}
+  .pad{width:100%;height:150px;border:1px dashed #9ca3af;border-radius:8px;background:#fff;touch-action:none;display:block;margin:.4rem 0}
+  .ass-bts{display:flex;gap:8px;align-items:center} .assbt{width:auto;padding:.5rem 1.2rem}
+  .lnk{background:none;border:none;color:#6b7280;cursor:pointer;width:auto;padding:.3rem;font-size:.85rem}
+  .ass-feita{display:flex;align-items:center;gap:10px;margin:.3rem 0} .ass-feita img{height:70px;border:1px solid #e5e7eb;border-radius:6px;background:#fff}
+  .ok-min{color:#166534;font-size:.82rem} .rm{background:none;border:none;color:#a11;cursor:pointer;width:auto;padding:0;font-size:.78rem}
   </style>`;
 }
 
@@ -313,6 +379,72 @@ function secaoDocumentos(reg) {
   </script>`;
 }
 
+// Seção de ASSINATURA (fatia 4c). Padrinho e madrinha assinam desenhando na
+// tela, aceitando a declaração. Aparece depois de salvar a inscrição.
+function secaoAssinatura(reg) {
+  const assinaturas = reg.assinaturas || [];
+  const quadro = (tipo) => {
+    const titulo = tipo === "padrinho" ? "Padrinho" : "Madrinha";
+    const nome = reg[tipo + "_nome"];
+    const ja = assinaturas.find(a => a.tipo === tipo);
+    if (!nome) {
+      return `<div class="ass"><b>${titulo}</b>
+        <p class="hint">Preencha o nome do ${tipo} no formulário acima para poder assinar.</p></div>`;
+    }
+    if (ja) {
+      const data = new Date(ja.assinado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+      return `<div class="ass"><b>${titulo}: ${esc(nome)}</b>
+        <div class="ass-feita"><img src="/psj/b/${reg.token}/assinatura/${tipo}" alt="assinatura">
+        <span class="ok-min">✓ assinado em ${esc(data)}</span></div>
+        <button type="button" class="rm" onclick="refazer('${reg.token}','${tipo}')">assinar de novo</button></div>`;
+    }
+    return `<div class="ass"><b>${titulo}: ${esc(nome)}</b>
+      <canvas class="pad" id="pad_${tipo}" height="150"></canvas>
+      <div class="ass-bts">
+        <button type="button" class="lnk" onclick="limparPad('${tipo}')">limpar</button>
+        <button type="button" class="assbt" onclick="assinar('${reg.token}','${tipo}')">Assinar</button>
+      </div></div>`;
+  };
+
+  return `<section id="assinatura">
+    <h2>Assinatura dos padrinhos</h2>
+    <p class="declaracao">${esc(DECLARACAO)}</p>
+    ${quadro("padrinho")}
+    ${quadro("madrinha")}
+  </section>
+  <script>
+  var pads = {};
+  function montarPad(tipo){
+    var c = document.getElementById('pad_'+tipo); if(!c) return;
+    c.width = c.offsetWidth; // largura real do container
+    var ctx = c.getContext('2d'); var draw=false, last=null, dirty=false;
+    function pos(e){ var r=c.getBoundingClientRect(); var t=e.touches?e.touches[0]:e; return {x:t.clientX-r.left,y:t.clientY-r.top}; }
+    function start(e){ draw=true; last=pos(e); e.preventDefault(); }
+    function move(e){ if(!draw)return; var p=pos(e); ctx.strokeStyle='#111'; ctx.lineWidth=2.2; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; dirty=true; e.preventDefault(); }
+    function end(){ draw=false; }
+    c.addEventListener('mousedown',start); c.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+    c.addEventListener('touchstart',start,{passive:false}); c.addEventListener('touchmove',move,{passive:false}); c.addEventListener('touchend',end);
+    pads[tipo] = { c:c, ctx:ctx, clear:function(){ ctx.clearRect(0,0,c.width,c.height); dirty=false; }, dirty:function(){ return dirty; } };
+  }
+  function limparPad(tipo){ if(pads[tipo]) pads[tipo].clear(); }
+  async function assinar(token, tipo){
+    var p = pads[tipo]; if(!p) return;
+    if(!p.dirty()){ alert('Assine no quadro antes de confirmar.'); return; }
+    document.getElementById('ov').style.display='flex';
+    var r = await fetch('/psj/b/'+token+'/assinar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:tipo,dataUrl:p.c.toDataURL('image/png')})});
+    var j = await r.json();
+    if(j.ok){ location.reload(); } else { alert(j.erro||'Falha ao assinar.'); document.getElementById('ov').style.display='none'; }
+  }
+  async function refazer(token, tipo){
+    if(!confirm('Assinar de novo? A assinatura atual será substituída.')) return;
+    await fetch('/psj/b/'+token+'/assinar-excluir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:tipo})});
+    location.reload();
+  }
+  ['padrinho','madrinha'].forEach(montarPad);
+  </script>`;
+}
+
 function paginaForm(token, msg, erro) {
   const reg = acharPorToken(token);
   if (!reg) {
@@ -394,8 +526,8 @@ ${blocoPadrinho("Madrinha", "madrinha", {
 
 <button type="submit">${reg.status === "convite" ? "Enviar inscrição" : "Salvar alterações"}</button>
 </form>
-${reg.status !== "convite" ? secaoDocumentos(reg)
-  : `<p class="hint" style="text-align:center;margin-top:.6rem">Depois de enviar, você poderá anexar os documentos aqui mesmo. A assinatura entra na próxima etapa.</p>`}
+${reg.status !== "convite" ? secaoDocumentos(reg) + secaoAssinatura(reg)
+  : `<p class="hint" style="text-align:center;margin-top:.6rem">Depois de enviar, você poderá anexar os documentos e assinar aqui mesmo.</p>`}
 </div></body></html>`;
 }
 
@@ -421,5 +553,6 @@ module.exports = {
   proximasDatas, gerarConvite, acharPorToken, lerInscricoes,
   salvarPreenchimento, removerInscricao, linkDoToken,
   paginaForm, processarPost, esc,
-  DOCUMENTOS, DOC_LABEL, salvarDoc, removerDoc, arquivoDoc
+  DOCUMENTOS, DOC_LABEL, salvarDoc, removerDoc, arquivoDoc,
+  ASSINANTES, DECLARACAO, salvarAssinatura, removerAssinatura, arquivoAssinatura
 };

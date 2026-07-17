@@ -459,7 +459,20 @@ ${(() => {
     return `<div class="doc-item"><b>${esc(tp.label)}</b><div class="thumbs">${thumbs}</div></div>`;
   }).join("") + `</div>`;
 })()}
-<p class="hint">Conferência da secretaria. Assinatura digital e revisão (avisar a família) entram nas próximas etapas.</p>
+<h3>Assinaturas</h3>
+${(() => {
+  const ass = d.assinaturas || [];
+  return batismoDB.ASSINANTES.map(tp => {
+    const a = ass.find(x => x.tipo === tp);
+    const titulo = tp === "padrinho" ? "Padrinho" : "Madrinha";
+    if (!a) return `<div class="doc-item falta"><b>${titulo}</b><span class="quem">não assinou</span></div>`;
+    const data = new Date(a.assinado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    return `<div class="doc-item"><b>${titulo}: ${esc(a.nome)}</b>
+      <div class="thumbs"><img src="/psj/b/${d.token}/assinatura/${tp}" alt="assinatura" style="background:#fff"></div>
+      <span class="quem">assinado em ${esc(data)} · verificação ${esc(a.hash.slice(0, 12))}…</span></div>`;
+  }).join("");
+})()}
+<p class="hint">Conferência da secretaria. Revisão (marcar pendência e avisar a família) entra na próxima etapa.</p>
 </div></body></html>`;
 }
 
@@ -618,6 +631,19 @@ function registrarRotasParoquia(app) {
   app.get("/psj/b/:token/doc/:docId", (req, res) => {
     const a = batismoDB.arquivoDoc(req.params.token, req.params.docId);
     if (!a) return res.status(404).send("Documento não encontrado.");
+    res.type(a.mime);
+    res.sendFile(a.caminho);
+  });
+
+  // Assinatura digital (fatia 4c). Protegida pelo token.
+  app.post("/psj/b/:token/assinar", (req, res) => res.json(batismoDB.salvarAssinatura(req.params.token, req.body || {})));
+  app.post("/psj/b/:token/assinar-excluir", (req, res) => {
+    batismoDB.removerAssinatura(req.params.token, (req.body || {}).tipo);
+    res.json({ ok: true });
+  });
+  app.get("/psj/b/:token/assinatura/:tipo", (req, res) => {
+    const a = batismoDB.arquivoAssinatura(req.params.token, req.params.tipo);
+    if (!a) return res.status(404).send("Assinatura não encontrada.");
     res.type(a.mime);
     res.sendFile(a.caminho);
   });
