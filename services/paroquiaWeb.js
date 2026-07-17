@@ -10,6 +10,7 @@
 const calendario = require("./paroquiaCalendario.js");
 const intencoesDB = require("./paroquiaIntencoes.js");
 const batismoDB = require("./paroquiaBatismo.js");
+const { sendText } = require("../utils/sendText.js");
 
 const SENHA = process.env.PSJ_SENHA || "saojose"; // bancada; trocar na produção
 const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -426,10 +427,32 @@ function paginaBatismoFicha(token) {
 .docs-grid{display:grid;gap:8px} .doc-item{background:#fff;border:1px solid #eef0f2;border-radius:8px;padding:.5rem .7rem;font-size:.85rem}
 .doc-item.falta{display:flex;justify-content:space-between;align-items:center;border-color:#fecaca;background:#fef2f2}
 .thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:.4rem} .thumbs img{width:76px;height:76px;object-fit:cover;border-radius:6px;border:1px solid #d1d5db}
-.thumbs .pdf{padding:.35rem .6rem;background:#f3f4f6;border-radius:6px;text-decoration:none;color:#374151;font-size:.8rem}</style></head><body>
+.thumbs .pdf{padding:.35rem .6rem;background:#f3f4f6;border-radius:6px;text-decoration:none;color:#374151;font-size:.8rem}
+.st{display:inline-block;padding:.15rem .6rem;border-radius:999px;font-size:.8rem;font-weight:600}
+.st.recebida{background:#dbeafe;color:#1d4ed8} .st.pendente{background:#fef3c7;color:#92400e} .st.aprovada{background:#dcfce7;color:#166534} .st.convite{background:#e5e7eb;color:#374151}
+.rev{background:#fff;border:1px solid #eef0f2;border-radius:10px;padding:14px;margin:1rem 0}
+.rev textarea{width:100%;font:inherit;padding:.5rem;border:1px solid #d1d5db;border-radius:8px;min-height:64px}
+.rev .bts{display:flex;gap:8px;flex-wrap:wrap;margin-top:.5rem} .rev button{width:auto;padding:.5rem 1rem}
+.bt-pend{background:#d97706} .bt-aprov{background:#16a34a}</style></head><body>
 <div class="wrap">
 <h1>Ficha de Batismo</h1>
-<p class="sub">Batismo: ${quando}</p>
+<p class="sub">Batismo: ${quando} · <span class="st ${esc(d.status)}">${esc({ convite: "aguardando preenchimento", recebida: "recebida", pendente: "pendente", aprovada: "aprovada" }[d.status] || d.status)}</span></p>
+${d.status === "pendente" && d.pendencia_texto ? `<p class="erro">Pendência enviada à família: ${esc(d.pendencia_texto)}</p>` : ""}
+
+<div class="rev">
+  <b>Revisão da secretaria</b>
+  <p class="hint">Confira os dados, documentos e assinaturas. Marque pendência (a família recebe no WhatsApp o que corrigir) ou aprove.</p>
+  <form method="post" action="/psj/batismo-revisar">
+    ${campoSenha()}<input type="hidden" name="token" value="${esc(token)}">
+    <label style="font-size:.85rem">O que a família precisa corrigir?</label>
+    <textarea name="pendencia" placeholder="ex: a foto da certidão de nascimento está ilegível; falta o comprovante de crisma da madrinha">${esc(d.pendencia_texto || "")}</textarea>
+    <div class="bts">
+      <button class="bt-pend" name="acao" value="pendente">⚠️ Marcar pendência e avisar no WhatsApp</button>
+      <button class="bt-aprov" name="acao" value="aprovada">✓ Aprovar inscrição</button>
+    </div>
+    <p class="hint">${d.whatsapp ? "WhatsApp da família: " + esc(d.whatsapp) : "⚠️ Sem WhatsApp cadastrado: o aviso não sai, mas a família vê a pendência ao reabrir o link."}</p>
+  </form>
+</div>
 <h3>Criança</h3><table>
   ${linha("Nome", d.crianca_nome)}${linha("Nascimento", d.crianca_nascimento)}
   ${linha("Cidade", d.crianca_cidade)}${linha("UF", d.crianca_uf)}${linha("Naturalidade", d.crianca_natural)}</table>
@@ -613,6 +636,20 @@ function registrarRotasParoquia(app) {
     res.send(paginaBatismo("Inscrição excluída."));
   });
   app.get("/psj/batismo/:token", guard, (req, res) => res.send(paginaBatismoFicha(req.params.token)));
+  // Revisão da secretaria (fatia 4d): marca pendência/aprova e avisa no WhatsApp.
+  app.post("/psj/batismo-revisar", guard, async (req, res) => {
+    const { token, acao, pendencia } = req.body;
+    const r = batismoDB.revisar(token, acao, pendencia);
+    if (r.erro) return res.send(paginaBatismo(r.erro));
+    let msg = acao === "aprovada" ? "Inscrição aprovada." : "Pendência registrada.";
+    if (r.aviso && r.aviso.whatsapp) {
+      try { await sendText(r.aviso.whatsapp, r.aviso.mensagem); msg += " Aviso enviado no WhatsApp da família."; }
+      catch (e) { msg += " (Não consegui enviar o WhatsApp agora; a família vê ao reabrir o link.)"; }
+    } else if (r.aviso) {
+      msg += " Sem WhatsApp cadastrado: a família vê ao reabrir o link.";
+    }
+    res.send(paginaBatismo(msg));
+  });
 
   // Formulário PÚBLICO (o fiel preenche; sem senha, protegido pelo token).
   app.get("/psj/b/:token", (req, res) => res.send(batismoDB.paginaForm(req.params.token, req.query.msg)));
@@ -641,6 +678,8 @@ function registrarRotasParoquia(app) {
     batismoDB.removerAssinatura(req.params.token, (req.body || {}).tipo);
     res.json({ ok: true });
   });
+  // Família devolve p/ conferência depois de corrigir a pendência (fatia 4d).
+  app.post("/psj/b/:token/corrigido", (req, res) => res.json(batismoDB.marcarCorrigido(req.params.token)));
   app.get("/psj/b/:token/assinatura/:tipo", (req, res) => {
     const a = batismoDB.arquivoAssinatura(req.params.token, req.params.tipo);
     if (!a) return res.status(404).send("Assinatura não encontrada.");

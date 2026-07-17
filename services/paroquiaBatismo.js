@@ -236,6 +236,65 @@ function arquivoAssinatura(token, tipo) {
   return { caminho: path.join(DIR_DOCS, a.arquivo), mime: "image/png" };
 }
 
+// ---- revisão da secretaria (fatia 4d) ----
+// Marca pendente (com o que corrigir) ou aprovada. Devolve o aviso a enviar no
+// WhatsApp (o route é quem envia, p/ o módulo ficar testável sem rede).
+function revisar(token, status, pendencia) {
+  const arr = lerInscricoes();
+  const i = arr.findIndex(x => x.token === token);
+  if (i < 0) return { erro: "Inscrição não encontrada." };
+  if (!["pendente", "aprovada", "recebida"].includes(status)) return { erro: "Status inválido." };
+  if (status === "pendente" && !String(pendencia || "").trim()) {
+    return { erro: "Descreva o que a família precisa corrigir." };
+  }
+  arr[i].status = status;
+  arr[i].pendencia_texto = status === "pendente" ? String(pendencia).trim() : "";
+  arr[i].revisado_em = new Date().toISOString();
+  salvar(arr);
+
+  const reg = arr[i];
+  const crianca = reg.crianca_nome || "a criança";
+  let aviso = null;
+  if (status === "pendente") {
+    aviso = {
+      whatsapp: reg.whatsapp,
+      mensagem:
+        "⛪ *Paróquia São José - Inscrição de Batismo*\n\n" +
+        `Olá! Revisamos a inscrição de batismo de *${crianca}* e precisamos de um ajuste:\n\n` +
+        `${reg.pendencia_texto}\n\n` +
+        "Por favor, acesse o link da inscrição e corrija:\n" +
+        `${linkDoToken(token)}\n\n` +
+        "Qualquer dúvida, fale com a secretaria. 🙏"
+    };
+  } else if (status === "aprovada") {
+    const quando = reg.batismo_data
+      ? `${reg.batismo_data.split("-").reverse().join("/")} - ${reg.batismo_local || ""}, às 10h`
+      : "a confirmar";
+    aviso = {
+      whatsapp: reg.whatsapp,
+      mensagem:
+        "⛪ *Paróquia São José - Inscrição de Batismo*\n\n" +
+        `Boa notícia! A inscrição de batismo de *${crianca}* está *confirmada*. 🎉\n` +
+        `Data: ${quando}.\n\n` +
+        "Que Deus abençoe! 🙏"
+    };
+  }
+  return { ok: true, reg, aviso };
+}
+
+// A família devolve p/ conferência depois de corrigir (fecha o ciclo sem
+// precisar reenviar o formulário todo).
+function marcarCorrigido(token) {
+  const arr = lerInscricoes();
+  const i = arr.findIndex(x => x.token === token);
+  if (i < 0 || arr[i].status !== "pendente") return { erro: "Nada a corrigir." };
+  arr[i].status = "recebida";
+  arr[i].pendencia_texto = "";
+  arr[i].corrigido_em = new Date().toISOString();
+  salvar(arr);
+  return { ok: true };
+}
+
 // ---------------------------------------------------------------------------
 // Formulário PÚBLICO (o fiel preenche). Espelha a ficha de papel da paróquia.
 // ---------------------------------------------------------------------------
@@ -271,6 +330,8 @@ function estiloForm() {
   .lnk{background:none;border:none;color:#6b7280;cursor:pointer;width:auto;padding:.3rem;font-size:.85rem}
   .ass-feita{display:flex;align-items:center;gap:10px;margin:.3rem 0} .ass-feita img{height:70px;border:1px solid #e5e7eb;border-radius:6px;background:#fff}
   .ok-min{color:#166534;font-size:.82rem} .rm{background:none;border:none;color:#a11;cursor:pointer;width:auto;padding:0;font-size:.78rem}
+  .pend{background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:.8rem 1rem;margin-bottom:14px}
+  .pend p{margin:.3rem 0} .corrigi{background:#d97706;margin-top:.4rem}
   </style>`;
 }
 
@@ -468,6 +529,14 @@ function paginaForm(token, msg, erro) {
 <p class="sub">Paróquia São José <span class="tag">bancada de teste - use dados fictícios</span></p>
 ${erro ? `<p class="erro">${esc(erro)}</p>` : ""}
 ${msg ? `<p class="ok">${esc(msg)}</p>` : ""}
+${d.status === "pendente" && d.pendencia_texto ? `<div class="pend">
+  <b>⚠️ A secretaria pediu um ajuste:</b>
+  <p>${esc(d.pendencia_texto)}</p>
+  <p class="hint">Corrija abaixo (dados, documento ou assinatura) e toque em <b>Já corrigi</b>.</p>
+  <button type="button" class="corrigi" onclick="jaCorrigi('${esc(token)}')">Já corrigi, enviar para conferência</button>
+</div>
+<script>async function jaCorrigi(t){var r=await fetch('/psj/b/'+t+'/corrigido',{method:'POST'});if((await r.json()).ok)location.reload();else alert('Tente de novo.');}</script>` : ""}
+${d.status === "aprovada" ? `<p class="ok">✓ Inscrição <b>confirmada</b> pela secretaria. 🎉</p>` : ""}
 <form method="post" action="/psj/b/${esc(token)}">
 
 <section>
@@ -554,5 +623,6 @@ module.exports = {
   salvarPreenchimento, removerInscricao, linkDoToken,
   paginaForm, processarPost, esc,
   DOCUMENTOS, DOC_LABEL, salvarDoc, removerDoc, arquivoDoc,
-  ASSINANTES, DECLARACAO, salvarAssinatura, removerAssinatura, arquivoAssinatura
+  ASSINANTES, DECLARACAO, salvarAssinatura, removerAssinatura, arquivoAssinatura,
+  revisar, marcarCorrigido
 };
