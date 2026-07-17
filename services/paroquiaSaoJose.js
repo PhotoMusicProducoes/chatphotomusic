@@ -178,14 +178,13 @@ const RESPOSTAS = {
     "*Confissões:* antes das Missas da noite\n" +
     "*Jovens Sarados:* Domingo 17h",
 
+  // Sem as chaves Pix no texto: elas vão em mensagens separadas (copiáveis)
+  // via enviarChavesPix — ver CHAVES_POR_DESTINO / entregar().
   creche:
     "*Creche Santo Antônio*\n\n" +
     "Atende diariamente 50 crianças em horário integral, com educação infantil de qualidade, 4 refeições diárias e atividades de desenvolvimento social.\n\n" +
     "Venha visitar: Estrada Frei Orlando, 370 - Jacaré, Piratininga.\n\n" +
-    "Para fazer uma *doação* (PIX):\n" +
-    "Chave Pix CNPJ: 30147995007949\n" +
-    "Chave Pix Celular: 21985560659\n\n" +
-    "Ou por *transferência*: Banco Sicredi (748) - Ag 0720 - C/C 69674-1",
+    "Para doar por *transferência*: Banco Sicredi (748) - Ag 0720 - C/C 69674-1.",
 
   outros:
     "*Outros assuntos*\n\n" +
@@ -233,11 +232,18 @@ async function mostrarMenu(chatId, sessions, cabecalho) {
   );
 }
 
+// Destinos de resposta rápida que também mostram chaves Pix (em mensagens
+// separadas, copiáveis). Reusa as chaves da mesma conta do item 7.
+const CHAVES_POR_DESTINO = { creche: CONTAS.creche.chaves_alt };
+
 // Entrega uma "rapida" (texto) ou um "fluxo" (em construção) e volta ao menu.
 async function entregar(chatId, sessions, item) {
   await sendTyping(chatId);
   if (item.tipo === "rapida") {
     await sendText(chatId, RESPOSTAS[item.destino] || "(sem texto)");
+    if (CHAVES_POR_DESTINO[item.destino]) {
+      await enviarChavesPix(chatId, CHAVES_POR_DESTINO[item.destino]);
+    }
   } else {
     await sendText(chatId, EM_BREVE[item.destino] || "(em construção)");
   }
@@ -295,6 +301,27 @@ async function tratarEscolhaSubmenu(chatId, sessions, corpo) {
 }
 
 // ---------------------------------------------------------------------------
+// CHAVES PIX — cada VALOR numa mensagem própria (2026-07-16, Mario).
+// No WhatsApp, copiar = segurar a mensagem, que copia a mensagem INTEIRA. Se o
+// CNPJ estiver junto do rótulo, copia rótulo+número. Então mandamos o rótulo
+// numa msg e o valor sozinho na seguinte — aí a pessoa segura e copia só o
+// número. (Telefone e e-mail viram link e já dão pra copiar, mas mantemos o
+// mesmo padrão pra ficar consistente.) O delay garante a ordem de entrega.
+// ---------------------------------------------------------------------------
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function enviarChavesPix(chatId, chaves) {
+  await sendTyping(chatId);
+  await sendText(chatId, "Ou use a *chave Pix* direto no seu banco. Toque e segure o número para *copiar* 👇");
+  for (const k of chaves) {
+    await delay(400);
+    await sendText(chatId, `*Chave Pix ${k.rotulo}:*`);
+    await delay(300);
+    await sendText(chatId, k.valor);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ITEM 7 — INFORMAÇÕES BANCÁRIAS (Pix Copia e Cola + QR no chat)
 // ---------------------------------------------------------------------------
 async function abrirBanco(chatId, sessions) {
@@ -333,20 +360,15 @@ async function enviarPix(chatId, sessions, chaveConta) {
     // Sem imagem, o copia-e-cola acima já resolve.
   }
 
-  // Chaves Pix separadas e rotuladas (a pessoa vê qual é qual e digita a que
-  // preferir no banco, caso não use o copia-e-cola).
-  const linhasChaves = (c.chaves_alt || [])
-    .map(k => `Chave Pix ${k.rotulo}: ${k.valor}`)
-    .join("\n");
-  await sendTyping(chatId);
-  await sendText(chatId, "Se preferir, use a *chave Pix* diretamente no seu banco:\n\n" + linhasChaves);
+  // Chaves Pix, cada valor numa mensagem própria (dá pra copiar o CNPJ).
+  await enviarChavesPix(chatId, c.chaves_alt);
 
   // Dados da conta para quem prefere depósito/transferência (diferente de Pix).
-  await sendTyping(chatId);
+  await delay(400);
   await sendText(
     chatId,
     "Ou, se preferir *depósito ou transferência*:\n" +
-    `Banco: ${c.banco}\nAgência: ${c.agencia}\nConta: ${c.conta}\nCNPJ: ${c.chave}` +
+    `Banco: ${c.banco}\nAgência: ${c.agencia}\nConta: ${c.conta}` +
     "\n\n_Que Deus recompense a sua generosidade!_ 🙏"
   );
 
