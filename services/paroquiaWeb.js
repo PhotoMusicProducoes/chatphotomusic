@@ -495,7 +495,37 @@ ${(() => {
       <span class="quem">assinado em ${esc(data)} · verificação ${esc(a.hash.slice(0, 12))}…</span></div>`;
   }).join("");
 })()}
-<p class="hint">Conferência da secretaria. Revisão (marcar pendência e avisar a família) entra na próxima etapa.</p>
+${(() => {
+  const ag = d.agenda || {};
+  const c = ag.compareceu || {};
+  const opcLocal = batismoDB.LOCAIS_BATISMO.map(l =>
+    `<option value="${esc(l)}" ${(ag.local || d.batismo_local) === l ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const ck = (name, on, txt) => `<label class="ck"><input type="checkbox" name="${name}" ${on ? "checked" : ""}> ${txt}</label>`;
+  return `<h3>Agenda da pastoral</h3>
+  <div class="rev">
+    <p class="hint">Parte preenchida pela equipe de Batismo: palestra, data da celebração, celebrante e agente.</p>
+    <form method="post" action="/psj/batismo-agenda">
+      ${campoSenha()}<input type="hidden" name="token" value="${esc(token)}">
+      <label style="font-size:.85rem">Data da palestra (pais e padrinhos)</label>
+      <input type="date" name="agenda_palestra_data" value="${esc(ag.palestra_data || "")}" style="width:auto">
+      <div style="margin:.4rem 0"><span class="hint">Compareceu à palestra:</span>
+        <div class="locais">${ck("compareceu_pai", c.pai, "Pai")} ${ck("compareceu_mae", c.mae, "Mãe")} ${ck("compareceu_padrinho", c.padrinho, "Padrinho")} ${ck("compareceu_madrinha", c.madrinha, "Madrinha")}</div>
+      </div>
+      <label style="font-size:.85rem">Data do Batismo</label>
+      <input type="date" name="agenda_batismo_data" value="${esc(ag.batismo_data || d.batismo_data || "")}" style="width:auto">
+      <label style="font-size:.85rem">Local</label>
+      <select name="agenda_local">${opcLocal}</select>
+      <label style="font-size:.85rem">Celebrante</label>
+      <input type="text" name="agenda_celebrante" value="${esc(ag.celebrante || "")}" placeholder="ex: Pe. Marcos André">
+      <label style="font-size:.85rem">Agente pastoral</label>
+      <input type="text" name="agenda_agente" value="${esc(ag.agente || "")}">
+      <label class="ck" style="margin-top:.5rem"><input type="checkbox" name="avisar"> Avisar a família no WhatsApp (palestra, data e celebrante)</label>
+      <div class="bts"><button class="bt-aprov" style="background:#2563eb">Salvar agenda</button></div>
+      ${ag.atualizada_em ? `<p class="hint">Última atualização: ${esc(new Date(ag.atualizada_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }))}</p>` : ""}
+    </form>
+  </div>`;
+})()}
+<p class="hint">Conferência e agenda da secretaria/pastoral.</p>
 </div></body></html>`;
 }
 
@@ -647,6 +677,17 @@ function registrarRotasParoquia(app) {
       catch (e) { msg += " (Não consegui enviar o WhatsApp agora; a família vê ao reabrir o link.)"; }
     } else if (r.aviso) {
       msg += " Sem WhatsApp cadastrado: a família vê ao reabrir o link.";
+    }
+    res.send(paginaBatismo(msg));
+  });
+  // Agenda da pastoral (fatia 4e): palestra, data do batismo, celebrante, agente.
+  app.post("/psj/batismo-agenda", guard, async (req, res) => {
+    const r = batismoDB.salvarAgenda(req.body.token, req.body || {});
+    if (r.erro) return res.send(paginaBatismo(r.erro));
+    let msg = "Agenda salva.";
+    if (r.aviso && r.aviso.whatsapp) {
+      try { await sendText(r.aviso.whatsapp, r.aviso.mensagem); msg += " Família avisada no WhatsApp."; }
+      catch (e) { msg += " (Não consegui enviar o WhatsApp agora.)"; }
     }
     res.send(paginaBatismo(msg));
   });

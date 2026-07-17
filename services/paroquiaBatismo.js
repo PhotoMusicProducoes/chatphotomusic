@@ -282,6 +282,48 @@ function revisar(token, status, pendencia) {
   return { ok: true, reg, aviso };
 }
 
+// ---- agenda da pastoral (fatia 4e) ----
+// A "parte preenchida pela equipe de Batismo" da ficha: data da palestra + quem
+// compareceu, data/local do batismo, celebrante e agente pastoral. Preenchida
+// pela secretaria/pastoral. Opcionalmente avisa a família no WhatsApp.
+const LOCAIS_BATISMO = ["Matriz São José", "Capela Santa Teresinha (Camboinhas)", "Capela N. Sra. da Penha (Tibau)"];
+
+function ddmmaa(iso) { return iso ? String(iso).split("-").reverse().join("/") : ""; }
+
+function mensagemAgenda(reg, ag) {
+  const crianca = reg.crianca_nome || "a criança";
+  const linhas = ["⛪ *Paróquia São José - Batismo de " + crianca + "*", ""];
+  if (ag.palestra_data) linhas.push(`📅 *Palestra* de pais e padrinhos: ${ddmmaa(ag.palestra_data)}`);
+  if (ag.batismo_data) linhas.push(`💧 *Batismo:* ${ddmmaa(ag.batismo_data)}${ag.local ? " - " + ag.local : ""}, às 10h`);
+  if (ag.celebrante) linhas.push(`Celebrante: ${ag.celebrante}`);
+  linhas.push("", "Qualquer dúvida, fale com a secretaria. 🙏");
+  return linhas.join("\n");
+}
+
+function salvarAgenda(token, body) {
+  const arr = lerInscricoes();
+  const i = arr.findIndex(x => x.token === token);
+  if (i < 0) return { erro: "Inscrição não encontrada." };
+  const ag = {
+    palestra_data: body.agenda_palestra_data || "",
+    compareceu: {
+      pai: !!body.compareceu_pai, mae: !!body.compareceu_mae,
+      padrinho: !!body.compareceu_padrinho, madrinha: !!body.compareceu_madrinha
+    },
+    batismo_data: body.agenda_batismo_data || "",
+    local: body.agenda_local || "",
+    celebrante: String(body.agenda_celebrante || "").trim(),
+    agente: String(body.agenda_agente || "").trim(),
+    atualizada_em: new Date().toISOString()
+  };
+  arr[i].agenda = ag;
+  salvar(arr);
+  const aviso = (body.avisar && arr[i].whatsapp)
+    ? { whatsapp: arr[i].whatsapp, mensagem: mensagemAgenda(arr[i], ag) }
+    : null;
+  return { ok: true, aviso };
+}
+
 // A família devolve p/ conferência depois de corrigir (fecha o ciclo sem
 // precisar reenviar o formulário todo).
 function marcarCorrigido(token) {
@@ -624,5 +666,6 @@ module.exports = {
   paginaForm, processarPost, esc,
   DOCUMENTOS, DOC_LABEL, salvarDoc, removerDoc, arquivoDoc,
   ASSINANTES, DECLARACAO, salvarAssinatura, removerAssinatura, arquivoAssinatura,
-  revisar, marcarCorrigido
+  revisar, marcarCorrigido,
+  LOCAIS_BATISMO, salvarAgenda
 };
