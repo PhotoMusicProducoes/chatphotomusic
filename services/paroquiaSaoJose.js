@@ -485,16 +485,41 @@ async function tratarEscolhaBanco(chatId, sessions, corpo) {
 
 // ---------------------------------------------------------------------------
 // INTENÇÕES DE MISSA — fluxo do fiel (fatia 3a)
-// Passos: tipo -> [Outros: digita] -> nome de quem recebe a oração -> escolhe
-// a missa -> confirma -> grava no arquivo isolado.
+// Passos: quem pede -> tipo -> [Outros: digita] -> nome de quem recebe a
+// oração -> escolhe a missa -> confirma -> grava no arquivo isolado.
 // ---------------------------------------------------------------------------
 async function iniciarIntencao(chatId, sessions) {
   sessions[chatId].psj.intencao = {};
+  // Quem está pedindo: perguntado UMA vez por conversa e reaproveitado nas
+  // próximas intenções da mesma pessoa (ela pode registrar várias seguidas).
+  if (!sessions[chatId].psj.solicitante) {
+    sessions[chatId].step = "psj_int_solicitante";
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      "Vamos registrar sua intenção de Missa 🙏\n\nAntes, qual é o *seu nome*?\n_(de quem está pedindo a intenção)_"
+    );
+    return;
+  }
+  await pedirTipoIntencao(chatId, sessions, "Vamos registrar sua intenção de Missa 🙏");
+}
+
+async function intSolicitante(chatId, sessions, corpo) {
+  const nome = String(corpo || "").trim().replace(/\s+/g, " ");
+  if (nome.length < 2) {
+    await sendText(chatId, "Informe o seu nome, por favor.");
+    return;
+  }
+  sessions[chatId].psj.solicitante = nome;
+  await pedirTipoIntencao(chatId, sessions, `Obrigado, ${nome.split(" ")[0]}! 🙏`);
+}
+
+async function pedirTipoIntencao(chatId, sessions, cabecalho) {
   sessions[chatId].step = "psj_int_tipo";
   await sendTyping(chatId);
   await sendOptionList(
     chatId,
-    "Vamos registrar sua intenção de Missa 🙏\n\nQual o tipo de intenção?",
+    (cabecalho ? cabecalho + "\n\n" : "") + "Qual o tipo de intenção?",
     TIPOS_INTENCAO.map((t, i) => ({ id: String(i + 1), title: t })),
     { title: "Intenção", buttonLabel: "Ver opções" }
   );
@@ -600,7 +625,8 @@ async function intMissa(chatId, sessions, corpo) {
     "Confira os dados da intenção:\n\n" +
     `*Tipo:* ${it.tipo}\n` +
     `*${rotuloNomes}:* ${juntarNomes(it.nomes || [it.nome])}\n` +
-    `*Missa:* ${missa.rotulo}\n\n` +
+    `*Missa:* ${missa.rotulo}\n` +
+    `*Quem está pedindo:* ${sessions[chatId].psj.solicitante || "-"}\n\n` +
     "Está tudo certo?",
     [
       { id: "1", title: "Sim, registrar" },
@@ -632,6 +658,7 @@ async function intConfirma(chatId, sessions, corpo) {
     nomes: nomes,
     missa_iso: it.missa?.iso,
     missa_rotulo: it.missa?.rotulo,
+    solicitante_nome: sessions[chatId].psj.solicitante || "",
     ofertante_whatsapp: String(chatId).replace("@c.us", ""),
     origem: "chatbot",
     criada_em: new Date().toISOString()
@@ -695,6 +722,7 @@ async function handleParoquia(chatId, sessions, corpoMensagem) {
   const step = sessions[chatId]?.step || "";
   if (!step.startsWith("psj_")) return false;
 
+  if (step === "psj_int_solicitante") { await intSolicitante(chatId, sessions, corpo); return true; }
   if (step === "psj_int_tipo")     { await intTipo(chatId, sessions, corpo);     return true; }
   if (step === "psj_int_outros")   { await intOutros(chatId, sessions, corpo);   return true; }
   if (step === "psj_int_nome")     { await intNome(chatId, sessions, corpo);     return true; }

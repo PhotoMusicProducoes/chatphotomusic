@@ -159,6 +159,24 @@ function nav(ativo) {
   return `<nav class="nav">${item("calendario", "/psj/calendario", "📅 Calendário")}${item("intencoes", "/psj/intencoes", "🙏 Intenções e relatório")}</nav>`;
 }
 
+// "(pediu: Fulano)" — quem solicitou a intenção. Intenções antigas (antes deste
+// campo existir) simplesmente não mostram nada.
+function pedidoPor(i) {
+  return i.solicitante_nome ? ` <span class="quem">(pediu: ${esc(i.solicitante_nome)})</span>` : "";
+}
+
+// Botão de excluir uma intenção. `voltar` diz para qual tela retornar depois
+// (a lista de pendentes ou o relatório que a secretaria está conferindo).
+function formExcluir(i, voltar, corteId) {
+  return `<form method="post" action="/psj/intencao-excluir" style="display:inline"
+      onsubmit="return confirm('Excluir a intenção de ${esc(String(i.nome_oracao).replace(/'/g, ""))}? Isso não pode ser desfeito.')">
+    ${campoSenha()}
+    <input type="hidden" name="id" value="${i.id}">
+    <input type="hidden" name="voltar" value="${esc(voltar)}">
+    ${corteId ? `<input type="hidden" name="corte" value="${esc(corteId)}">` : ""}
+    <button class="mini danger">excluir</button></form>`;
+}
+
 // ---------------------------------------------------------------------------
 // Página INTENÇÕES + ENCERRAR CICLO
 // ---------------------------------------------------------------------------
@@ -172,7 +190,10 @@ function paginaIntencoes(msg) {
   } else {
     corpo = grupos.map(g => {
       const linhas = g.intencoes.map(i =>
-        `<li>${esc(i.tipo)} — <b>${esc(i.nome_oracao)}</b>${i.origem === "secretaria" ? " <span class='tag'>secretaria</span>" : ""}</li>`).join("");
+        `<li>
+          <span>${esc(i.tipo)} — <b>${esc(i.nome_oracao)}</b>${pedidoPor(i)}${i.origem === "secretaria" ? " <span class='tag'>secretaria</span>" : ""}</span>
+          ${formExcluir(i, "intencoes")}
+        </li>`).join("");
       return `
       <div class="missa">
         <div class="missa-cab">
@@ -238,6 +259,7 @@ ${corpo}
     <label>Tipo</label><select name="tipo" onchange="document.getElementById('outro').style.display=this.value==='__outro'?'block':'none'">${opcoesTipo}</select>
     <input type="text" id="outro" name="tipo_outro" placeholder="descreva a intenção" style="display:none;margin-top:.4rem">
     <label>Nome(s) — separe por vírgula se mais de um</label><input type="text" name="nomes" required placeholder="ex: Cléa Nazeanze, João da Silva">
+    <label>Quem pediu</label><input type="text" name="solicitante" placeholder="opcional — nome de quem solicitou">
     <button>Cadastrar intenção</button>
   </form>
 </section>
@@ -259,9 +281,12 @@ function paginaRelatorio(corteId) {
     if (!mapa.has(k)) mapa.set(k, { rotulo: i.missa_rotulo || rotuloIso(k), itens: [] });
     mapa.get(k).itens.push(i);
   }
+  // O "excluir" e o "(pediu: ...)" são da conferência na tela: somem na
+  // impressão, onde o papel só precisa do nome e do tipo p/ o celebrante ler.
   const blocos = [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([iso, g]) => `
     <h3>${esc(g.rotulo)}</h3>
-    <ol>${g.itens.map(i => `<li><b>${esc(i.nome_oracao)}</b> — ${esc(i.tipo)}</li>`).join("")}</ol>
+    <ol>${g.itens.map(i => `<li><b>${esc(i.nome_oracao)}</b> — ${esc(i.tipo)}
+      <span class="tela">${pedidoPor(i)} ${formExcluir(i, "relatorio", corte.id)}</span></li>`).join("")}</ol>
   `).join("") || "<p>Sem intenções neste relatório.</p>";
 
   const geradoEm = new Date(corte.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -277,9 +302,12 @@ function paginaRelatorio(corteId) {
   ol{margin:.2rem 0 .8rem 1.4rem} li{padding:.15rem 0}
   .barra{text-align:center;margin:14px 0}
   button{font:inherit;padding:.5rem 1rem;border:1px solid #333;background:#f3f3f3;border-radius:6px;cursor:pointer}
-  @media print { .barra{display:none} body{padding:0} }
+  .quem{color:#666;font-size:.78rem;font-family:system-ui,sans-serif}
+  .tela .mini{font:inherit;font-size:.72rem;padding:.05rem .4rem;border:1px solid #c99;background:#fff;color:#a11;border-radius:4px}
+  @media print { .barra, .tela{display:none} body{padding:0} }
 </style></head><body>
-<div class="barra"><button onclick="window.print()">🖨 Imprimir</button></div>
+<div class="barra"><button onclick="window.print()">🖨 Imprimir</button>
+  <p class="sub" style="margin:.5rem 0 0">Confira antes de imprimir: dá para <b>excluir</b> uma intenção repetida aqui mesmo. Os botões não saem no papel.</p></div>
 <h1>Intenções de Missa</h1>
 <p class="sub">Paróquia São José · gerado em ${esc(geradoEm)}</p>
 ${blocos}
@@ -311,7 +339,9 @@ function estilo() {
   .nav a.on{background:#2563eb;color:#fff}
   .missa{background:#fff;border-radius:10px;padding:12px;margin:.6rem 0;box-shadow:0 1px 6px #0001}
   .missa-cab{display:flex;justify-content:space-between;align-items:center} .badge{background:#2563eb;color:#fff;border-radius:999px;padding:.1rem .6rem;font-size:.85rem}
-  .nomes{margin:.4rem 0 .6rem 1.1rem} .nomes li{padding:.1rem 0}
+  .nomes{margin:.4rem 0 .6rem 1.1rem}
+  .nomes li{padding:.1rem 0;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .quem{color:#6b7280;font-size:.8rem}
   .mini-link{font-size:.8rem;margin-left:6px}
   .tag{background:#fde68a;color:#92400e;border-radius:6px;padding:0 .4rem;font-size:.72rem}
   </style>`;
@@ -371,6 +401,15 @@ function registrarRotasParoquia(app) {
   });
   app.get("/psj/relatorio", guard, (req, res) => res.send(paginaRelatorio(req.query.corte)));
 
+  // Excluir intenção repetida (a secretaria lançou 2x, ou o fiel pediu 2x).
+  // Serve antes e depois do encerramento: se veio do relatório, volta pra ele
+  // já sem a linha, pronto p/ imprimir.
+  app.post("/psj/intencao-excluir", guard, (req, res) => {
+    intencoesDB.removerIntencao(req.body.id);
+    if (req.body.voltar === "relatorio") return res.send(paginaRelatorio(req.body.corte));
+    res.send(paginaIntencoes("Intenção excluída."));
+  });
+
   app.post("/psj/retomar", guard, (req, res) => {
     intencoesDB.retomarCorte(req.body.id);
     res.send(paginaIntencoes("Encerramento retomado. As Missas voltaram a aceitar intenção pelo chat."));
@@ -378,7 +417,7 @@ function registrarRotasParoquia(app) {
 
   // Cadastro de intenção pela secretaria (pedido presencial/telefone).
   app.post("/psj/intencao-nova", guard, (req, res) => {
-    const { missa_iso, tipo, tipo_outro, nomes } = req.body;
+    const { missa_iso, tipo, tipo_outro, nomes, solicitante } = req.body;
     const listaNomes = String(nomes || "").split(/[,;]+/).map(n => n.trim()).filter(n => n.length >= 2);
     if (!missa_iso || listaNomes.length === 0) {
       return res.send(paginaIntencoes("Informe a Missa e ao menos um nome."));
@@ -390,6 +429,7 @@ function registrarRotasParoquia(app) {
       nomes: listaNomes,
       missa_iso,
       missa_rotulo: rotuloIso(missa_iso),
+      solicitante_nome: String(solicitante || "").trim(),
       origem: "secretaria"
     });
     const aviso = intencoesDB.estaFechadaManual(missa_iso)
