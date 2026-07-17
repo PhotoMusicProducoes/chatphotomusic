@@ -9,6 +9,7 @@
 
 const calendario = require("./paroquiaCalendario.js");
 const intencoesDB = require("./paroquiaIntencoes.js");
+const batismoDB = require("./paroquiaBatismo.js");
 
 const SENHA = process.env.PSJ_SENHA || "saojose"; // bancada; trocar na produção
 const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -156,7 +157,7 @@ ${msg ? `<p class="ok">${esc(msg)}</p>` : ""}
 function nav(ativo) {
   const item = (id, url, txt) =>
     `<a class="${ativo === id ? "on" : ""}" href="${url}?s=${esc(SENHA)}">${txt}</a>`;
-  return `<nav class="nav">${item("calendario", "/psj/calendario", "📅 Calendário")}${item("intencoes", "/psj/intencoes", "🙏 Intenções e relatório")}</nav>`;
+  return `<nav class="nav">${item("calendario", "/psj/calendario", "📅 Calendário")}${item("intencoes", "/psj/intencoes", "🙏 Intenções e relatório")}${item("batismo", "/psj/batismo", "💧 Batismo")}</nav>`;
 }
 
 // "(pediu: Fulano)" — quem solicitou a intenção. Intenções antigas (antes deste
@@ -344,6 +345,104 @@ ${blocos}
 </body></html>`;
 }
 
+// ---------------------------------------------------------------------------
+// BATISMO - lado da secretaria (fatia 4a): lista as inscrições recebidas e
+// gera o link de inscrição p/ testar. O formulário público mora em
+// paroquiaBatismo.js (/psj/b/:token).
+// ---------------------------------------------------------------------------
+function paginaBatismo(msg, linkNovo) {
+  const inscricoes = batismoDB.lerInscricoes().slice().reverse();
+  const rotuloStatus = { convite: "aguardando preenchimento", recebida: "recebida", pendente: "pendente", aprovada: "aprovada" };
+
+  const linhas = inscricoes.map(i => {
+    const nome = i.crianca_nome || "(ainda não preenchida)";
+    const quando = i.batismo_data
+      ? `${i.batismo_data.split("-").reverse().join("/")} - ${esc(i.batismo_local || "")}`
+      : "-";
+    const link = batismoDB.linkDoToken(i.token);
+    return `<li>
+      <span>
+        <b>${esc(nome)}</b> <span class="tag">${esc(rotuloStatus[i.status] || i.status)}</span><br>
+        <span class="quem">Batismo: ${esc(quando)}</span>
+        ${i.status === "convite" ? `<br><span class="quem">Link: <a href="${esc(link)}" target="_blank">${esc(link)}</a></span>` : ""}
+      </span>
+      <span style="display:flex;gap:6px;align-items:center">
+        ${i.status !== "convite" ? `<a class="mini-link" href="/psj/batismo/${i.token}?s=${esc(SENHA)}" target="_blank">ver ficha</a>` : ""}
+        <form method="post" action="/psj/batismo-excluir" style="display:inline" onsubmit="return confirm('Excluir esta inscrição?')">
+          ${campoSenha()}<input type="hidden" name="id" value="${i.id}"><button class="mini danger">excluir</button></form>
+      </span></li>`;
+  }).join("") || "<li class='vazio'>nenhuma inscrição ainda</li>";
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batismo - Secretaria</title>${estilo()}</head><body>
+<div class="wrap">
+<h1>⛪ Secretaria <span class="sub">(teste)</span></h1>
+${nav("batismo")}
+<h2 style="margin-top:0">Inscrições de Batismo</h2>
+${msg ? `<p class="ok">${esc(msg)}</p>` : ""}
+${linkNovo ? `<p class="ok">Link de inscrição gerado (é de teste, use dados fictícios):<br><a href="${esc(linkNovo)}" target="_blank">${esc(linkNovo)}</a></p>` : ""}
+<p class="hint">💧 A ficha da paróquia vira formulário online. A família preenche pelo link; aqui você acompanha e (nas próximas etapas) confere documentos e assinatura.</p>
+
+<section style="margin-bottom:14px">
+  <h2 style="margin-top:0">Gerar link de inscrição (teste)</h2>
+  <p class="hint">Cria um link novo p/ simular uma família preenchendo. 🚨 Bancada: só dados fictícios.</p>
+  <form method="post" action="/psj/batismo-link">
+    ${campoSenha()}
+    <label>WhatsApp da família (opcional)</label>
+    <input type="text" name="whatsapp" placeholder="ex: 21 99999-9999">
+    <button style="width:auto">Gerar link</button>
+  </form>
+</section>
+
+<ul class="lista">${linhas}</ul>
+</div></body></html>`;
+}
+
+// Ficha completa de uma inscrição, p/ a secretaria conferir (só leitura).
+function paginaBatismoFicha(token) {
+  const d = batismoDB.acharPorToken(token);
+  if (!d) return "<p>Inscrição não encontrada.</p>";
+  const sn = v => v === "sim" ? "Sim" : v === "nao" ? "Não" : "-";
+  const linha = (r, v) => `<tr><th style="width:45%">${esc(r)}</th><td>${esc(v || "-")}</td></tr>`;
+  const pad = (t, p) => `<h3>${t}</h3><table>
+    ${linha("Nome", d[p + "_nome"])}${linha("Telefone", d[p + "_tel"])}
+    <tr><th>Batizado</th><td>${sn(d[p + "_batizado"])}</td></tr>
+    <tr><th>Católico</th><td>${sn(d[p + "_catolico"])}</td></tr>
+    <tr><th>Fez 1ª Eucaristia</th><td>${sn(d[p + "_eucaristia"])}</td></tr>
+    <tr><th>Crismado</th><td>${sn(d[p + "_crismado"])}</td></tr>
+    <tr><th>Casado</th><td>${sn(d[p + "_casado"])}</td></tr>
+    <tr><th>Casado na Igreja Católica</th><td>${sn(d[p + "_casado_igreja"])}</td></tr>
+    ${linha("Cônjuge", d[p + "_conjuge"])}
+    <tr><th>Frequenta outra religião</th><td>${sn(d[p + "_outra_religiao"])}</td></tr>
+    <tr><th>Frequenta Missa aos domingos</th><td>${sn(d[p + "_missa_domingo"])}</td></tr>
+    ${linha("Se outra igreja, qual", d[p + "_missa_qual"])}</table>`;
+  const quando = d.batismo_data ? `${d.batismo_data.split("-").reverse().join("/")} - ${esc(d.batismo_local || "")}` : "-";
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha de Batismo</title>${estilo()}
+<style>h3{color:#1d4ed8;margin:1.1rem 0 .3rem;font-size:1rem} td,th{font-size:.88rem}</style></head><body>
+<div class="wrap">
+<h1>Ficha de Batismo</h1>
+<p class="sub">Batismo: ${quando}</p>
+<h3>Criança</h3><table>
+  ${linha("Nome", d.crianca_nome)}${linha("Nascimento", d.crianca_nascimento)}
+  ${linha("Cidade", d.crianca_cidade)}${linha("UF", d.crianca_uf)}${linha("Naturalidade", d.crianca_natural)}</table>
+<h3>Pais</h3><table>
+  ${linha("Pai", d.pai_nome)}${linha("Tel. pai", d.pai_tel)}
+  ${linha("Mãe", d.mae_nome)}${linha("Tel. mãe", d.mae_tel)}
+  ${linha("Endereço", (d.endereco || "") + (d.numero ? ", " + d.numero : ""))}
+  ${linha("Bairro", d.bairro)}${linha("Cidade", d.cidade)}${linha("CEP", d.cep)}
+  ${linha("Paróquia que frequentam", d.paroquia_frequentam)}
+  <tr><th>Pais casados</th><td>${sn(d.pais_casados)}</td></tr>
+  <tr><th>Casados na Igreja Católica</th><td>${sn(d.pais_casados_igreja)}</td></tr></table>
+${pad("Padrinho", "padrinho")}
+${pad("Madrinha", "madrinha")}
+<p class="hint">Conferência da secretaria. Upload de documentos e assinatura entram nas próximas etapas.</p>
+</div></body></html>`;
+}
+
 function estilo() {
   return `<style>
   *{box-sizing:border-box} body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f4f6f8;color:#1f2937}
@@ -469,7 +568,28 @@ function registrarRotasParoquia(app) {
     res.send(paginaIntencoes(aviso));
   });
 
-  console.log("⛪ [psj] Tela da secretaria registrada em /psj (calendário + intenções)");
+  // ---- BATISMO (fatia 4a) ----
+  // Secretaria (protegido)
+  app.get("/psj/batismo", guard, (req, res) => res.send(paginaBatismo(req.query.msg)));
+  app.post("/psj/batismo-link", guard, (req, res) => {
+    const conv = batismoDB.gerarConvite(req.body.whatsapp);
+    res.send(paginaBatismo("", batismoDB.linkDoToken(conv.token)));
+  });
+  app.post("/psj/batismo-excluir", guard, (req, res) => {
+    batismoDB.removerInscricao(req.body.id);
+    res.send(paginaBatismo("Inscrição excluída."));
+  });
+  app.get("/psj/batismo/:token", guard, (req, res) => res.send(paginaBatismoFicha(req.params.token)));
+
+  // Formulário PÚBLICO (o fiel preenche; sem senha, protegido pelo token).
+  app.get("/psj/b/:token", (req, res) => res.send(batismoDB.paginaForm(req.params.token, req.query.msg)));
+  app.post("/psj/b/:token", (req, res) => {
+    const r = batismoDB.processarPost(req.params.token, req.body);
+    if (r.erro) return res.send(batismoDB.paginaForm(req.params.token, null, r.erro));
+    res.send(batismoDB.paginaForm(req.params.token, "Inscrição enviada! A secretaria vai conferir e, se faltar algo, entra em contato. 🙏"));
+  });
+
+  console.log("⛪ [psj] Tela da secretaria registrada em /psj (calendário + intenções + batismo)");
 }
 
 module.exports = { registrarRotasParoquia };
