@@ -8,9 +8,15 @@ const { inicializarFollowupLeads } = require("./jobs/followupLeads");
 const { inicializarLembreteOrcamento } = require("./jobs/lembreteOrcamento");
 const { inicializarPausaEspecial } = require("./utils/index.js");
 const { extrairRespostaDeClique } = require("./utils/webhookPayload.js");
+const { registrarRotasParoquia } = require("./services/paroquiaWeb.js");
 
 const app = express();
 app.use(bodyParser.json());
+// Forms HTML (tela da secretaria em /psj) enviam urlencoded.
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// ⛪ Tela da secretaria (bancada de teste da paróquia) — calendário editável.
+registrarRotasParoquia(app);
 
 // ======================================================
 // NORMALIZAÇÃO DO TEXTO RECEBIDO

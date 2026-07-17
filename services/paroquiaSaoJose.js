@@ -19,6 +19,7 @@ const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
 const { pixBrCode } = require("../utils/pixBrCode.js");
 const { sendImageBase64 } = require("../utils/sendImageBase64.js");
 const QRCode = require("qrcode");
+const calendario = require("./paroquiaCalendario.js");
 
 // ---------------------------------------------------------------------------
 // INTENÇÕES DE MISSA — dados
@@ -33,18 +34,9 @@ const TIPOS_INTENCAO = [
   "Outros"
 ];
 
-// Calendário da MATRIZ (só as missas que aceitam intenção pelo chat). Capela
-// nunca entra (comentarista). dia: 0=dom 1=seg ... 6=sáb. [OK 17/07, Maju]
-// Segunda não tem 19h30. (Regra de corte do ciclo = fatia 3b; aqui, fatia 3a,
-// o fiel só escolhe a missa e a intenção é gravada.)
-const CALENDARIO_MATRIZ = [
-  { dia: 1, hora: "07:00" },
-  { dia: 2, hora: "07:00" }, { dia: 2, hora: "19:30" },
-  { dia: 3, hora: "07:00" }, { dia: 3, hora: "19:30" },
-  { dia: 4, hora: "07:00" }, { dia: 4, hora: "19:30" },
-  { dia: 5, hora: "07:00" }, { dia: 5, hora: "19:30" },
-  { dia: 0, hora: "10:00" }, { dia: 0, hora: "19:30" }
-];
+// O calendário de missas agora mora em paroquiaCalendario.js (editável pela
+// secretaria: padrão por local + exceções + períodos). proximasMissas() lê de
+// lá. Antes havia um CALENDARIO_MATRIZ fixo aqui — removido p/ ter 1 só fonte.
 
 // "Agora" no horário de São Paulo (o servidor roda em UTC/iad). Truque simples,
 // suficiente p/ a bancada; timezone fino fica p/ a migração ao Postgres gru.
@@ -101,28 +93,19 @@ function deadlineMissa(dt) {
   return d;
 }
 
-// Próximas `qtd` missas da matriz ABERTAS a partir de agora (SP). Exclui as que
-// já passaram do corte (a secretaria já fechou/imprimiu). `agora` injetável p/ teste.
+// Próximas `qtd` missas ABERTAS para intenção pelo chat, a partir de agora (SP).
+// Lê do CALENDÁRIO EDITÁVEL (paroquiaCalendario) — já com exceções e períodos
+// da secretaria aplicados —, filtra as que aceitam intenção pelo chat (matriz)
+// e exclui as que já passaram do corte (a secretaria fechou/imprimiu).
+// `agora` injetável p/ teste.
 function proximasMissas(qtd, agora) {
   agora = agora || agoraSP();
-  const lista = [];
-  for (let d = 0; d < 21 && lista.length < qtd; d++) {
-    const base = new Date(agora);
-    base.setDate(agora.getDate() + d);
-    const dow = base.getDay();
-    CALENDARIO_MATRIZ
-      .filter(m => m.dia === dow)
-      .forEach(m => {
-        const [h, mi] = m.hora.split(":").map(Number);
-        const dt = new Date(base);
-        dt.setHours(h, mi, 0, 0);
-        // Só entra se a missa ainda vem E o corte dela ainda não passou.
-        if (dt > agora && agora < deadlineMissa(dt)) {
-          lista.push({ iso: dt.toISOString(), rotulo: rotuloMissa(dt) });
-        }
-      });
-  }
-  return lista.sort((a, b) => a.iso.localeCompare(b.iso)).slice(0, qtd);
+  return calendario.gerarMissas(agora, 21)
+    .filter(m => m.intencao)                        // só as que aceitam intenção (matriz)
+    .filter(m => m.iso > agora)                     // ainda vão acontecer
+    .filter(m => agora < deadlineMissa(m.iso))      // corte ainda não passou
+    .slice(0, qtd)
+    .map(m => ({ iso: m.iso.toISOString(), rotulo: rotuloMissa(m.iso) }));
 }
 
 // Persistência isolada (arquivo próprio, NUNCA o banco do PhotoMusic). Formato

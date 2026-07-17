@@ -76,3 +76,5 @@ Documento*.log
 # Dados da bancada de teste da paróquia (nunca versionar)
 psj-intencoes.json
 services/psj-intencoes.json
+psj-calendario.json
+services/psj-calendario.json
