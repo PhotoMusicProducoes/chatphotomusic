@@ -11,9 +11,12 @@ const { extrairRespostaDeClique } = require("./utils/webhookPayload.js");
 const { registrarRotasParoquia } = require("./services/paroquiaWeb.js");
 
 const app = express();
-app.use(bodyParser.json());
+// Limite alto p/ o upload de documentos do batismo (foto em base64, já
+// comprimida no navegador). Os webhooks da Z-API são pequenos; a folga só
+// habilita o anexo. Na produção (gru) troca por storage de objeto + signed URL.
+app.use(bodyParser.json({ limit: "25mb" }));
 // Forms HTML (tela da secretaria em /psj) enviam urlencoded.
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({ extended: true, limit: "25mb" }));
 
 // ⛪ Tela da secretaria (bancada de teste da paróquia) — calendário editável.
 registrarRotasParoquia(app);

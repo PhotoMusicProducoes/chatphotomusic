@@ -422,7 +422,11 @@ function paginaBatismoFicha(token) {
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ficha de Batismo</title>${estilo()}
-<style>h3{color:#1d4ed8;margin:1.1rem 0 .3rem;font-size:1rem} td,th{font-size:.88rem}</style></head><body>
+<style>h3{color:#1d4ed8;margin:1.1rem 0 .3rem;font-size:1rem} td,th{font-size:.88rem}
+.docs-grid{display:grid;gap:8px} .doc-item{background:#fff;border:1px solid #eef0f2;border-radius:8px;padding:.5rem .7rem;font-size:.85rem}
+.doc-item.falta{display:flex;justify-content:space-between;align-items:center;border-color:#fecaca;background:#fef2f2}
+.thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:.4rem} .thumbs img{width:76px;height:76px;object-fit:cover;border-radius:6px;border:1px solid #d1d5db}
+.thumbs .pdf{padding:.35rem .6rem;background:#f3f4f6;border-radius:6px;text-decoration:none;color:#374151;font-size:.8rem}</style></head><body>
 <div class="wrap">
 <h1>Ficha de Batismo</h1>
 <p class="sub">Batismo: ${quando}</p>
@@ -439,7 +443,23 @@ function paginaBatismoFicha(token) {
   <tr><th>Casados na Igreja Católica</th><td>${sn(d.pais_casados_igreja)}</td></tr></table>
 ${pad("Padrinho", "padrinho")}
 ${pad("Madrinha", "madrinha")}
-<p class="hint">Conferência da secretaria. Upload de documentos e assinatura entram nas próximas etapas.</p>
+<h3>Documentos anexados</h3>
+${(() => {
+  const docs = d.documentos || [];
+  if (!docs.length) return "<p class='vazio'>Nenhum documento anexado ainda.</p>";
+  return `<div class="docs-grid">` + batismoDB.DOCUMENTOS.map(tp => {
+    const enviados = docs.filter(x => x.tipo === tp.id);
+    if (!enviados.length) return `<div class="doc-item falta"><b>${esc(tp.label)}</b><span class="quem">faltando</span></div>`;
+    const thumbs = enviados.map(x => {
+      const url = `/psj/b/${d.token}/doc/${x.id}`;
+      return x.mime === "application/pdf"
+        ? `<a href="${url}" target="_blank" class="pdf">📄 PDF</a>`
+        : `<a href="${url}" target="_blank"><img src="${url}" alt=""></a>`;
+    }).join("");
+    return `<div class="doc-item"><b>${esc(tp.label)}</b><div class="thumbs">${thumbs}</div></div>`;
+  }).join("") + `</div>`;
+})()}
+<p class="hint">Conferência da secretaria. Assinatura digital e revisão (avisar a família) entram nas próximas etapas.</p>
 </div></body></html>`;
 }
 
@@ -586,7 +606,20 @@ function registrarRotasParoquia(app) {
   app.post("/psj/b/:token", (req, res) => {
     const r = batismoDB.processarPost(req.params.token, req.body);
     if (r.erro) return res.send(batismoDB.paginaForm(req.params.token, null, r.erro));
-    res.send(batismoDB.paginaForm(req.params.token, "Inscrição enviada! A secretaria vai conferir e, se faltar algo, entra em contato. 🙏"));
+    res.send(batismoDB.paginaForm(req.params.token, "Inscrição enviada! Agora anexe os documentos abaixo. A secretaria confere e, se faltar algo, entra em contato. 🙏"));
+  });
+
+  // Documentos do batismo (fatia 4b). Protegidos pelo token (não adivinhável).
+  app.post("/psj/b/:token/doc", (req, res) => res.json(batismoDB.salvarDoc(req.params.token, req.body || {})));
+  app.post("/psj/b/:token/doc-excluir", (req, res) => {
+    batismoDB.removerDoc(req.params.token, (req.body || {}).id);
+    res.json({ ok: true });
+  });
+  app.get("/psj/b/:token/doc/:docId", (req, res) => {
+    const a = batismoDB.arquivoDoc(req.params.token, req.params.docId);
+    if (!a) return res.status(404).send("Documento não encontrado.");
+    res.type(a.mime);
+    res.sendFile(a.caminho);
   });
 
   console.log("⛪ [psj] Tela da secretaria registrada em /psj (calendário + intenções + batismo)");

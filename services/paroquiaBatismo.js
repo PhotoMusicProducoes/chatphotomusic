@@ -17,6 +17,21 @@ const crypto = require("crypto");
 
 const DIR = fs.existsSync("/data") ? "/data" : __dirname;
 const ARQ = path.join(DIR, "psj-batismo.json");
+const DIR_DOCS = path.join(DIR, "psj-batismo-docs");   // arquivos anexados (fatia 4b)
+
+// Documentos que a família anexa (foto/arquivo). Espelha a lista da ficha.
+// O item "Ficha dos padrinhos assinada" NÃO entra aqui: vira assinatura
+// digital na fatia 4c.
+const DOCUMENTOS = [
+  { id: "nascimento",   label: "Certidão de nascimento da criança" },
+  { id: "identidade",   label: "Identidade civil dos padrinhos (se solteiros)" },
+  { id: "cas_religioso", label: "Certidão de casamento religioso dos padrinhos (se casados ou viúvos)" },
+  { id: "sacramentos",  label: "Comprovante dos sacramentos dos padrinhos (Batismo, 1ª Eucaristia e Crisma)" },
+  { id: "residencia",   label: "Comprovante de residência dos pais" },
+  { id: "autorizacao",  label: "Autorização da paróquia de origem (se os pais não pertencem a esta comunidade)" }
+];
+const DOC_LABEL = Object.fromEntries(DOCUMENTOS.map(d => [d.id, d.label]));
+const EXT_POR_MIME = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
 
 // URL pública da bancada (p/ montar o link que a secretaria copia). Na produção
 // vira o domínio da paróquia no gru.
@@ -103,9 +118,64 @@ function salvarPreenchimento(token, dados) {
   return arr[i];
 }
 
-function removerInscricao(id) { salvar(lerInscricoes().filter(i => i.id !== Number(id))); }
+function removerInscricao(id) {
+  const reg = lerInscricoes().find(i => i.id === Number(id));
+  if (reg && reg.documentos) reg.documentos.forEach(doc => apagarArquivoDoc(doc));
+  salvar(lerInscricoes().filter(i => i.id !== Number(id)));
+}
 
 function linkDoToken(token) { return `${BASE}/psj/b/${token}`; }
+
+// ---- documentos anexados (fatia 4b) ----
+function apagarArquivoDoc(doc) {
+  try { if (doc && doc.arquivo) fs.unlinkSync(path.join(DIR_DOCS, doc.arquivo)); } catch (_) {}
+}
+
+// Recebe um dataURL ("data:image/jpeg;base64,...") já comprimido no navegador,
+// grava o arquivo em disco e anexa à inscrição. Devolve o doc ou {erro}.
+function salvarDoc(token, { tipo, nome, dataUrl }) {
+  const reg = acharPorToken(token);
+  if (!reg) return { erro: "Link inválido." };
+  if (!DOC_LABEL[tipo]) return { erro: "Tipo de documento inválido." };
+  const m = /^data:([^;]+);base64,(.+)$/.exec(String(dataUrl || ""));
+  if (!m) return { erro: "Arquivo inválido." };
+  const mime = m[1];
+  const ext = EXT_POR_MIME[mime];
+  if (!ext) return { erro: "Formato não aceito (use foto JPG/PNG ou PDF)." };
+  const buf = Buffer.from(m[2], "base64");
+  if (buf.length > 12 * 1024 * 1024) return { erro: "Arquivo muito grande." };
+
+  try { fs.mkdirSync(DIR_DOCS, { recursive: true }); } catch (_) {}
+  const arr = lerInscricoes();
+  const i = arr.findIndex(x => x.token === token);
+  arr[i].documentos = arr[i].documentos || [];
+  const docId = (arr[i].documentos.reduce((mx, d) => Math.max(mx, d.id || 0), 0) || 0) + 1;
+  const arquivo = `${token}__${docId}.${ext}`;
+  try { fs.writeFileSync(path.join(DIR_DOCS, arquivo), buf); }
+  catch (e) { console.error("🚨 [psj-batismo] doc:", e.message); return { erro: "Falha ao salvar o arquivo." }; }
+  const doc = { id: docId, tipo, nome: String(nome || "").slice(0, 120), arquivo, mime, enviado_em: new Date().toISOString() };
+  arr[i].documentos.push(doc);
+  salvar(arr);
+  return { ok: true, doc };
+}
+
+function removerDoc(token, docId) {
+  const arr = lerInscricoes();
+  const i = arr.findIndex(x => x.token === token);
+  if (i < 0) return;
+  const doc = (arr[i].documentos || []).find(d => d.id === Number(docId));
+  if (doc) apagarArquivoDoc(doc);
+  arr[i].documentos = (arr[i].documentos || []).filter(d => d.id !== Number(docId));
+  salvar(arr);
+}
+
+// Caminho absoluto + mime de um doc, p/ a rota que serve o arquivo.
+function arquivoDoc(token, docId) {
+  const reg = acharPorToken(token);
+  const doc = reg && (reg.documentos || []).find(d => d.id === Number(docId));
+  if (!doc) return null;
+  return { caminho: path.join(DIR_DOCS, doc.arquivo), mime: doc.mime, nome: doc.nome };
+}
 
 // ---------------------------------------------------------------------------
 // Formulário PÚBLICO (o fiel preenche). Espelha a ficha de papel da paróquia.
@@ -126,6 +196,15 @@ function estiloForm() {
   button{font-size:1.05rem;padding:.7rem;border:none;border-radius:8px;width:100%;background:#2563eb;color:#fff;cursor:pointer;margin-top:.6rem}
   .ok{background:#dcfce7;color:#166534;padding:1rem;border-radius:10px} .erro{background:#fee2e2;color:#991b1b;padding:.6rem;border-radius:8px;margin-bottom:10px}
   .tag{background:#fef3c7;color:#92400e;border-radius:6px;padding:.15rem .5rem;font-size:.75rem}
+  .doc{border-top:1px solid #eef0f2;padding:.7rem 0}
+  .doc-cab{font-size:.9rem} .cnt{background:#dbeafe;color:#1d4ed8;border-radius:999px;padding:0 .5rem;font-size:.75rem}
+  .anexos{display:flex;flex-wrap:wrap;gap:8px;margin:.4rem 0}
+  .anexo{position:relative} .anexo img{width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid #d1d5db}
+  .anexo .pdf{display:inline-block;padding:.4rem .6rem;background:#f3f4f6;border-radius:8px;font-size:.8rem;text-decoration:none;color:#374151}
+  .anexo .rm{position:static;display:block;margin-top:.2rem;font-size:.72rem;color:#a11;background:none;border:none;cursor:pointer;padding:0;width:auto}
+  .add{display:inline-block;background:#eff6ff;color:#1d4ed8;border:1px dashed #93c5fd;border-radius:8px;padding:.5rem .8rem;font-size:.88rem;cursor:pointer;margin-top:.2rem}
+  .ov{display:none;position:fixed;inset:0;background:#0006;align-items:center;justify-content:center;z-index:9}
+  .ov-box{background:#fff;padding:1rem 1.4rem;border-radius:10px;font-size:.95rem}
   </style>`;
 }
 
@@ -164,6 +243,74 @@ function blocoPadrinho(titulo, pfx, d) {
     ${fsn("Frequenta Missa aos domingos?", pfx + "_missa_domingo", d.missa_domingo)}
     ${ft("Se em outra igreja, qual?", pfx + "_missa_qual", d.missa_qual)}
   </section>`;
+}
+
+// Seção de documentos (aparece depois que a inscrição foi salva). Cada tipo
+// aceita 1+ arquivos (padrinho e madrinha, por ex.). Upload é assíncrono
+// (fetch) p/ não perder o formulário. Miniatura + remover p/ cada anexo.
+function secaoDocumentos(reg) {
+  const docs = reg.documentos || [];
+  const itens = DOCUMENTOS.map(tp => {
+    const enviados = docs.filter(d => d.tipo === tp.id);
+    const lista = enviados.map(d => {
+      const url = `/psj/b/${reg.token}/doc/${d.id}`;
+      const thumb = d.mime === "application/pdf"
+        ? `<a href="${url}" target="_blank" class="pdf">📄 ${esc(d.nome || "documento.pdf")}</a>`
+        : `<a href="${url}" target="_blank"><img src="${url}" alt=""></a>`;
+      return `<div class="anexo">${thumb}
+        <button type="button" class="rm" onclick="removerDoc('${reg.token}',${d.id})">remover</button></div>`;
+    }).join("");
+    return `<div class="doc">
+      <div class="doc-cab"><b>${esc(tp.label)}</b>${enviados.length ? ` <span class="cnt">${enviados.length}</span>` : ""}</div>
+      <div class="anexos">${lista}</div>
+      <label class="add">➕ Anexar foto ou PDF
+        <input type="file" accept="image/*,application/pdf" capture="environment"
+          onchange="enviarDoc('${reg.token}','${tp.id}',this)" hidden>
+      </label>
+    </div>`;
+  }).join("");
+
+  return `<section id="documentos">
+    <h2>Documentos</h2>
+    <p class="hint">Anexe uma foto legível (ou PDF) de cada documento. Pode enviar mais de um por item (padrinho e madrinha). A secretaria confere e avisa se faltar algo.</p>
+    ${itens}
+  </section>
+  <div id="ov" class="ov"><div class="ov-box">Enviando documento...</div></div>
+  <script>
+  async function enviarDoc(token, tipo, input){
+    var f = input.files[0]; if(!f) return;
+    document.getElementById('ov').style.display='flex';
+    try{
+      var dataUrl = await comprimir(f);
+      var r = await fetch('/psj/b/'+token+'/doc', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:tipo,nome:f.name,dataUrl:dataUrl})});
+      var j = await r.json();
+      if(j.ok){ location.reload(); } else { alert(j.erro||'Falha ao enviar.'); document.getElementById('ov').style.display='none'; }
+    }catch(e){ alert('Não consegui ler o arquivo.'); document.getElementById('ov').style.display='none'; }
+  }
+  async function removerDoc(token, id){
+    if(!confirm('Remover este anexo?')) return;
+    var r = await fetch('/psj/b/'+token+'/doc-excluir', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    if((await r.json()).ok) location.reload(); else alert('Falha ao remover.');
+  }
+  // Comprime imagem no navegador (máx 1400px, JPEG) p/ subir leve. PDF/arquivo
+  // vai como está.
+  function comprimir(file){
+    return new Promise(function(res,rej){
+      if(!file.type || file.type.indexOf('image/')!==0){
+        var fr0=new FileReader(); fr0.onload=function(){res(fr0.result)}; fr0.onerror=rej; fr0.readAsDataURL(file); return;
+      }
+      var fr=new FileReader();
+      fr.onload=function(){ var img=new Image();
+        img.onload=function(){ var max=1400,w=img.width,h=img.height;
+          if(w>max||h>max){var s=Math.min(max/w,max/h); w=Math.round(w*s); h=Math.round(h*s);}
+          var c=document.createElement('canvas'); c.width=w; c.height=h;
+          c.getContext('2d').drawImage(img,0,0,w,h);
+          res(c.toDataURL('image/jpeg',0.72));
+        }; img.onerror=rej; img.src=fr.result;
+      }; fr.onerror=rej; fr.readAsDataURL(file);
+    });
+  }
+  </script>`;
 }
 
 function paginaForm(token, msg, erro) {
@@ -245,9 +392,10 @@ ${blocoPadrinho("Madrinha", "madrinha", {
   outra_religiao: d.madrinha_outra_religiao, missa_domingo: d.madrinha_missa_domingo, missa_qual: d.madrinha_missa_qual
 })}
 
-<button type="submit">Enviar inscrição</button>
-<p class="hint" style="text-align:center;margin-top:.6rem">Nas próximas etapas você poderá anexar os documentos e assinar. A secretaria confere e avisa se faltar algo.</p>
+<button type="submit">${reg.status === "convite" ? "Enviar inscrição" : "Salvar alterações"}</button>
 </form>
+${reg.status !== "convite" ? secaoDocumentos(reg)
+  : `<p class="hint" style="text-align:center;margin-top:.6rem">Depois de enviar, você poderá anexar os documentos aqui mesmo. A assinatura entra na próxima etapa.</p>`}
 </div></body></html>`;
 }
 
@@ -272,5 +420,6 @@ function processarPost(token, body) {
 module.exports = {
   proximasDatas, gerarConvite, acharPorToken, lerInscricoes,
   salvarPreenchimento, removerInscricao, linkDoToken,
-  paginaForm, processarPost, esc
+  paginaForm, processarPost, esc,
+  DOCUMENTOS, DOC_LABEL, salvarDoc, removerDoc, arquivoDoc
 };
