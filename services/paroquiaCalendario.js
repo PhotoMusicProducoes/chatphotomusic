@@ -48,6 +48,41 @@ const PADRAO_SEED = [
 ];
 
 const LOCAIS = [...new Set(PADRAO_SEED.map(p => p.local))];
+const MATRIZ = "Matriz São José";
+const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+// "07:00" -> "7h" | "19:30" -> "19h30"
+function fmtHora(hhmm) {
+  const [h, mi] = String(hhmm).split(":");
+  return mi === "00" ? `${parseInt(h, 10)}h` : `${parseInt(h, 10)}h${mi}`;
+}
+
+// Agenda semanal recorrente, agrupada por local e por dia da semana. Lê do
+// PADRÃO do calendário -> as respostas de "horários" no chat mudam sozinhas
+// quando a secretaria edita o calendário. Semana começa na segunda (domingo por
+// último), como a paróquia lê. Retorna:
+//   [{ local, dias: [{ dia, nome, horas: ["7h","19h30"] }] }]
+function agendaSemanal() {
+  const cal = lerCalendario();
+  const ordemSemana = d => (d + 6) % 7; // seg=0 ... dom=6
+  const porLocal = new Map();
+  for (const p of (cal.padrao || [])) {
+    if (!porLocal.has(p.local)) porLocal.set(p.local, new Map());
+    const dias = porLocal.get(p.local);
+    if (!dias.has(p.dia)) dias.set(p.dia, []);
+    dias.get(p.dia).push(p.hora);
+  }
+  return LOCAIS.filter(l => porLocal.has(l)).map(local => {
+    const dias = [...porLocal.get(local).entries()]
+      .sort((a, b) => ordemSemana(a[0]) - ordemSemana(b[0]))
+      .map(([dia, horas]) => ({
+        dia,
+        nome: DIAS_SEMANA[dia],
+        horas: horas.sort((a, b) => a.localeCompare(b)).map(fmtHora)
+      }));
+    return { local, dias };
+  });
+}
 
 function lerCalendario() {
   try {
@@ -183,6 +218,10 @@ function removerPeriodo(id) {
 
 module.exports = {
   LOCAIS,
+  MATRIZ,
+  DIAS_SEMANA,
+  fmtHora,
+  agendaSemanal,
   lerCalendario,
   gerarMissas,
   adicionarExcecao,

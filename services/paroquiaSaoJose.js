@@ -164,8 +164,9 @@ const SUBMENUS = {
   missa: {
     titulo: "Missa",
     opcoes: [
-      { titulo: "Horários e programação",  tipo: "rapida", destino: "programacao" },
-      { titulo: "Cadastrar intenção",      tipo: "fluxo",  destino: "intencao" }
+      { titulo: "Horários e programação",       tipo: "rapida", destino: "programacao" },
+      { titulo: "Horários das Missas nas capelas", tipo: "rapida", destino: "horarios_capelas" },
+      { titulo: "Cadastrar intenção",           tipo: "fluxo",  destino: "intencao" }
     ]
   },
   catequese_cat: {
@@ -326,6 +327,31 @@ async function mostrarMenu(chatId, sessions, cabecalho) {
 // separadas, copiáveis). Reusa as chaves da mesma conta do item 7.
 const CHAVES_POR_DESTINO = { creche: CONTAS.creche.chaves_alt };
 
+// "8h e 11h" | "8h" — junta os horários de um mesmo dia.
+function juntarHoras(horas) {
+  if (horas.length <= 1) return horas[0] || "";
+  return horas.slice(0, -1).join(", ") + " e " + horas[horas.length - 1];
+}
+
+// Horários das Missas nas CAPELAS, montados na hora a partir do calendário
+// editável (não é texto fixo): se a secretaria mudar um horário, muda aqui.
+// Fica SEPARADO da "programação" (pedido da Maju: não misturar com os grupos
+// de oração e a agenda da paróquia). Só capelas — a matriz vai na programação.
+function textoHorariosCapelas() {
+  const capelas = calendario.agendaSemanal().filter(b => b.local !== calendario.MATRIZ);
+  if (capelas.length === 0) return "*Horários das Missas nas capelas*\n\nEm breve.";
+  const blocos = capelas.map(b => {
+    const linhas = b.dias.map(d => `${d.nome}: ${juntarHoras(d.horas)}`).join("\n");
+    return `*${b.local}*\n${linhas}`;
+  }).join("\n\n");
+  return "*Horários das Missas nas capelas*\n\n" + blocos +
+    "\n\n_Nas capelas a intenção é anotada na hora: chegue *20 minutos antes* e fale com o(a) comentarista. 🙏_";
+}
+
+// Respostas geradas na hora (leem do calendário -> mudam sozinhas quando a
+// secretaria edita). Diferem das RESPOSTAS estáticas (texto fixo da Maju).
+const GERADAS = { horarios_capelas: textoHorariosCapelas };
+
 // Entrega uma "rapida" (texto) ou um "fluxo" e volta ao menu.
 async function entregar(chatId, sessions, item) {
   // Fluxo de intenção (fatia 3a): inicia a máquina de estados própria.
@@ -336,7 +362,8 @@ async function entregar(chatId, sessions, item) {
 
   await sendTyping(chatId);
   if (item.tipo === "rapida") {
-    await sendText(chatId, RESPOSTAS[item.destino] || "(sem texto)");
+    const texto = GERADAS[item.destino] ? GERADAS[item.destino]() : (RESPOSTAS[item.destino] || "(sem texto)");
+    await sendText(chatId, texto);
     if (CHAVES_POR_DESTINO[item.destino]) {
       await enviarChavesPix(chatId, CHAVES_POR_DESTINO[item.destino]);
     }
@@ -390,7 +417,7 @@ async function tratarEscolhaSubmenu(chatId, sessions, corpo) {
   const op = sub.opcoes[i];
   if (!op) {
     await sendTyping(chatId);
-    await sendText(chatId, `Não entendi. Escolha *1* ou *2* (ou toque em *Ver opções*).`);
+    await sendText(chatId, `Não entendi. Escolha de *1* a *${sub.opcoes.length}* (ou toque em *Ver opções*).`);
     return;
   }
   await entregar(chatId, sessions, op);
@@ -617,12 +644,12 @@ async function intNome(chatId, sessions, corpo) {
     missas.map((m, i) => ({ id: String(i + 1), title: m.rotulo })),
     { title: "Missas", buttonLabel: "Ver missas" }
   );
-  // A missa que a pessoa quer pode já ter sido fechada pela secretaria (corte
-  // das 17h) — nesse caso ela não aparece na lista. Orienta o comentarista,
-  // igual às capelas. (Regra da Maju/Mario.)
+  // A missa que a pessoa quer pode não estar na lista por 2 motivos: é de uma
+  // CAPELA (intenção anotada na hora) ou já foi ENCERRADA pela secretaria. Nos
+  // dois casos o caminho é o mesmo: comentarista, 20 min antes. (Maju, 18/07.)
   await sendText(
     chatId,
-    "_Não encontrou a Missa desejada? As intenções de algumas Missas já foram encerradas na secretaria. Nesse caso, chegue *20 minutos antes* e fale com o(a) comentarista, que anotará o nome. 🙏_"
+    "_Não encontrou a Missa desejada? Pode ser uma Missa de *capela*, ou uma Missa cujas intenções já foram encerradas na secretaria. Nos dois casos, chegue *20 minutos antes* e fale com o(a) comentarista, que anotará o nome. 🙏_"
   );
 }
 
