@@ -20,6 +20,7 @@ const { pixBrCode } = require("../utils/pixBrCode.js");
 const { sendImageBase64 } = require("../utils/sendImageBase64.js");
 const QRCode = require("qrcode");
 const calendario = require("./paroquiaCalendario.js");
+const intencoesDB = require("./paroquiaIntencoes.js");
 
 // ---------------------------------------------------------------------------
 // INTENÇÕES DE MISSA — dados
@@ -101,30 +102,17 @@ function deadlineMissa(dt) {
 function proximasMissas(qtd, agora) {
   agora = agora || agoraSP();
   return calendario.gerarMissas(agora, 21)
-    .filter(m => m.intencao)                        // só as que aceitam intenção (matriz)
-    .filter(m => m.iso > agora)                     // ainda vão acontecer
-    .filter(m => agora < deadlineMissa(m.iso))      // corte ainda não passou
+    .filter(m => m.intencao)                          // só as que aceitam intenção (matriz)
+    .filter(m => m.iso > agora)                       // ainda vão acontecer
+    .filter(m => agora < deadlineMissa(m.iso))        // corte AUTOMÁTICO das 17h
+    .filter(m => !intencoesDB.estaFechadaManual(m.iso)) // corte MANUAL da secretaria
     .slice(0, qtd)
     .map(m => ({ iso: m.iso.toISOString(), rotulo: rotuloMissa(m.iso) }));
 }
 
-// Persistência isolada (arquivo próprio, NUNCA o banco do PhotoMusic). Formato
-// = tabela `intencoes` do schema Rapha Lumen Pro, p/ migrar sem reescrever.
-const DIR_DADOS = fs.existsSync("/data") ? "/data" : __dirname;
-const ARQ_INTENCOES = path.join(DIR_DADOS, "psj-intencoes.json");
-
-function lerIntencoes() {
-  try { return JSON.parse(fs.readFileSync(ARQ_INTENCOES, "utf8")); }
-  catch { return []; }
-}
-
-function gravarIntencao(reg) {
-  const arr = lerIntencoes();
-  arr.push(reg);
-  try { fs.writeFileSync(ARQ_INTENCOES, JSON.stringify(arr, null, 2)); }
-  catch (e) { console.error("🚨 [psj] Falha ao gravar intenção:", e.message); }
-  return reg;
-}
+// Intenções e cortes moram em paroquiaIntencoes.js (compartilhado com a tela
+// da secretaria). Aqui só usamos gravarIntencao e estaFechadaManual.
+const gravarIntencao = intencoesDB.gravarIntencao;
 
 // Contas para contribuição (item 7). Duas contas reais [OK 17/07, Maju]:
 // a da paróquia (dízimo/oferta) e a da Creche Santo Antônio (doação). Cada

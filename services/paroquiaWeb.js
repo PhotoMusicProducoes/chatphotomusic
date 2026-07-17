@@ -8,9 +8,20 @@
 // Não divulgar a URL: é ferramenta de teste.
 
 const calendario = require("./paroquiaCalendario.js");
+const intencoesDB = require("./paroquiaIntencoes.js");
 
 const SENHA = process.env.PSJ_SENHA || "saojose"; // bancada; trocar na produção
 const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+function rotuloIso(iso) {
+  const dt = new Date(iso);
+  const dia = DIAS[dt.getDay()];
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const h = dt.getHours(), mi = dt.getMinutes();
+  const hora = mi ? `${h}h${String(mi).padStart(2, "0")}` : `${h}h`;
+  return `${dia}, ${dd}/${mm} - ${hora}`;
+}
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
@@ -85,7 +96,9 @@ function paginaCalendario(msg) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Calendário - Secretaria</title>${estilo()}</head><body>
 <div class="wrap">
-<h1>⛪ Calendário de Missas <span class="sub">(teste)</span></h1>
+<h1>⛪ Secretaria <span class="sub">(teste)</span></h1>
+${nav("calendario")}
+<h2 style="margin-top:0">Calendário de Missas</h2>
 ${msg ? `<p class="ok">${esc(msg)}</p>` : ""}
 
 <h2>Próximos dias</h2>
@@ -140,6 +153,102 @@ ${msg ? `<p class="ok">${esc(msg)}</p>` : ""}
 </div></body></html>`;
 }
 
+function nav(ativo) {
+  const item = (id, url, txt) =>
+    `<a class="${ativo === id ? "on" : ""}" href="${url}?s=${esc(SENHA)}">${txt}</a>`;
+  return `<nav class="nav">${item("calendario", "/psj/calendario", "📅 Calendário")}${item("intencoes", "/psj/intencoes", "🙏 Intenções e relatório")}</nav>`;
+}
+
+// ---------------------------------------------------------------------------
+// Página INTENÇÕES + ENCERRAR CICLO
+// ---------------------------------------------------------------------------
+function paginaIntencoes(msg) {
+  const grupos = intencoesDB.pendentesPorMissa();
+  const cortes = intencoesDB.lerCortes().slice().reverse();
+
+  let corpo;
+  if (grupos.length === 0) {
+    corpo = "<p class='vazio'>Nenhuma intenção pendente.</p>";
+  } else {
+    corpo = grupos.map(g => {
+      const linhas = g.intencoes.map(i =>
+        `<li>${esc(i.tipo)} — <b>${esc(i.nome_oracao)}</b></li>`).join("");
+      // Encerrar ATÉ esta missa (inclusive): fecha esta e as anteriores.
+      return `
+      <div class="missa">
+        <div class="missa-cab">
+          <b>${esc(g.missa_rotulo || rotuloIso(g.missa_iso))}</b>
+          <span class="badge">${g.intencoes.length}</span>
+        </div>
+        <ul class="nomes">${linhas}</ul>
+        <form method="post" action="/psj/encerrar" onsubmit="return confirm('Encerrar as intenções até esta Missa e gerar o relatório? Depois disso, o chat não aceita mais intenção para elas.')">
+          ${campoSenha()}
+          <input type="hidden" name="ate_iso" value="${esc(g.missa_iso)}">
+          <button>Encerrar até aqui e gerar relatório</button>
+        </form>
+      </div>`;
+    }).join("");
+  }
+
+  const hist = cortes.length
+    ? cortes.map(c => `<li>${esc(rotuloIso(c.ate_iso))} — ${c.qtd_intencoes} intenção(ões)
+        <a class="mini-link" href="/psj/relatorio?s=${esc(SENHA)}&corte=${c.id}" target="_blank">ver relatório</a></li>`).join("")
+    : "<li class='vazio'>nenhum</li>";
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intenções - Secretaria</title>${estilo()}</head><body>
+<div class="wrap">
+<h1>⛪ Secretaria <span class="sub">(teste)</span></h1>
+${nav("intencoes")}
+<h2 style="margin-top:0">Intenções pendentes</h2>
+${msg ? `<p class="ok">${esc(msg)}</p>` : ""}
+<p class="hint">Encerrar até uma Missa gera o relatório para impressão e fecha essas Missas no chat (vira comentarista).</p>
+${corpo}
+<h2>Relatórios gerados</h2><ul class="lista">${hist}</ul>
+</div></body></html>`;
+}
+
+// Relatório imprimível de um corte (a secretaria abre e imprime / salva PDF).
+function paginaRelatorio(corteId) {
+  const corte = intencoesDB.lerCortes().find(c => c.id === Number(corteId));
+  const ints = intencoesDB.intencoesDoCorte(corteId);
+  if (!corte) return "<p>Relatório não encontrado.</p>";
+
+  // agrupa por missa
+  const mapa = new Map();
+  for (const i of ints) {
+    const k = i.missa_iso;
+    if (!mapa.has(k)) mapa.set(k, { rotulo: i.missa_rotulo || rotuloIso(k), itens: [] });
+    mapa.get(k).itens.push(i);
+  }
+  const blocos = [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([iso, g]) => `
+    <h3>${esc(g.rotulo)}</h3>
+    <ol>${g.itens.map(i => `<li><b>${esc(i.nome_oracao)}</b> — ${esc(i.tipo)}</li>`).join("")}</ol>
+  `).join("") || "<p>Sem intenções neste relatório.</p>";
+
+  const geradoEm = new Date(corte.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relatório de Intenções</title>
+<style>
+  body{font-family:Georgia,serif;max-width:720px;margin:0 auto;padding:24px;color:#111}
+  h1{font-size:1.4rem;text-align:center;margin:.2rem 0}
+  .sub{text-align:center;color:#555;margin:0 0 1rem;font-size:.9rem}
+  h3{border-bottom:2px solid #333;padding-bottom:.2rem;margin:1.2rem 0 .4rem}
+  ol{margin:.2rem 0 .8rem 1.4rem} li{padding:.15rem 0}
+  .barra{text-align:center;margin:14px 0}
+  button{font:inherit;padding:.5rem 1rem;border:1px solid #333;background:#f3f3f3;border-radius:6px;cursor:pointer}
+  @media print { .barra{display:none} body{padding:0} }
+</style></head><body>
+<div class="barra"><button onclick="window.print()">🖨 Imprimir</button></div>
+<h1>Intenções de Missa</h1>
+<p class="sub">Paróquia São José · gerado em ${esc(geradoEm)}</p>
+${blocos}
+</body></html>`;
+}
+
 function estilo() {
   return `<style>
   *{box-sizing:border-box} body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f4f6f8;color:#1f2937}
@@ -161,6 +270,12 @@ function estilo() {
   .lista li{padding:.35rem 0;border-bottom:1px solid #f0f0f0;font-size:.9rem;display:flex;justify-content:space-between;gap:8px;align-items:center}
   .vazio{color:#9ca3af} .ok{background:#dcfce7;color:#166534;padding:.5rem;border-radius:8px}
   .erro{background:#fee2e2;color:#991b1b;padding:.5rem;border-radius:8px}
+  .nav{display:flex;gap:8px;margin:.4rem 0 1rem} .nav a{padding:.4rem .8rem;border-radius:8px;text-decoration:none;background:#e5e7eb;color:#374151;font-size:.9rem}
+  .nav a.on{background:#2563eb;color:#fff}
+  .missa{background:#fff;border-radius:10px;padding:12px;margin:.6rem 0;box-shadow:0 1px 6px #0001}
+  .missa-cab{display:flex;justify-content:space-between;align-items:center} .badge{background:#2563eb;color:#fff;border-radius:999px;padding:.1rem .6rem;font-size:.85rem}
+  .nomes{margin:.4rem 0 .6rem 1.1rem} .nomes li{padding:.1rem 0}
+  .mini-link{font-size:.8rem;margin-left:6px}
   </style>`;
 }
 
@@ -209,7 +324,15 @@ function registrarRotasParoquia(app) {
     res.send(paginaCalendario("Período removido."));
   });
 
-  console.log("⛪ [psj] Tela da secretaria registrada em /psj (calendário)");
+  // Intenções + encerramento + relatório
+  app.get("/psj/intencoes", guard, (req, res) => res.send(paginaIntencoes(req.query.msg)));
+  app.post("/psj/encerrar", guard, (req, res) => {
+    const { corte } = intencoesDB.encerrarAte(req.body.ate_iso);
+    res.send(paginaIntencoes(`Relatório gerado (${corte.qtd_intencoes} intenção(ões)). Essas Missas foram encerradas no chat.`));
+  });
+  app.get("/psj/relatorio", guard, (req, res) => res.send(paginaRelatorio(req.query.corte)));
+
+  console.log("⛪ [psj] Tela da secretaria registrada em /psj (calendário + intenções)");
 }
 
 module.exports = { registrarRotasParoquia };
