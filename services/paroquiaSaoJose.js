@@ -148,7 +148,7 @@ const MENU = [
   // ~24 chars) com a descrição embaixo. Assim a pessoa lê "intenções" nas
   // duas formas de render.
   { n: 1,  titulo: "Missa e intenções", label: "Horário de Missa, intenções e Programação", desc: "Horários, intenções e programação", tipo: "submenu", destino: "missa" },
-  { n: 2,  titulo: "Batismo",                    tipo: "fluxo",   destino: "batismo" },
+  { n: 2,  titulo: "Batismo",                    tipo: "submenu", destino: "batismo" },
   { n: 3,  titulo: "Casamento",                  tipo: "rapida",  destino: "casamento" },
   { n: 4,  titulo: "Agendamento com o padre",    tipo: "rapida",  destino: "agenda_padre" },
   { n: 5,  titulo: "Catequese / Catecumenato",   tipo: "submenu", destino: "catequese_cat" },
@@ -174,6 +174,13 @@ const SUBMENUS = {
     opcoes: [
       { titulo: "Catequese (infantil)",           tipo: "rapida", destino: "catequese" },
       { titulo: "Catecumenato (jovens e adultos)", tipo: "rapida", destino: "catecumenato" }
+    ]
+  },
+  batismo: {
+    titulo: "Batismo",
+    opcoes: [
+      { titulo: "Datas para o batizado",     tipo: "rapida", destino: "batismo_datas" },
+      { titulo: "Curso de pais e padrinhos", tipo: "rapida", destino: "batismo_curso" }
     ]
   }
 };
@@ -255,6 +262,32 @@ const RESPOSTAS = {
     "- Nome do pai\n" +
     "- Para qual finalidade é o documento (matrimônio, catequese etc.)",
 
+  // Batismo (fluxo da Maju, 18/07). Duas frases dela cortaram na borda do print
+  // e ficaram de fora ATÉ ela mandar o final: (1) "Para reservar a data, é
+  // necessário ..." e (2) o fim do "obs" do curso ("...comparecer na data e ...").
+  batismo_datas:
+    "*Datas para o Batismo*\n\n" +
+    "O Batismo é *comunitário* (pode haver mais crianças no mesmo dia) e é sempre às *10h*.\n\n" +
+    "*Onde e quando:*\n" +
+    "2º sábado do mês - Matriz São José\n" +
+    "3º sábado do mês - Capela Santa Teresinha (Camboinhas)\n" +
+    "4º sábado do mês - Capela Nossa Senhora da Penha (Tibau)\n\n" +
+    "*Documentos necessários (somente xerox):*\n" +
+    "1. Certidão de nascimento da criança\n" +
+    "2. Carteira de identidade civil dos padrinhos, se solteiros\n" +
+    "3. Certidão do casamento religioso dos padrinhos, se casados ou viúvos\n" +
+    "4. Comprovante dos sacramentos (Batismo, 1ª Eucaristia e Crisma) dos dois padrinhos\n" +
+    "5. Ficha dos padrinhos preenchida e assinada\n" +
+    "6. Comprovante de residência dos pais\n" +
+    "7. Autorização da paróquia onde os pais residem, caso não pertençam a esta comunidade (cópia original)\n\n" +
+    "_Caso a situação não se encontre dentro dos padrões, procure a secretaria paroquial._",
+
+  batismo_curso:
+    "*Curso de pais e padrinhos*\n\n" +
+    "Acontece todo *1º sábado do mês*. Próximas datas:\n" +
+    "01/08\n05/09\n03/10\n07/11\n05/12\n\n" +
+    "_Não é necessário fazer inscrição, é só comparecer na data._",
+
   programacao:
     "*Programação semanal - Paróquia São José*\n\n" +
     "*Missas*\n" +
@@ -284,7 +317,6 @@ const RESPOSTAS = {
 
 // Fluxos ainda não construídos nesta bancada (próximas fatias).
 const EM_BREVE = {
-  batismo:  "🙏 O fluxo de *Batismo* já já entra aqui. (em construção)",
   intencao: "🙏 O *registro de intenção* na Missa já já entra aqui. (em construção)"
 };
 
