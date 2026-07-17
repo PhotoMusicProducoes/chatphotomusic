@@ -65,11 +65,13 @@ function rotuloMissa(dt) {
 }
 
 // Hora do CORTE de uma missa: até quando o chat aceita intenção para ela.
-// [OK 16/07, Mario] A secretaria encerra às 17h (dia útil) e imprime.
-//   - missa da NOITE (19h30): corte às 17h do MESMO dia;
-//   - missa da MANHÃ (7h/10h): corte às 17h do dia útil ANTERIOR;
-//   - fim de semana (dom) e SEGUNDA 7h: corte às 17h da SEXTA (último dia útil),
-//     porque a secretaria não trabalha no fim de semana.
+// [OK 16/07, Mario] A secretaria encerra às 17h (dia útil) e imprime. Regras:
+//   - DOMINGO (10h e 19h30) e SEGUNDA 7h: corte às 17h da SEXTA (último dia
+//     útil), porque a secretaria não trabalha no fim de semana. A missa das
+//     10h SÓ existe no domingo, então SEMPRE cai aqui (não é "manhã de dia útil").
+//   - Dia útil ter-sex, missa da NOITE (19h30): corte às 17h do MESMO dia;
+//   - Dia útil ter-sex, missa da MANHÃ (7h): corte às 17h do dia útil ANTERIOR.
+// A ordem dos `if` abaixo garante isso: o dia da semana é checado ANTES do horário.
 // ⚠️ Não trata FERIADO ainda (se sexta é feriado, o real seria quinta) — refino
 // com as secretárias / na migração. CORTE_HORA fixo em 17h (decisão do Mario).
 const CORTE_HORA = 17;
