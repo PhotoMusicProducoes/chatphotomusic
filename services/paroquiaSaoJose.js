@@ -638,9 +638,11 @@ async function intNome(chatId, sessions, corpo) {
   sessions[chatId].psj.intencao.missasOferecidas = missas;
   sessions[chatId].step = "psj_int_missa";
   await sendTyping(chatId);
+  // A lista de intenção é sempre da matriz (só ela aceita intenção pelo chat);
+  // deixa isso claro no título p/ a pessoa não procurar a missa da capela aqui.
   await sendOptionList(
     chatId,
-    "Para qual Missa?",
+    `Para qual Missa na *${calendario.MATRIZ}*?`,
     missas.map((m, i) => ({ id: String(i + 1), title: m.rotulo })),
     { title: "Missas", buttonLabel: "Ver missas" }
   );
