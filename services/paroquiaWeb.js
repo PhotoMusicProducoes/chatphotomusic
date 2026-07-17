@@ -172,8 +172,7 @@ function paginaIntencoes(msg) {
   } else {
     corpo = grupos.map(g => {
       const linhas = g.intencoes.map(i =>
-        `<li>${esc(i.tipo)} — <b>${esc(i.nome_oracao)}</b></li>`).join("");
-      // Encerrar ATÉ esta missa (inclusive): fecha esta e as anteriores.
+        `<li>${esc(i.tipo)} — <b>${esc(i.nome_oracao)}</b>${i.origem === "secretaria" ? " <span class='tag'>secretaria</span>" : ""}</li>`).join("");
       return `
       <div class="missa">
         <div class="missa-cab">
@@ -181,7 +180,7 @@ function paginaIntencoes(msg) {
           <span class="badge">${g.intencoes.length}</span>
         </div>
         <ul class="nomes">${linhas}</ul>
-        <form method="post" action="/psj/encerrar" onsubmit="return confirm('Encerrar as intenções até esta Missa e gerar o relatório? Depois disso, o chat não aceita mais intenção para elas.')">
+        <form method="post" action="/psj/encerrar" onsubmit="return confirm('Encerrar as intenções até esta Missa e gerar o relatório? Depois, o chat não aceita mais intenção para elas (dá pra retomar).')">
           ${campoSenha()}
           <input type="hidden" name="ate_iso" value="${esc(g.missa_iso)}">
           <button>Encerrar até aqui e gerar relatório</button>
@@ -190,10 +189,34 @@ function paginaIntencoes(msg) {
     }).join("");
   }
 
+  // Encerramentos: ver relatório (sempre atualizado) + retomar (desfazer).
   const hist = cortes.length
-    ? cortes.map(c => `<li>${esc(rotuloIso(c.ate_iso))} — ${c.qtd_intencoes} intenção(ões)
-        <a class="mini-link" href="/psj/relatorio?s=${esc(SENHA)}&corte=${c.id}" target="_blank">ver relatório</a></li>`).join("")
+    ? cortes.map(c => {
+        const qtd = intencoesDB.intencoesDoCorte(c.id).length;
+        return `<li>
+          <span>${esc(rotuloIso(c.ate_iso))} — ${qtd} intenção(ões)</span>
+          <span>
+            <a class="mini-link" href="/psj/relatorio?s=${esc(SENHA)}&corte=${c.id}" target="_blank">ver / imprimir</a>
+            <form method="post" action="/psj/retomar" style="display:inline" onsubmit="return confirm('Retomar este encerramento? As Missas voltam a aceitar intenção pelo chat.')">
+              ${campoSenha()}<input type="hidden" name="id" value="${c.id}">
+              <button class="mini">retomar</button></form>
+          </span></li>`;
+      }).join("")
     : "<li class='vazio'>nenhum</li>";
+
+  // Formulário: a secretaria cadastra intenção (pedido presencial/telefone).
+  // Lista as próximas missas da matriz (inclui as já encerradas: dá p/ incluir
+  // e gerar o relatório de novo).
+  const agora = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const missas = calendario.gerarMissas(agora, 12).filter(m => m.intencao).slice(0, 20);
+  const opcoesMissa = missas.map(m => {
+    const iso = m.iso.toISOString();
+    const fechada = intencoesDB.estaFechadaManual(iso);
+    return `<option value="${esc(iso)}">${esc(rotuloIso(iso))}${fechada ? " (encerrada)" : ""}</option>`;
+  }).join("");
+  const opcoesTipo = intencoesDB.TIPOS_INTENCAO.filter(t => t !== "Outros")
+    .map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("") +
+    `<option value="__outro">Outros (digitar)</option>`;
 
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -203,9 +226,23 @@ function paginaIntencoes(msg) {
 ${nav("intencoes")}
 <h2 style="margin-top:0">Intenções pendentes</h2>
 ${msg ? `<p class="ok">${esc(msg)}</p>` : ""}
-<p class="hint">Encerrar até uma Missa gera o relatório para impressão e fecha essas Missas no chat (vira comentarista).</p>
+<p class="hint">Encerrar até uma Missa gera o relatório e fecha essas Missas no chat. Dá para <b>retomar</b> se encerrar por engano.</p>
 ${corpo}
-<h2>Relatórios gerados</h2><ul class="lista">${hist}</ul>
+
+<section style="margin-top:16px">
+  <h2>➕ Cadastrar intenção (secretaria)</h2>
+  <p class="hint">Para quem pede na secretaria ou por telefone. Pode incluir mesmo numa Missa já encerrada e gerar o relatório de novo.</p>
+  <form method="post" action="/psj/intencao-nova">
+    ${campoSenha()}
+    <label>Missa</label><select name="missa_iso" required>${opcoesMissa}</select>
+    <label>Tipo</label><select name="tipo" onchange="document.getElementById('outro').style.display=this.value==='__outro'?'block':'none'">${opcoesTipo}</select>
+    <input type="text" id="outro" name="tipo_outro" placeholder="descreva a intenção" style="display:none;margin-top:.4rem">
+    <label>Nome(s) — separe por vírgula se mais de um</label><input type="text" name="nomes" required placeholder="ex: Cléa Nazeanze, João da Silva">
+    <button>Cadastrar intenção</button>
+  </form>
+</section>
+
+<h2>Encerramentos</h2><ul class="lista">${hist}</ul>
 </div></body></html>`;
 }
 
@@ -276,6 +313,7 @@ function estilo() {
   .missa-cab{display:flex;justify-content:space-between;align-items:center} .badge{background:#2563eb;color:#fff;border-radius:999px;padding:.1rem .6rem;font-size:.85rem}
   .nomes{margin:.4rem 0 .6rem 1.1rem} .nomes li{padding:.1rem 0}
   .mini-link{font-size:.8rem;margin-left:6px}
+  .tag{background:#fde68a;color:#92400e;border-radius:6px;padding:0 .4rem;font-size:.72rem}
   </style>`;
 }
 
@@ -331,6 +369,33 @@ function registrarRotasParoquia(app) {
     res.send(paginaIntencoes(`Relatório gerado (${corte.qtd_intencoes} intenção(ões)). Essas Missas foram encerradas no chat.`));
   });
   app.get("/psj/relatorio", guard, (req, res) => res.send(paginaRelatorio(req.query.corte)));
+
+  app.post("/psj/retomar", guard, (req, res) => {
+    intencoesDB.retomarCorte(req.body.id);
+    res.send(paginaIntencoes("Encerramento retomado. As Missas voltaram a aceitar intenção pelo chat."));
+  });
+
+  // Cadastro de intenção pela secretaria (pedido presencial/telefone).
+  app.post("/psj/intencao-nova", guard, (req, res) => {
+    const { missa_iso, tipo, tipo_outro, nomes } = req.body;
+    const listaNomes = String(nomes || "").split(/[,;]+/).map(n => n.trim()).filter(n => n.length >= 2);
+    if (!missa_iso || listaNomes.length === 0) {
+      return res.send(paginaIntencoes("Informe a Missa e ao menos um nome."));
+    }
+    intencoesDB.gravarIntencao({
+      paroquia_id: 1,
+      tipo: tipo === "__outro" ? (tipo_outro || "Outros") : tipo,
+      nome_oracao: listaNomes.join(", "),
+      nomes: listaNomes,
+      missa_iso,
+      missa_rotulo: rotuloIso(missa_iso),
+      origem: "secretaria"
+    });
+    const aviso = intencoesDB.estaFechadaManual(missa_iso)
+      ? "Intenção cadastrada. A Missa já estava encerrada — reabra o relatório dela para gerar de novo, já com esta intenção."
+      : "Intenção cadastrada.";
+    res.send(paginaIntencoes(aviso));
+  });
 
   console.log("⛪ [psj] Tela da secretaria registrada em /psj (calendário + intenções)");
 }

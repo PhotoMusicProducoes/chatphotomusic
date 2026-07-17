@@ -25,15 +25,9 @@ const intencoesDB = require("./paroquiaIntencoes.js");
 // ---------------------------------------------------------------------------
 // INTENÇÕES DE MISSA — dados
 // ---------------------------------------------------------------------------
-// Tipos que a Maju passou (17/07) + "Outros" (a pessoa digita).
-const TIPOS_INTENCAO = [
-  "7º dia de falecido",
-  "1 mês de falecido",
-  "1 ano de falecido",
-  "15 anos - aniversário",
-  "Saúde",
-  "Outros"
-];
+// Tipos de intenção: fonte única em paroquiaIntencoes (usada também na tela
+// da secretaria).
+const TIPOS_INTENCAO = intencoesDB.TIPOS_INTENCAO;
 
 // O calendário de missas agora mora em paroquiaCalendario.js (editável pela
 // secretaria: padrão por local + exceções + períodos). proximasMissas() lê de
