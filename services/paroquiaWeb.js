@@ -365,8 +365,9 @@ function registrarRotasParoquia(app) {
   // Intenções + encerramento + relatório
   app.get("/psj/intencoes", guard, (req, res) => res.send(paginaIntencoes(req.query.msg)));
   app.post("/psj/encerrar", guard, (req, res) => {
-    const { corte } = intencoesDB.encerrarAte(req.body.ate_iso);
-    res.send(paginaIntencoes(`Relatório gerado (${corte.qtd_intencoes} intenção(ões)). Essas Missas foram encerradas no chat.`));
+    const corte = intencoesDB.encerrarAte(req.body.ate_iso);
+    const qtd = intencoesDB.intencoesDoCorte(corte.id).length;
+    res.send(paginaIntencoes(`Relatório gerado (${qtd} intenção(ões)). Essas Missas foram encerradas no chat.`));
   });
   app.get("/psj/relatorio", guard, (req, res) => res.send(paginaRelatorio(req.query.corte)));
 
