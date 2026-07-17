@@ -281,12 +281,18 @@ function paginaRelatorio(corteId) {
     if (!mapa.has(k)) mapa.set(k, { rotulo: i.missa_rotulo || rotuloIso(k), itens: [] });
     mapa.get(k).itens.push(i);
   }
+  // Linhas em branco DEPOIS DE CADA intenção: quem chega 20 min antes fala com
+  // o(a) comentarista, que continua a lista daquela intenção à mão, embaixo dos
+  // nomes que a secretaria já imprimiu. (Regra do Mario, 17/07.)
+  const linhasEscrita = `<div class="escrita">${'<span class="ln"></span>'.repeat(4)}</div>`;
+
   // O "excluir" e o "(pediu: ...)" são da conferência na tela: somem na
   // impressão, onde o papel só precisa do nome e do tipo p/ o celebrante ler.
   const blocos = [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([iso, g]) => `
     <h3>${esc(g.rotulo)}</h3>
     <ol>${g.itens.map(i => `<li><b>${esc(i.nome_oracao)}</b> — ${esc(i.tipo)}
-      <span class="tela">${pedidoPor(i)} ${formExcluir(i, "relatorio", corte.id)}</span></li>`).join("")}</ol>
+      <span class="tela">${pedidoPor(i)} ${formExcluir(i, "relatorio", corte.id)}</span>
+      ${linhasEscrita}</li>`).join("")}</ol>
   `).join("") || "<p>Sem intenções neste relatório.</p>";
 
   const geradoEm = new Date(corte.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -298,8 +304,11 @@ function paginaRelatorio(corteId) {
   body{font-family:Georgia,serif;max-width:720px;margin:0 auto;padding:24px;color:#111}
   h1{font-size:1.4rem;text-align:center;margin:.2rem 0}
   .sub{text-align:center;color:#555;margin:0 0 1rem;font-size:.9rem}
-  h3{border-bottom:2px solid #333;padding-bottom:.2rem;margin:1.2rem 0 .4rem}
-  ol{margin:.2rem 0 .8rem 1.4rem} li{padding:.15rem 0}
+  h3{border-bottom:2px solid #333;padding-bottom:.2rem;margin:1.2rem 0 .4rem;break-after:avoid}
+  ol{margin:.2rem 0 .8rem 1.4rem} li{padding:.15rem 0;break-inside:avoid}
+  /* Linhas p/ o comentarista continuar a lista à mão, antes da Missa. */
+  .escrita{margin:.15rem 0 .5rem}
+  .ln{display:block;border-bottom:1px solid #aaa;height:1.05rem}
   .barra{text-align:center;margin:14px 0}
   button{font:inherit;padding:.5rem 1rem;border:1px solid #333;background:#f3f3f3;border-radius:6px;cursor:pointer}
   .quem{color:#666;font-size:.78rem;font-family:system-ui,sans-serif}
