@@ -64,11 +64,47 @@ function rotuloMissa(dt) {
   return `${dia}, ${dd}/${mm} - ${hora}`;
 }
 
-// Próximas `qtd` missas da matriz a partir de agora (SP).
-function proximasMissas(qtd) {
-  const agora = agoraSP();
+// Hora do CORTE de uma missa: até quando o chat aceita intenção para ela.
+// [OK 16/07, Mario] A secretaria encerra às 17h (dia útil) e imprime.
+//   - missa da NOITE (19h30): corte às 17h do MESMO dia;
+//   - missa da MANHÃ (7h/10h): corte às 17h do dia útil ANTERIOR;
+//   - fim de semana (dom) e SEGUNDA 7h: corte às 17h da SEXTA (último dia útil),
+//     porque a secretaria não trabalha no fim de semana.
+// ⚠️ Não trata FERIADO ainda (se sexta é feriado, o real seria quinta) — refino
+// com as secretárias / na migração. CORTE_HORA fixo em 17h (decisão do Mario).
+const CORTE_HORA = 17;
+
+function deadlineMissa(dt) {
+  const dow = dt.getDay();      // 0=dom ... 6=sáb
+  const hora = dt.getHours();
+
+  // Domingo ou segunda (segunda só tem 7h) => fecha na sexta anterior 17h.
+  if (dow === 0 || dow === 1) {
+    const sx = new Date(dt);
+    while (sx.getDay() !== 5) sx.setDate(sx.getDate() - 1);
+    sx.setHours(CORTE_HORA, 0, 0, 0);
+    return sx;
+  }
+  // Dia útil (ter-sex):
+  if (hora < CORTE_HORA) {
+    // manhã: 17h do dia anterior (que é útil, pois ter-sex manhã)
+    const a = new Date(dt);
+    a.setDate(a.getDate() - 1);
+    a.setHours(CORTE_HORA, 0, 0, 0);
+    return a;
+  }
+  // noite (19h30): 17h do mesmo dia
+  const d = new Date(dt);
+  d.setHours(CORTE_HORA, 0, 0, 0);
+  return d;
+}
+
+// Próximas `qtd` missas da matriz ABERTAS a partir de agora (SP). Exclui as que
+// já passaram do corte (a secretaria já fechou/imprimiu). `agora` injetável p/ teste.
+function proximasMissas(qtd, agora) {
+  agora = agora || agoraSP();
   const lista = [];
-  for (let d = 0; d < 14 && lista.length < qtd; d++) {
+  for (let d = 0; d < 21 && lista.length < qtd; d++) {
     const base = new Date(agora);
     base.setDate(agora.getDate() + d);
     const dow = base.getDay();
@@ -78,7 +114,10 @@ function proximasMissas(qtd) {
         const [h, mi] = m.hora.split(":").map(Number);
         const dt = new Date(base);
         dt.setHours(h, mi, 0, 0);
-        if (dt > agora) lista.push({ iso: dt.toISOString(), rotulo: rotuloMissa(dt) });
+        // Só entra se a missa ainda vem E o corte dela ainda não passou.
+        if (dt > agora && agora < deadlineMissa(dt)) {
+          lista.push({ iso: dt.toISOString(), rotulo: rotuloMissa(dt) });
+        }
       });
   }
   return lista.sort((a, b) => a.iso.localeCompare(b.iso)).slice(0, qtd);
@@ -564,6 +603,13 @@ async function intNome(chatId, sessions, corpo) {
     "Para qual Missa?",
     missas.map((m, i) => ({ id: String(i + 1), title: m.rotulo })),
     { title: "Missas", buttonLabel: "Ver missas" }
+  );
+  // A missa que a pessoa quer pode já ter sido fechada pela secretaria (corte
+  // das 17h) — nesse caso ela não aparece na lista. Orienta o comentarista,
+  // igual às capelas. (Regra da Maju/Mario.)
+  await sendText(
+    chatId,
+    "_Não encontrou a Missa desejada? As intenções de algumas Missas já foram encerradas na secretaria. Nesse caso, chegue *20 minutos antes* e fale com o(a) comentarista, que anotará o nome. 🙏_"
   );
 }
 
