@@ -525,16 +525,30 @@ async function intOutros(chatId, sessions, corpo) {
 async function pedirNomeOracao(chatId, sessions) {
   sessions[chatId].step = "psj_int_nome";
   await sendTyping(chatId);
-  await sendText(chatId, "Qual o *nome* da pessoa por quem devemos rezar?");
+  await sendText(
+    chatId,
+    "Qual o *nome* da pessoa por quem devemos rezar?\n\n" +
+    "Se for mais de uma, envie os nomes separados por *vírgula*.\n_(ex: Cléa Nazeanze, João da Silva)_"
+  );
+}
+
+// "A", "A e B", "A, B e C"
+function juntarNomes(nomes) {
+  if (nomes.length <= 1) return nomes[0] || "";
+  return nomes.slice(0, -1).join(", ") + " e " + nomes[nomes.length - 1];
 }
 
 async function intNome(chatId, sessions, corpo) {
-  const nome = String(corpo || "").trim();
-  if (nome.length < 2) {
+  // Vários nomes na MESMA intenção: separados por vírgula/ponto-e-vírgula.
+  // (Não separo por " e " para não quebrar nomes compostos.)
+  const nomes = String(corpo || "")
+    .split(/[,;]+/).map(n => n.trim()).filter(n => n.length >= 2);
+  if (nomes.length === 0) {
     await sendText(chatId, "Informe o nome, por favor.");
     return;
   }
-  sessions[chatId].psj.intencao.nome = nome;
+  sessions[chatId].psj.intencao.nomes = nomes;
+  sessions[chatId].psj.intencao.nome = nomes.join(", ");
 
   const missas = proximasMissas(6);
   if (missas.length === 0) {
@@ -566,12 +580,13 @@ async function intMissa(chatId, sessions, corpo) {
   sessions[chatId].step = "psj_int_confirma";
 
   const it = sessions[chatId].psj.intencao;
+  const rotuloNomes = (it.nomes && it.nomes.length > 1) ? "Nomes" : "Nome";
   await sendTyping(chatId);
   await sendOptionList(
     chatId,
     "Confira os dados da intenção:\n\n" +
     `*Tipo:* ${it.tipo}\n` +
-    `*Nome:* ${it.nome}\n` +
+    `*${rotuloNomes}:* ${juntarNomes(it.nomes || [it.nome])}\n` +
     `*Missa:* ${missa.rotulo}\n\n` +
     "Está tudo certo?",
     [
@@ -594,11 +609,14 @@ async function intConfirma(chatId, sessions, corpo) {
   }
 
   const it = sessions[chatId].psj.intencao || {};
+  const nomes = it.nomes || (it.nome ? [it.nome] : []);
   // Formato = tabela `intencoes` (Rapha Lumen Pro). paroquia_id fixo 1 (bancada).
+  // nome_oracao = string p/ o relatório; `nomes` = array (vários na mesma intenção).
   gravarIntencao({
     paroquia_id: 1,
     tipo: it.tipo,
-    nome_oracao: it.nome,
+    nome_oracao: nomes.join(", "),
+    nomes: nomes,
     missa_iso: it.missa?.iso,
     missa_rotulo: it.missa?.rotulo,
     ofertante_whatsapp: String(chatId).replace("@c.us", ""),
@@ -610,8 +628,29 @@ async function intConfirma(chatId, sessions, corpo) {
   await sendTyping(chatId);
   await sendText(
     chatId,
-    `🙏 Intenção registrada!\n\nRezaremos por *${it.nome}* na Missa de *${it.missa?.rotulo}*.\nQue Deus abençoe você e sua família!`
+    `🙏 Intenção registrada!\n\nRezaremos por *${juntarNomes(nomes)}* na Missa de *${it.missa?.rotulo}*.\nQue Deus abençoe você e sua família!`
   );
+  // A mesma pessoa pode ter mais de uma intenção (tipos/missas diferentes).
+  await perguntarOutraIntencao(chatId, sessions);
+}
+
+async function perguntarOutraIntencao(chatId, sessions) {
+  sessions[chatId].step = "psj_int_outra";
+  await sendTyping(chatId);
+  await sendOptionList(
+    chatId,
+    "Deseja registrar *outra intenção*?",
+    [
+      { id: "1", title: "Sim, outra intenção" },
+      { id: "2", title: "Não, obrigado(a)" }
+    ],
+    { title: "Intenção", buttonLabel: "Ver opções" }
+  );
+}
+
+async function intOutra(chatId, sessions, corpo) {
+  const r = String(corpo).replace(/\D+/g, "");
+  if (r === "1") { await iniciarIntencao(chatId, sessions); return; }
   await mostrarMenu(chatId, sessions, "Posso te ajudar em algo mais? (ou digite *sair*)");
 }
 
@@ -648,6 +687,7 @@ async function handleParoquia(chatId, sessions, corpoMensagem) {
   if (step === "psj_int_nome")     { await intNome(chatId, sessions, corpo);     return true; }
   if (step === "psj_int_missa")    { await intMissa(chatId, sessions, corpo);    return true; }
   if (step === "psj_int_confirma") { await intConfirma(chatId, sessions, corpo); return true; }
+  if (step === "psj_int_outra")    { await intOutra(chatId, sessions, corpo);    return true; }
   if (step === "psj_banco")   { await tratarEscolhaBanco(chatId, sessions, corpo);   return true; }
   if (step === "psj_submenu") { await tratarEscolhaSubmenu(chatId, sessions, corpo); return true; }
   if (step === "psj_menu")    { await tratarEscolhaMenu(chatId, sessions, corpo);    return true; }
