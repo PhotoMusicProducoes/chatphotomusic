@@ -478,10 +478,12 @@ async function pedirProximaCorrecao(chatId, session) {
 async function consultarDeslocamento(session) {
   try {
     const orc = session.orcamento;
-    if (!orc?.bairro) return;
+    // Aceita só a CIDADE (caso do "#local Nova Iguaçu"): o endpoint resolve
+    // por cidade mesmo com bairro vazio. Antes exigia bairro e desistia.
+    if (!orc?.bairro && !orc?.cidade) return;
 
     const resp = await axios.get(`${PM_API_BASE}/deslocamento-consultar`, {
-      params:  { bairro: orc.bairro, cidade: orc.cidade || "" },
+      params:  { bairro: orc.bairro || "", cidade: orc.cidade || "" },
       headers: { "X-PM-Api-Key": PM_API_KEY },
       timeout: 6000
     });
@@ -2316,6 +2318,10 @@ async function handleIncomingMessage(message) {
         await sendText(OPERADOR_TELEFONE_ID, `controlaMsgManual = ${controlaMsgManual}`);
       }
 
+      // Local informado por "#local Bairro, Cidade" — vale para o LOTE inteiro
+      // e alimenta o cálculo de deslocamento do resumo final.
+      let localManual = null;
+
       for (const cmd of comandos) {
         console.log("⚙️ [MANUAL] Processando:", cmd);
 
@@ -2365,6 +2371,31 @@ async function handleIncomingMessage(message) {
             await sendText(OPERADOR_TELEFONE_ID, `❌ Erro ao enviar Eucaristia: ${e.message}`);
           }
           controlaMsgManual2++;
+          continue;
+        }
+
+        // ======================================================
+        // COMANDO ESPECIAL: #local Bairro, Cidade
+        // Define o local do LOTE para calcular o deslocamento.
+        // ATENÇÃO: lê o texto CRU do comando. O parser padrão de parâmetros
+        // troca espaço por vírgula (`.replace(/[.;\s]+/g, ",")`), o que
+        // quebraria nome composto ("Nova Iguaçu" viraria "Nova" + "Iguaçu").
+        // ======================================================
+        if (nomeComando === "#local") {
+          const bruto  = cmd.slice(nomeComando.length).trim();
+          const partes = bruto.split(",").map(s => s.trim()).filter(Boolean);
+
+          if (partes.length === 0) {
+            await sendText(OPERADOR_TELEFONE_ID,
+              "⚠ Use: *#local Bairro, Cidade*\nOu só a cidade: *#local Nova Iguaçu*");
+          } else {
+            localManual = partes.length >= 2
+              ? { bairro: partes[0], cidade: partes.slice(1).join(", ") }
+              : { bairro: "",        cidade: partes[0] };
+            const ondeFmt = (localManual.bairro ? localManual.bairro + " — " : "") + localManual.cidade;
+            await sendText(OPERADOR_TELEFONE_ID, `📍 Local do orçamento: *${ondeFmt}*`);
+            console.log(`📍 [MANUAL] Local do lote: bairro="${localManual.bairro}" cidade="${localManual.cidade}"`);
+          }
           continue;
         }
 
@@ -2459,6 +2490,23 @@ async function handleIncomingMessage(message) {
       if(controlaMsgManual === controlaMsgManual2 && session.orcamento.servicosEnviados.length > 0){
         // 📌 AGUARDAR UM POUCO ANTES DO RESUMO
         await new Promise(r => setTimeout(r, 800));
+
+        // 🚗 Deslocamento no orçamento MANUAL: se o operador informou "#local",
+        // consulta o valor (tabela pm_deslocamento ou estimativa Google Maps).
+        // O resumo abaixo já sabe exibir o bloco — só faltava o bairro/cidade.
+        if (localManual) {
+          session.orcamento.bairro = localManual.bairro;
+          session.orcamento.cidade = localManual.cidade;
+          await consultarDeslocamento(session);
+          const d = session.orcamento.deslocamento;
+          await sendText(
+            OPERADOR_TELEFONE_ID,
+            d
+              ? `🚗 Deslocamento aplicado: *${d.gratis ? "GRÁTIS" : "R$ " + d.valor}*` +
+                `${d.estimado ? ` (estimado por distância, ${d.km} km)` : " (tabela)"}`
+              : `⚠ Não consegui calcular o deslocamento para *${localManual.cidade}*. O orçamento vai sem o valor.`
+          );
+        }
 
         // 📌 ENVIAR RESUMO DO EVENTO PARA O CLIENTE
         await enviarResumoCliente(chatIdCliente, session);
