@@ -130,6 +130,49 @@ function normalizarNumero(numero) {
 }
 
 // ======================================================
+// ANTI-LOOP — evita ping-pong infinito com OUTRO chatbot
+// Caso real (20/07/2026): o bot da PhotoMusic ficou trocando mensagens
+// automáticas com o chatbot da Águas do Rio. Duas regras independentes:
+//   1) a MESMA mensagem repetida N vezes  → é robô repetindo o menu;
+//   2) volume alto num intervalo curto    → é robô mesmo variando o texto.
+// Ao disparar: pausa o número (pausa de operador, reversível com "retomar")
+// e avisa o operador UMA vez. Falso positivo é recuperável em 1 comando.
+// ======================================================
+const LOOP_JANELA_MS  = 3 * 60 * 1000; // janela de observação: 3 minutos
+const LOOP_MAX_MSGS   = 10;            // msgs do mesmo número dentro da janela
+const LOOP_MAX_IGUAIS = 5;             // mesma mensagem repetida seguidas
+const antiLoop = new Map();            // chatId -> { inicio, total, ultima, iguais }
+
+function registrarMensagemAntiLoop(chatId, texto) {
+  const agora = Date.now();
+  const txt = String(texto || "").trim().toLowerCase();
+  let e = antiLoop.get(chatId);
+  if (!e || agora - e.inicio > LOOP_JANELA_MS) {
+    e = { inicio: agora, total: 0, ultima: null, iguais: 0 };
+  }
+  e.total++;
+  if (txt && txt === e.ultima) e.iguais++;
+  else { e.iguais = 1; e.ultima = txt; }
+  antiLoop.set(chatId, e);
+
+  if (txt && e.iguais >= LOOP_MAX_IGUAIS) {
+    return { bloquear: true, motivo: `mesma mensagem ${e.iguais}x seguidas` };
+  }
+  if (e.total >= LOOP_MAX_MSGS) {
+    return { bloquear: true, motivo: `${e.total} mensagens em menos de ${LOOP_JANELA_MS / 60000} min` };
+  }
+  return { bloquear: false };
+}
+
+// Limpa entradas velhas para o Map não crescer indefinidamente
+setInterval(() => {
+  const agora = Date.now();
+  for (const [k, v] of antiLoop) {
+    if (agora - v.inicio > LOOP_JANELA_MS) antiLoop.delete(k);
+  }
+}, 10 * 60 * 1000);
+
+// ======================================================
 // CAPTURA DE CLIENTE — COMEMORAÇÕES
 // ======================================================
 
@@ -528,6 +571,10 @@ async function avisarLeadRespondeu(telefone, texto) {
 // reconhecida por fromMe). Funciona no privado e em grupos.
 // Para adicionar/remover, edite este mapa (número → nome).
 const OPERADORES = {
+  // Linha do operador (a mesma de OPERADOR_TELEFONE_ID, salva como "Foto Cabine").
+  // Estava SÓ como destino das confirmações e não era aceita para ENVIAR comando —
+  // por isso comandos mandados dela eram ignorados, sem resposta nenhuma.
+  "21964428172": "Operador PhotoMusic",
   "21967082501": "Mario Nazeanze",
   "21982192443": "Adriana Mendonça",
   "21976020039": "Adriana Mendonça",
@@ -2447,6 +2494,30 @@ async function handleIncomingMessage(message) {
   if (!isOperador && estaPausadoEspecial(chatId)) {
     console.log(`🔒 Cliente em pausa especial permanente: ${chatId}`);
     return;  // Bloqueia fluxo normal APENAS para cliente
+  }
+
+  // ======================================================
+  // 🛡️ ANTI-LOOP — para o ping-pong com outro chatbot
+  // ======================================================
+  if (!isOperador) {
+    const veredito = registrarMensagemAntiLoop(chatId, corpoMensagem);
+    if (veredito.bloquear) {
+      pausarCliente(chatId);
+      console.log(`🛑 ANTI-LOOP: ${chatId} pausado automaticamente (${veredito.motivo})`);
+      try {
+        await sendText(
+          OPERADOR_TELEFONE_ID,
+          `🛑 *Anti-loop acionado*\n\n` +
+          `Pausei automaticamente o número *${chatId}*.\n` +
+          `Motivo: ${veredito.motivo}.\n\n` +
+          `Isso costuma ser outro chatbot respondendo sozinho. ` +
+          `Se for cliente de verdade, libere com:\n*retomar ${chatId}*`
+        );
+      } catch (e) {
+        console.error(`⚠️ Falha ao avisar operador do anti-loop: ${e.message}`);
+      }
+      return; // bot fica mudo a partir daqui
+    }
   }
 
   // ======================================================
