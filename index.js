@@ -2160,7 +2160,44 @@ async function handleIncomingMessage(message) {
       if (comandos.length === 0) {
         await sendText(OPERADOR_TELEFONE_ID, "⚠ Nenhum comando manual válido encontrado.");
         return;
-      }     
+      }
+
+      // ======================================================
+      // #local Bairro, Cidade — define o local para o deslocamento
+      // Tratado AQUI, ANTES de resolver o cliente destino: sozinho ele não
+      // precisa de cliente (senão o bot responde "não consegui identificar o
+      // cliente"). Fica guardado em sessions["__local_manual__"], igual ao
+      // #cliente, para valer mesmo quando o serviço vier em OUTRA mensagem.
+      // Lê o texto CRU: o parser de parâmetros troca espaço por vírgula e
+      // quebraria nome composto ("Nova Iguaçu" -> "Nova" + "Iguaçu").
+      // ======================================================
+      const cmdLocal = comandos.find(c => c.split(" ")[0].toLowerCase() === "#local");
+      if (cmdLocal) {
+        // tira TODOS os #local da fila (o resto segue normal)
+        for (let i = comandos.length - 1; i >= 0; i--) {
+          if (comandos[i].split(" ")[0].toLowerCase() === "#local") comandos.splice(i, 1);
+        }
+        const bruto  = cmdLocal.slice("#local".length).trim();
+        const partes = bruto.split(",").map(s => s.trim()).filter(Boolean);
+
+        if (partes.length === 0) {
+          delete sessions["__local_manual__"];
+          await sendText(OPERADOR_TELEFONE_ID,
+            "📍 Local apagado.\nUse: *#local Bairro, Cidade* (ou só *#local Cidade*)");
+        } else {
+          sessions["__local_manual__"] = partes.length >= 2
+            ? { bairro: partes[0], cidade: partes.slice(1).join(", ") }
+            : { bairro: "",        cidade: partes[0] };
+          const L = sessions["__local_manual__"];
+          const ondeFmt = (L.bairro ? L.bairro + " — " : "") + L.cidade;
+          console.log(`📍 [MANUAL] Local guardado: bairro="${L.bairro}" cidade="${L.cidade}"`);
+          await sendText(OPERADOR_TELEFONE_ID,
+            `📍 Local definido: *${ondeFmt}*\nVale para os próximos orçamentos, até você trocar.`);
+        }
+
+        // Só o #local nesta mensagem → nada mais a fazer (não exige cliente)
+        if (comandos.length === 0) return;
+      }
       
       // ======================================================
       // RESOLVER CLIENTE DESTINO (MANUAL) — PRIORIDADE + VALIDAÇÃO
@@ -2318,10 +2355,6 @@ async function handleIncomingMessage(message) {
         await sendText(OPERADOR_TELEFONE_ID, `controlaMsgManual = ${controlaMsgManual}`);
       }
 
-      // Local informado por "#local Bairro, Cidade" — vale para o LOTE inteiro
-      // e alimenta o cálculo de deslocamento do resumo final.
-      let localManual = null;
-
       for (const cmd of comandos) {
         console.log("⚙️ [MANUAL] Processando:", cmd);
 
@@ -2371,31 +2404,6 @@ async function handleIncomingMessage(message) {
             await sendText(OPERADOR_TELEFONE_ID, `❌ Erro ao enviar Eucaristia: ${e.message}`);
           }
           controlaMsgManual2++;
-          continue;
-        }
-
-        // ======================================================
-        // COMANDO ESPECIAL: #local Bairro, Cidade
-        // Define o local do LOTE para calcular o deslocamento.
-        // ATENÇÃO: lê o texto CRU do comando. O parser padrão de parâmetros
-        // troca espaço por vírgula (`.replace(/[.;\s]+/g, ",")`), o que
-        // quebraria nome composto ("Nova Iguaçu" viraria "Nova" + "Iguaçu").
-        // ======================================================
-        if (nomeComando === "#local") {
-          const bruto  = cmd.slice(nomeComando.length).trim();
-          const partes = bruto.split(",").map(s => s.trim()).filter(Boolean);
-
-          if (partes.length === 0) {
-            await sendText(OPERADOR_TELEFONE_ID,
-              "⚠ Use: *#local Bairro, Cidade*\nOu só a cidade: *#local Nova Iguaçu*");
-          } else {
-            localManual = partes.length >= 2
-              ? { bairro: partes[0], cidade: partes.slice(1).join(", ") }
-              : { bairro: "",        cidade: partes[0] };
-            const ondeFmt = (localManual.bairro ? localManual.bairro + " — " : "") + localManual.cidade;
-            await sendText(OPERADOR_TELEFONE_ID, `📍 Local do orçamento: *${ondeFmt}*`);
-            console.log(`📍 [MANUAL] Local do lote: bairro="${localManual.bairro}" cidade="${localManual.cidade}"`);
-          }
           continue;
         }
 
@@ -2494,6 +2502,7 @@ async function handleIncomingMessage(message) {
         // 🚗 Deslocamento no orçamento MANUAL: se o operador informou "#local",
         // consulta o valor (tabela pm_deslocamento ou estimativa Google Maps).
         // O resumo abaixo já sabe exibir o bloco — só faltava o bairro/cidade.
+        const localManual = sessions["__local_manual__"];
         if (localManual) {
           session.orcamento.bairro = localManual.bairro;
           session.orcamento.cidade = localManual.cidade;
