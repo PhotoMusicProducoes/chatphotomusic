@@ -486,19 +486,30 @@ async function consultarDeslocamento(session) {
       timeout: 6000
     });
 
-    if (resp.data?.status === "encontrado") {
+    // "encontrado" = valor da tabela manual (pm_deslocamento).
+    // "estimado"   = cidade SEM valor cadastrado; o WP calcula por distância
+    //                (Google Distance Matrix). Antes o bot descartava esse
+    //                status e caía no texto genérico "não está incluso" — ou
+    //                seja, a integração com o Maps existia e não era usada.
+    const st = resp.data?.status;
+    if (st === "encontrado" || st === "estimado") {
       // Bairro corrigido pelo fuzzy → adota o nome oficial cadastrado
       if (resp.data.corrigido && resp.data.bairro) {
         console.log(`🚗 Bairro corrigido: "${orc.bairro}" → "${resp.data.bairro}"`);
         orc.bairro = resp.data.bairro;
       }
       orc.deslocamento = {
-        valor:  Number(resp.data.valor),
-        gratis: resp.data.gratis === true,
-        bairro: resp.data.bairro,
-        cidade: resp.data.cidade
+        valor:    Number(resp.data.valor),
+        gratis:   resp.data.gratis === true,
+        bairro:   resp.data.bairro,
+        cidade:   resp.data.cidade,
+        estimado: st === "estimado",
+        km:       resp.data.km != null ? Number(resp.data.km) : null
       };
-      console.log(`🚗 Deslocamento: ${orc.deslocamento.gratis ? "GRÁTIS (promoção)" : "R$ " + orc.deslocamento.valor} (${orc.deslocamento.bairro}/${orc.deslocamento.cidade})`);
+      const comoFoi = orc.deslocamento.estimado
+        ? `ESTIMADO por distância (${orc.deslocamento.km} km)`
+        : "tabela";
+      console.log(`🚗 Deslocamento: ${orc.deslocamento.gratis ? "GRÁTIS (promoção)" : "R$ " + orc.deslocamento.valor} [${comoFoi}] (${orc.deslocamento.bairro || "-"}/${orc.deslocamento.cidade || "-"})`);
     } else {
       orc.deslocamento = null;
     }
@@ -4215,6 +4226,18 @@ async function enviarResumoCliente(chatId, session) {
         "\n🚗 *Deslocamento GRÁTIS!* 🎉\n" +
         `Este mês estamos com uma *condição super especial* para eventos em *${orc.deslocamento.cidade}*: ` +
         "o deslocamento está saindo *Grátis*!"
+      );
+    } else if (orc.deslocamento?.estimado && orc.deslocamento?.valor > 0) {
+      // Cidade sem valor na tabela: valor calculado por distância (Google Maps).
+      // O cliente NÃO sabe da composição (nem que o de longe inclui hospedagem);
+      // recebe um valor aproximado, confirmado no fechamento.
+      const valorFmt = Number(orc.deslocamento.valor)
+        .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const ondeFmt = orc.deslocamento.cidade || orc.deslocamento.bairro || "o local informado";
+      linhas.push(
+        "\n🚗 *Deslocamento*\n" +
+        `Para *${ondeFmt}*, o deslocamento fica em torno de *R$ ${valorFmt}*.\n` +
+        "É um valor aproximado, a gente confirma certinho no fechamento do seu orçamento! 😊"
       );
     } else if (orc.deslocamento?.valor != null && !isNaN(orc.deslocamento.valor) && orc.deslocamento.valor > 0) {
       const valorFmt = Number(orc.deslocamento.valor)
