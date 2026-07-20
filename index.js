@@ -73,6 +73,19 @@ const mensagensProcessadas = new Set();
 // ======================================================
 // NORMALIZAÇÃO DE NÚMEROS
 // ======================================================
+// DDD assumido quando vem SÓ o número local (sem DDD). Só afeta 8/9 dígitos.
+const DDD_PADRAO = "21";
+
+// Formatos brasileiros aceitos pelo WhatsApp (FIXO vale para TODOS os estados):
+//   Celular completo : 55 + DDD(2) + 9 + 8 dígitos = 13
+//   FIXO completo    : 55 + DDD(2) +     8 dígitos = 12
+//   Celular sem DDI  :      DDD(2) + 9 + 8 dígitos = 11  (3º dígito = '9')
+//   FIXO sem DDI     :      DDD(2) +     8 dígitos = 10  (qualquer DDD)
+//   Celular local    :               9 + 8 dígitos = 9
+//   FIXO local       :                   8 dígitos = 8   (NÃO leva o 9)
+// IMPORTANTE: manter esta função IDÊNTICA à de utils/pausaEspecialControl.js —
+// a pausa do operador compara string exata, então qualquer divergência entre as
+// duas faz o número pausado nunca bater com o que chega do WhatsApp.
 function normalizarNumero(numero) {
   if (!numero) return null;
 
@@ -80,18 +93,11 @@ function normalizarNumero(numero) {
   numero = numero.replace("@c.us", "");
   numero = numero.replace(/\D+/g, ""); // remove +, espaços, hífen, parênteses etc.
   numero = numero.replace(/^0+/, "");
+  if (!numero) return null;
 
-  if (numero.startsWith("55") && numero.length === 13) return numero;
-  if (numero.startsWith("55") && numero.length === 12) return numero;
-
-  if (numero.startsWith("21") && (numero.length === 10 || numero.length === 11))
-    return "55" + numero;
-
-  if (numero.length === 9 && numero.startsWith("9"))
-    return "5521" + numero;
-
-  if (numero.length === 8)
-    return "55219" + numero;
+  // Já vem com DDI 55: 13 = celular, 12 = FIXO. Ambos válidos como estão.
+  if (numero.startsWith("55") && (numero.length === 12 || numero.length === 13))
+    return numero;
 
   if (numero.length === 13 && !numero.startsWith("55"))
     return "55" + numero;
@@ -105,8 +111,20 @@ function normalizarNumero(numero) {
     return numero; // internacional — retorna como veio, sem adicionar 55
   }
 
+  // 10 dígitos = DDD + FIXO de 8 dígitos, de QUALQUER estado (11 SP, 21 RJ, 31 MG...)
   if (numero.length === 10)
     return "55" + numero;
+
+  // Só o número local, sem DDD → assume o DDD padrão.
+  if (numero.length === 9 && numero.startsWith("9"))
+    return "55" + DDD_PADRAO + numero;   // celular local
+
+  // FIXO local: 8 dígitos. NÃO acrescentar o "9" (isso criava um celular
+  // inexistente, ex.: 4851-8562 virava 5521948518562 e a pausa nunca batia).
+  if (numero.length === 8) {
+    console.log(`ℹ️ Número com 8 dígitos (fixo local) sem DDD — assumindo DDD ${DDD_PADRAO}: ${numero}. Prefira informar com DDD.`);
+    return "55" + DDD_PADRAO + numero;
+  }
 
   return numero;
 }
