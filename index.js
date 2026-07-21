@@ -2177,7 +2177,11 @@ async function handleIncomingMessage(message) {
         for (let i = comandos.length - 1; i >= 0; i--) {
           if (comandos[i].split(" ")[0].toLowerCase() === "#local") comandos.splice(i, 1);
         }
-        const bruto  = cmdLocal.slice("#local".length).trim();
+        // Tira um telefone colado no fim ("#local Bairro, Cidade 5521999999999"),
+        // senão ele entrava no nome da cidade e a consulta falhava.
+        const bruto  = cmdLocal.slice("#local".length)
+                                .replace(/[-+\d\s()]{8,}$/, "")
+                                .trim();
         const partes = bruto.split(",").map(s => s.trim()).filter(Boolean);
 
         if (partes.length === 0) {
@@ -2495,29 +2499,62 @@ async function handleIncomingMessage(message) {
 
       await sendText(OPERADOR_TELEFONE_ID, `controlaMsgManual = ${controlaMsgManual} e controlaMsgManual2 = ${controlaMsgManual2}`);
 
-      if(controlaMsgManual === controlaMsgManual2 && session.orcamento.servicosEnviados.length > 0){
+      // 🚗 Deslocamento do orçamento MANUAL (#local): consultado ANTES da
+      // decisão do resumo, para valer nos dois caminhos.
+      // O cliente PRECISA receber o deslocamento junto do orçamento, mesmo que
+      // o resumo não rode (foi o que aconteceu: o fluxo parou no PDF e o valor
+      // teve que ir na mão). Se o resumo for sair, ele já mostra o bloco; se
+      // não, mandamos o deslocamento como mensagem própria — sem duplicar.
+      const localManual = sessions["__local_manual__"];
+      let textoDeslocManual = null;
+
+      if (localManual) {
+        session.orcamento.bairro = localManual.bairro;
+        session.orcamento.cidade = localManual.cidade;
+        await consultarDeslocamento(session);
+        const d = session.orcamento.deslocamento;
+
+        if (d && d.gratis) {
+          textoDeslocManual =
+            "\n🚗 *Deslocamento GRÁTIS!* 🎉\n" +
+            `Este mês estamos com uma *condição super especial* para eventos em *${d.cidade}*: ` +
+            "o deslocamento está saindo *Grátis*!";
+        } else if (d && d.estimado && d.valor > 0) {
+          const v = Number(d.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          textoDeslocManual =
+            "\n🚗 *Deslocamento*\n" +
+            `Para *${d.cidade || d.bairro}*, o deslocamento fica em torno de *R$ ${v}*.\n` +
+            "É um valor aproximado, a gente confirma certinho no fechamento do seu orçamento! 😊";
+        } else if (d && d.valor > 0) {
+          const v = Number(d.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          textoDeslocManual =
+            "\n🚗 *Deslocamento*\n" +
+            `Deslocamento para *${d.bairro ? d.bairro + " — " : ""}${d.cidade}*: ` +
+            `Valor do Pacote Escolhido + *R$ ${v}*`;
+        }
+
+        await sendText(
+          OPERADOR_TELEFONE_ID,
+          d
+            ? `🚗 Deslocamento aplicado: *${d.gratis ? "GRÁTIS" : "R$ " + d.valor}*` +
+              `${d.estimado ? ` (estimado por distância, ${d.km} km)` : " (tabela)"}`
+            : `⚠ Não consegui calcular o deslocamento para *${localManual.cidade}*. O orçamento vai sem o valor.`
+        );
+      }
+
+      const vaiTerResumo = (controlaMsgManual === controlaMsgManual2 && session.orcamento.servicosEnviados.length > 0);
+
+      // Rede de segurança: sem resumo, o deslocamento vai sozinho ao cliente.
+      if (textoDeslocManual && !vaiTerResumo) {
+        await sendTyping(chatIdCliente);
+        await sendText(chatIdCliente, textoDeslocManual.trim());
+      }
+
+      if (vaiTerResumo) {
         // 📌 AGUARDAR UM POUCO ANTES DO RESUMO
         await new Promise(r => setTimeout(r, 800));
 
-        // 🚗 Deslocamento no orçamento MANUAL: se o operador informou "#local",
-        // consulta o valor (tabela pm_deslocamento ou estimativa Google Maps).
-        // O resumo abaixo já sabe exibir o bloco — só faltava o bairro/cidade.
-        const localManual = sessions["__local_manual__"];
-        if (localManual) {
-          session.orcamento.bairro = localManual.bairro;
-          session.orcamento.cidade = localManual.cidade;
-          await consultarDeslocamento(session);
-          const d = session.orcamento.deslocamento;
-          await sendText(
-            OPERADOR_TELEFONE_ID,
-            d
-              ? `🚗 Deslocamento aplicado: *${d.gratis ? "GRÁTIS" : "R$ " + d.valor}*` +
-                `${d.estimado ? ` (estimado por distância, ${d.km} km)` : " (tabela)"}`
-              : `⚠ Não consegui calcular o deslocamento para *${localManual.cidade}*. O orçamento vai sem o valor.`
-          );
-        }
-
-        // 📌 ENVIAR RESUMO DO EVENTO PARA O CLIENTE
+        // 📌 ENVIAR RESUMO DO EVENTO PARA O CLIENTE (já inclui o deslocamento)
         await enviarResumoCliente(chatIdCliente, session);
 
         // 📌 MENSAGENS FINAIS PARA O CLIENTE
