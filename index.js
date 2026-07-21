@@ -138,8 +138,12 @@ function normalizarNumero(numero) {
 // Ao disparar: pausa o número (pausa de operador, reversível com "retomar")
 // e avisa o operador UMA vez. Falso positivo é recuperável em 1 comando.
 // ======================================================
+// ⚠️ NÃO usar contagem de VOLUME aqui. A primeira versão pausava quem mandasse
+// 10 msgs em 3 min e isso derrubou CLIENTE REAL: o fluxo de orçamento faz ~12
+// perguntas seguidas, e um cliente atento responde tudo em poucos minutos —
+// o bot emudecia no meio do atendimento (caso Francine, 20/07/2026).
+// Só a repetição da MESMA mensagem identifica robô com segurança.
 const LOOP_JANELA_MS  = 3 * 60 * 1000; // janela de observação: 3 minutos
-const LOOP_MAX_MSGS   = 10;            // msgs do mesmo número dentro da janela
 const LOOP_MAX_IGUAIS = 5;             // mesma mensagem repetida seguidas
 const antiLoop = new Map();            // chatId -> { inicio, total, ultima, iguais }
 
@@ -157,9 +161,6 @@ function registrarMensagemAntiLoop(chatId, texto) {
 
   if (txt && e.iguais >= LOOP_MAX_IGUAIS) {
     return { bloquear: true, motivo: `mesma mensagem ${e.iguais}x seguidas` };
-  }
-  if (e.total >= LOOP_MAX_MSGS) {
-    return { bloquear: true, motivo: `${e.total} mensagens em menos de ${LOOP_JANELA_MS / 60000} min` };
   }
   return { bloquear: false };
 }
@@ -815,7 +816,45 @@ function interpretarSimNao(texto) {
 // ======================================================
 // FUNÇÃO — MOSTRAR MENU INICIAL
 // ======================================================
+// ======================================================
+// ANTI-LOOP (2) — boas-vindas repetindo
+// Regra do Mario: se a mensagem de BOAS-VINDAS for enviada 10x para o mesmo
+// número, é outro chatbot respondendo sozinho (o nosso reabre o menu, o dele
+// responde, e não para). Cliente de verdade nunca faz o menu abrir 10 vezes.
+// O fluxo normal NÃO é afetado — só o reenvio do menu conta aqui.
+// ======================================================
+const MENU_MAX_REPETICOES = 10;
+const MENU_JANELA_MS      = 15 * 60 * 1000; // 15 minutos
+const menuContador        = new Map();      // chatId -> { inicio, n }
+
+function contarMenuInicial(chatId) {
+  const agora = Date.now();
+  let e = menuContador.get(chatId);
+  if (!e || agora - e.inicio > MENU_JANELA_MS) e = { inicio: agora, n: 0 };
+  e.n++;
+  menuContador.set(chatId, e);
+  return e.n;
+}
+
 async function mostrarMenuInicial(chatId) {
+  const vezes = contarMenuInicial(chatId);
+  if (vezes >= MENU_MAX_REPETICOES) {
+    pausarCliente(chatId);
+    console.log(`🛑 ANTI-LOOP: menu inicial repetiu ${vezes}x para ${chatId} — número pausado`);
+    try {
+      await sendText(
+        OPERADOR_TELEFONE_ID,
+        `🛑 *Anti-loop acionado*\n\n` +
+        `O menu de boas-vindas foi enviado *${vezes}x* para *${chatId}* e eu pausei o número.\n\n` +
+        `Isso costuma ser outro chatbot respondendo sozinho. ` +
+        `Se for cliente de verdade, libere com:\n*retomar ${chatId}*`
+      );
+    } catch (e) {
+      console.error(`⚠️ Falha ao avisar operador do anti-loop do menu: ${e.message}`);
+    }
+    return; // não reenvia o menu
+  }
+
   await sendTyping(chatId);
   await sendText(chatId, mensagemBoasVindas1);
 
