@@ -2252,7 +2252,8 @@ async function handleIncomingMessage(message) {
           "*DESLOCAMENTO:*\n" +
           "Mande o local antes (ou junto) do comando:\n" +
           "#local Califórnia, Nova Iguaçu\n" +
-          "_Vale para os próximos orçamentos, até você trocar._\n" +
+          "_Vale para o *próximo orçamento* e depois é apagado._\n" +
+          "_Cada orçamento precisa do seu próprio #local._\n" +
           "_Só a cidade também funciona: #local Nova Iguaçu_\n\n" +
           "⚠️ *Não funciona em grupo* — mande daqui ou no chat do cliente.";
 
@@ -2288,14 +2289,19 @@ async function handleIncomingMessage(message) {
           await sendText(OPERADOR_TELEFONE_ID,
             "📍 Local apagado.\nUse: *#local Bairro, Cidade* (ou só *#local Cidade*)");
         } else {
+          // USO ÚNICO + validade. Antes ficava guardado "até trocar" e grudou
+          // num orçamento de OUTRO cliente 2 dias depois, com deslocamento
+          // errado (22/07). Local errado é pior que local nenhum.
           sessions["__local_manual__"] = partes.length >= 2
-            ? { bairro: partes[0], cidade: partes.slice(1).join(", ") }
-            : { bairro: "",        cidade: partes[0] };
+            ? { bairro: partes[0], cidade: partes.slice(1).join(", "), em: Date.now() }
+            : { bairro: "",        cidade: partes[0],                  em: Date.now() };
           const L = sessions["__local_manual__"];
           const ondeFmt = (L.bairro ? L.bairro + " — " : "") + L.cidade;
-          console.log(`📍 [MANUAL] Local guardado: bairro="${L.bairro}" cidade="${L.cidade}"`);
+          console.log(`📍 [MANUAL] Local guardado (uso único): bairro="${L.bairro}" cidade="${L.cidade}"`);
           await sendText(OPERADOR_TELEFONE_ID,
-            `📍 Local definido: *${ondeFmt}*\nVale para os próximos orçamentos, até você trocar.`);
+            `📍 Local definido: *${ondeFmt}*\n` +
+            `Vale para o *próximo orçamento* e depois é apagado.\n` +
+            `_Se enviar outro orçamento, mande o #local de novo._`);
         }
 
         // Só o #local nesta mensagem → nada mais a fazer (não exige cliente)
@@ -2604,7 +2610,20 @@ async function handleIncomingMessage(message) {
       // o resumo não rode (foi o que aconteceu: o fluxo parou no PDF e o valor
       // teve que ir na mão). Se o resumo for sair, ele já mostra o bloco; se
       // não, mandamos o deslocamento como mensagem própria — sem duplicar.
-      const localManual = sessions["__local_manual__"];
+      // USO ÚNICO + validade de 30 min: o #local vale só para o orçamento
+      // seguinte. Sem isso ele vazava para o próximo cliente (aconteceu em
+      // 22/07: orçamento de Casamento saiu com o bairro do orçamento anterior).
+      const LOCAL_VALIDADE_MS = 30 * 60 * 1000;
+      let localManual = sessions["__local_manual__"];
+
+      if (localManual && localManual.em && (Date.now() - localManual.em) > LOCAL_VALIDADE_MS) {
+        console.log(`📍 [MANUAL] #local expirado (${localManual.cidade}) — ignorado`);
+        delete sessions["__local_manual__"];
+        localManual = null;
+      }
+      // Consome já: mesmo se algo falhar adiante, não sobra para o próximo.
+      if (localManual) delete sessions["__local_manual__"];
+
       let textoDeslocManual = null;
 
       if (localManual) {
@@ -2639,6 +2658,13 @@ async function handleIncomingMessage(message) {
               `${d.estimado ? ` (estimado por distância, ${d.km} km)` : " (tabela)"}`
             : `⚠ Não consegui calcular o deslocamento para *${localManual.cidade}*. O orçamento vai sem o valor.`
         );
+      } else if (session.orcamento) {
+        // Sem #local nesta rodada: ZERA o deslocamento da sessão. Senão o
+        // valor do orçamento ANTERIOR do mesmo cliente reaparecia no resumo
+        // (caso 22/07: Casamento saiu com o bairro do orçamento anterior).
+        session.orcamento.deslocamento = null;
+        session.orcamento.bairro = null;
+        session.orcamento.cidade = null;
       }
 
       const vaiTerResumo = (controlaMsgManual === controlaMsgManual2 && session.orcamento.servicosEnviados.length > 0);
