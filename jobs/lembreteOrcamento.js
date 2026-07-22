@@ -171,6 +171,60 @@ function perguntaPendente(s) {
     || null;
 }
 
+// ======================================================
+// QUANTAS PERGUNTAS AINDA FALTAM (honestidade na comunicação)
+// ------------------------------------------------------
+// Problema real (relatado pelo Mario em 22/07/2026): os lembretes diziam
+// "falta só uma coisinha" / "essa última pergunta" mesmo quando ainda faltavam
+// 9 perguntas. O cliente respondia esperando o orçamento, vinha OUTRA pergunta,
+// ele se sentia enganado e parava de responder (caso Ana Caroline, 17-20/07).
+// Agora só dizemos "falta pouco" quando é VERDADE; caso contrário avisamos que
+// são mais algumas perguntas, sem prometer o orçamento na resposta seguinte.
+// ======================================================
+const ORDEM_PASSOS = [
+  "orcamento_nome",
+  "orcamento_nome_confirmar",
+  "orcamento_celebracao",
+  "orcamento_celebracao_outros",
+  "orcamento_convidados",
+  "orcamento_dias",
+  "orcamento_horarios_iguais",
+  "orcamento_datas_multiplas",
+  "orcamento_dia_data",
+  "orcamento_dia_hora_inicio",
+  "orcamento_dia_hora_fim",
+  "orcamento_data",
+  "orcamento_hora_inicio",
+  "orcamento_hora_fim",
+  "orcamento_bairro",
+  "orcamento_cidade",
+  "orcamento_salao",
+  "orcamento_onde_encontrou",
+  "orcamento_detalhes",
+  "orcamento_detalhes_texto",
+  "coletar_email_opcional",
+  "coletar_email_valor",
+  "coletar_nascimento_opcional",
+  "coletar_nascimento_valor",
+  "orcamento_confirmar",
+  "orcamento_escolher_servico"
+];
+
+// Nº de perguntas que ainda faltam (inclui a atual). null = passo desconhecido.
+function passosRestantes(step) {
+  const i = ORDEM_PASSOS.indexOf(step);
+  return i === -1 ? null : (ORDEM_PASSOS.length - i);
+}
+
+// Frase honesta sobre o que falta. Só promete "falta pouco" quando falta pouco.
+function textoDoQueFalta(step) {
+  const n = passosRestantes(step);
+  if (n === null) return "a gente continua de onde parou";
+  if (n <= 1)     return "falta *só essa última pergunta*";
+  if (n <= 3)     return `faltam *só mais ${n} perguntinhas*`;
+  return "são mais *algumas perguntas rápidas* (leva menos de 2 minutos)";
+}
+
 // Lembrete de quem PAROU NO MENU INICIAL (nunca respondeu 1-7). Título/gancho
 // na 1ª linha (aparece no preview da lista de conversas do WhatsApp) para
 // motivar o cliente a abrir a mensagem — pedido da Adriana, 2026-07-07.
@@ -178,24 +232,26 @@ function montarMensagemMenu(devido) {
   switch (devido) {
     case 1: // 2h
       return (
-        `*🎁 Digite 1 e receba seu orçamento!*\n\n` +
+        `*🎁 Vamos montar o seu orçamento?*\n\n` +
         `Oi! 😊 Vi que você chegou aqui na *PhotoMusic Produções* mas não deu pra escolher a opção. Sem problema!\n\n` +
-        `Se quiser um orçamento rapidinho, é só digitar *1* que eu já te mostro os valores certinhos. ` +
+        `Digite *1* que eu começo: faço algumas perguntas rápidas sobre o seu evento ` +
+        `e aí sim te mando os valores certinhos, tudo personalizado. Leva menos de 2 minutos!\n\n` +
         `Ficou alguma dúvida de como funciona? Me conta que eu te explico! 🙏`
       );
     case 2: // 24h
       return (
         `*💬 Ainda por aqui pra te ajudar!*\n\n` +
         `Oi! ❤️ Passando de novo, porque aqui na *PhotoMusic Produções* a gente gosta de cuidar de cada família que nos procura.\n\n` +
-        `Se quiser seguir com o seu orçamento, é só digitar *1*. Se tiver alguma coisa te deixando na dúvida, me fala, sem compromisso! 🙏`
+        `Se quiser seguir com o seu orçamento, é só digitar *1*: são algumas perguntas rápidas sobre o seu evento ` +
+        `e depois eu te mando os valores. Se tiver alguma coisa te deixando na dúvida, me fala, sem compromisso! 🙏`
       );
     case 3: // 72h — última chamada
     default:
       return (
         `*⏳ Última chamada: seu orçamento te espera!*\n\n` +
         `Oi! ❤️ Aqui é da *PhotoMusic Produções*. Não queria que você ficasse sem saber os valores pro seu evento.\n\n` +
-        `Se ainda tiver interesse, é só digitar *1* que eu monto o orçamento na hora. E se algo te segurou até aqui, ` +
-        `me conta com sinceridade, que a gente encontra um jeito juntos! 🙌`
+        `Se ainda tiver interesse, é só digitar *1*: eu te faço algumas perguntas rápidas e já monto o orçamento. ` +
+        `E se algo te segurou até aqui, me conta com sinceridade, que a gente encontra um jeito juntos! 🙌`
       );
   }
 }
@@ -207,6 +263,7 @@ function montarMensagem(devido, s) {
   const ola        = nome ? `Oi, *${nome}*!` : "Oi!";
   const celebracao = (s.orcamento && s.orcamento.celebracao) || "o seu evento";
   const pergunta   = perguntaPendente(s);
+  const oQueFalta  = textoDoQueFalta(s.step);
   const linhaPerg  = pergunta
     ? `\n\n👉 ${pergunta}`
     : `\n\nÉ só me mandar um *oi* que a gente continua de onde parou! 🙌`;
@@ -214,22 +271,22 @@ function montarMensagem(devido, s) {
   switch (devido) {
     case 1: // 2h
       return (
-        `${ola} 😊 Vi que começamos o seu orçamento para *${celebracao}* e paramos pertinho do fim.\n\n` +
-        `Falta só responder mais uma coisinha pra eu montar um *orçamento personalizado* pro seu evento ` +
-        `(e não um valor genérico 😉). É bem rapidinho!` +
+        `${ola} 😊 Vi que começamos o seu orçamento para *${celebracao}* e paramos no meio do caminho.\n\n` +
+        `Pra eu montar um *orçamento personalizado* pro seu evento (e não um valor genérico 😉), ` +
+        `${oQueFalta}. Continuamos de onde paramos?` +
         linhaPerg
       );
     case 2: // 24h
       return (
         `${ola} 😊 Passando pra lembrar do seu orçamento de *${celebracao}*.\n\n` +
-        `Faltou só um detalhe pra finalizar e eu já te envio os valores certinhos. Posso continuar?` +
+        `Do ponto onde paramos, ${oQueFalta} e aí eu te envio os valores certinhos. Posso continuar?` +
         linhaPerg
       );
     case 3: // 72h — última chamada
     default:
       return (
         `${ola} 😊 Não quero que você fique sem o seu orçamento de *${celebracao}*.\n\n` +
-        `É só me responder essa última pergunta que eu finalizo e te mando tudo. Vamos lá? 🙌` +
+        `Retomando de onde paramos, ${oQueFalta} e eu finalizo o seu orçamento. Vamos lá? 🙌` +
         linhaPerg
       );
   }
