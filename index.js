@@ -2202,6 +2202,66 @@ async function handleIncomingMessage(message) {
       }
 
       // ======================================================
+      // COMANDO ESPECIAL: #orcamentomanual — guia rápido do operador
+      // Monta as listas a partir das CONSTANTES reais (comandosServicos e
+      // celebracoes), então o guia nunca fica desatualizado. Não precisa de
+      // cliente destino, por isso é tratado antes da resolução do cliente.
+      // ======================================================
+      const pedeGuia = comandos.some(c => {
+        const n = c.split(" ")[0].toLowerCase();
+        return n === "#orcamentomanual" || n === "#ajuda" || n === "#comandos";
+      });
+
+      if (pedeGuia) {
+        const listaServicos = Object.keys(comandosServicos)
+          .sort((a, b) => comandosServicos[a] - comandosServicos[b])
+          .map(s => `• ${s}`)
+          .join("\n");
+
+        const listaCelebr = Object.keys(celebracoes)
+          .sort((a, b) => Number(a) - Number(b))
+          .map(k => `*${k}* - ${celebracoes[k]}`)
+          .join("\n");
+
+        const guia1 =
+          "📋 *ORÇAMENTO MANUAL — GUIA RÁPIDO*\n\n" +
+          "*MODELO:*\n" +
+          "#servico  A,B,C,D,E  TELEFONE\n\n" +
+          "*O QUE É CADA NÚMERO:*\n" +
+          "*A* = avaliação da empresa (*1* envia / *0* não envia)\n" +
+          "*B* = celebração (ver lista na próxima mensagem)\n" +
+          "*C* = nº de convidados\n" +
+          "*D* = horas contratadas\n" +
+          "*E* = dias (só vale p/ Corporativo; nos outros é sempre 1)\n\n" +
+          "*EXEMPLOS:*\n" +
+          "#plataforma360 1,8,250,4,1 5521999999999\n" +
+          "_360, com avaliação, Corporativo, 250 convidados, 4h, 1 dia_\n\n" +
+          "#fotocabine 0,1,150,5,1 +completo 5521999999999\n" +
+          "_Cabine, sem avaliação, 15 anos, 150 convidados, 5h_\n\n" +
+          "*TELEFONE:* no fim, com ou sem seta\n" +
+          "#fotocabine 0,1,50,4,1 5521999999999\n" +
+          "#fotocabine 0,1,50,4,1 -> 5521999999999";
+
+        const guia2 =
+          "📋 *ORÇAMENTO MANUAL — LISTAS*\n\n" +
+          "*SERVIÇOS:*\n" + listaServicos + "\n\n" +
+          "*CELEBRAÇÕES (o número do B):*\n" + listaCelebr + "\n\n" +
+          "*SÓ PREÇO x COMPLETO:*\n" +
+          "• *Sem flag* (padrão): manda *só o preço* (PDF). O cliente pede as fotos no menu se quiser.\n" +
+          "• *+completo*: manda a *apresentação inteira* (fotos, vídeos, pacotes) e depois o PDF. Use para cliente que *nunca viu* o serviço.\n\n" +
+          "*DESLOCAMENTO:*\n" +
+          "Mande o local antes (ou junto) do comando:\n" +
+          "#local Califórnia, Nova Iguaçu\n" +
+          "_Vale para os próximos orçamentos, até você trocar._\n" +
+          "_Só a cidade também funciona: #local Nova Iguaçu_\n\n" +
+          "⚠️ *Não funciona em grupo* — mande daqui ou no chat do cliente.";
+
+        await sendText(OPERADOR_TELEFONE_ID, guia1);
+        await sendText(OPERADOR_TELEFONE_ID, guia2);
+        return;
+      }
+
+      // ======================================================
       // #local Bairro, Cidade — define o local para o deslocamento
       // Tratado AQUI, ANTES de resolver o cliente destino: sozinho ele não
       // precisa de cliente (senão o bot responde "não consegui identificar o
