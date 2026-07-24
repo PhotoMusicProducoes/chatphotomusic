@@ -5,9 +5,9 @@
 // IMPORTAÇÕES E CONFIGURAÇÕES INICIAIS
 // ======================================================
 const { fluxoEventos, apresentarEvento } = require("./services/eventos.js");
-// ⛪ Bancada de teste do Sistema Paroquial (gatilho oculto "#psj"). Módulo
-// isolado — ver services/paroquiaSaoJose.js. Só dados fictícios (roda em iad).
-const { handleParoquia } = require("./services/paroquiaSaoJose.js");
+// ⛪ A bancada da paróquia foi APOSENTADA em 24/07/2026: o sistema virou app
+// próprio da Rapha Lumen (`paroquia-pro`, gru). Os arquivos services/paroquia*.js
+// e a rota /psj continuam aqui só como histórico e não são mais usados.
 const { INSTANCE_ID, TOKEN, API_URL, PM_API_BASE, PM_API_KEY } = require("./utils/config.js");
 const axios = require("axios");
 
@@ -1554,16 +1554,22 @@ async function handleIncomingMessage(message) {
   }
 
   // ======================================================
-  // ⛪ BANCADA DE TESTE DA PARÓQUIA (gatilho oculto "#psj")
+  // ⛪ BANCADA DA PARÓQUIA — APOSENTADA em 24/07/2026
   // ======================================================
-  // Intercepta ANTES da lógica de operador/cliente: "#psj" começa com "#" e
-  // seria lido como comando de operador (número autorizado do Mario) e cairia
-  // em "comando não reconhecido". Uma vez dentro, os steps "psj_*" também são
-  // roteados aqui, isolando 100% o código da paróquia do resto do bot.
+  // O Sistema de Gestão Paroquial saiu daqui: virou app próprio da Rapha Lumen
+  // (`paroquia-pro`, região gru/São Paulo, código em D:\Rapha Lumen\ParoquiaPro)
+  // e roda na Z-API do número da PRÓPRIA paróquia. Esta bancada rodava em iad
+  // (EUA) e só aceitava dado fictício.
+  // Mantido só o aviso para quem digitar "#psj" aqui por hábito (Mario/Maju).
   const _psjLow = (corpoMensagem || "").trim().toLowerCase();
   if (_psjLow === "#psj" || String(sessions[chatId]?.step || "").startsWith("psj_")) {
-    const tratou = await handleParoquia(chatId, sessions, corpoMensagem);
-    if (tratou) return;
+    delete sessions[chatId];
+    await sendText(
+      chatId,
+      "⛪ A bancada de teste da paróquia foi *aposentada*.\n\n" +
+      "O sistema agora roda no WhatsApp da *própria paróquia*. Use o *#psj* lá. 🙏"
+    );
+    return;
   }
 
   // ======================================================

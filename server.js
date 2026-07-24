@@ -8,7 +8,6 @@ const { inicializarFollowupLeads } = require("./jobs/followupLeads");
 const { inicializarLembreteOrcamento } = require("./jobs/lembreteOrcamento");
 const { inicializarPausaEspecial } = require("./utils/index.js");
 const { extrairRespostaDeClique } = require("./utils/webhookPayload.js");
-const { registrarRotasParoquia } = require("./services/paroquiaWeb.js");
 
 const app = express();
 // Limite alto p/ o upload de documentos do batismo (foto em base64, já
@@ -18,8 +17,18 @@ app.use(bodyParser.json({ limit: "25mb" }));
 // Forms HTML (tela da secretaria em /psj) enviam urlencoded.
 app.use(bodyParser.urlencoded({ extended: true, limit: "25mb" }));
 
-// ⛪ Tela da secretaria (bancada de teste da paróquia) — calendário editável.
-registrarRotasParoquia(app);
+// ⛪ Tela da secretaria da paróquia: APOSENTADA em 24/07/2026. Migrou para o app
+// próprio da Rapha Lumen (`paroquia-pro`, gru) -> https://paroquia-pro.fly.dev/psj/
+// Aviso no lugar da tela, p/ ninguém cadastrar no sistema velho por engano.
+app.all(/^\/psj(\/.*)?$/, (_req, res) => res.status(410).send(
+  `<!doctype html><meta charset="utf-8"><title>Mudou de endereço</title>
+   <div style="font-family:system-ui;max-width:520px;margin:60px auto;padding:24px;text-align:center">
+     <h1>⛪ Este endereço foi desativado</h1>
+     <p>O Sistema de Gestão Paroquial agora tem endereço próprio:</p>
+     <p><a href="https://paroquia-pro.fly.dev/psj/">paroquia-pro.fly.dev/psj</a></p>
+     <p style="color:#6b7280;font-size:.9rem">Atualize seu favorito. 🙏</p>
+   </div>`
+));
 
 // ======================================================
 // NORMALIZAÇÃO DO TEXTO RECEBIDO
