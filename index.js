@@ -1392,6 +1392,75 @@ async function perguntarPosOrcamento(chatId, session) {
   );
 }
 
+// Processa a escolha do menu pós-orçamento ("1 - detalhes", "2 - mais orçamento",
+// "3 - por enquanto é só"). Extraído para ser reutilizável: também é chamado quando
+// o cliente JÁ escolheu encerrar (step "finalizado") mas depois clica/envia 1 ou 2,
+// reativando o fluxo em vez de ficar mudo (pedido do Mario 26/07).
+async function processarOrcamentoPos(chatId, session, corpoMensagem) {
+  const opcoes  = session._menuPos || montarMenuPosOrcamento(session);
+  const escolha = opcoes.find(o => o.id === String(corpoMensagem).trim());
+
+  if (!escolha) {
+    session.tentativasInvalidasPos = (session.tentativasInvalidasPos || 0) + 1;
+    if (session.tentativasInvalidasPos >= 3) {
+      await autoPausarFluxo(chatId, session, "respostas inválidas no menu pós-orçamento");
+      return;
+    }
+    await sendTyping(chatId);
+    await sendButtonList(
+      chatId,
+      "Não entendi. Escolha uma opção:",
+      opcoes.map(o => ({ id: o.id, label: o.label }))
+    );
+    return;
+  }
+
+  session.tentativasInvalidasPos = 0;
+
+  if (escolha.acao === "fim") {
+    await sendTyping(chatId);
+    await sendText(chatId, "Perfeito! Qualquer dúvida é só me chamar 😊");
+    session.step = "finalizado";
+    return;
+  }
+
+  if (escolha.acao === "detalhes") {
+    const paraDetalhar = servicosParaDetalhar(session);
+
+    // Um só: manda direto, sem obrigar a escolher do que já é óbvio.
+    if (paraDetalhar.length === 1) {
+      await enviarDetalhesServico(chatId, session, paraDetalhar[0]);
+      await perguntarPosOrcamento(chatId, session);
+      return;
+    }
+
+    // Vários: pergunta QUAL (decisão do Mario 15/07 — evita despejar tudo
+    // de uma vez, que era justamente o problema do fluxo antigo).
+    session.step = "orcamento_escolher_detalhe";
+    await sendTyping(chatId);
+    await sendOptionList(
+      chatId,
+      "De qual serviço você quer ver mais detalhes?",
+      paraDetalhar.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
+      { title: "Seus orçamentos", buttonLabel: "Ver serviços" }
+    );
+    return;
+  }
+
+  if (escolha.acao === "orcamento") {
+    const restantes = servicosParaOrcar(session);
+    session.step = "orcamento_escolher_servico";
+    await sendTyping(chatId);
+    await sendOptionList(
+      chatId,
+      "De qual outro serviço você deseja orçamento?",
+      restantes.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
+      { title: "Serviços", buttonLabel: "Ver serviços" }
+    );
+    return;
+  }
+}
+
 // ======================================================
 // E-MAIL / NASCIMENTO — perguntar ANTES de pedir (2026-07-15, pedido do Mario)
 // ======================================================
@@ -2857,6 +2926,21 @@ async function handleIncomingMessage(message) {
   // (evita reenvio do menu inicial após término do orçamento)
   // ======================================================
   if (sessions[chatId]?.step === "finalizado") {
+    // O cliente escolheu ENCERRAR (opção "por enquanto é só"), mas os botões do
+    // menu pós-orçamento continuam na tela dele. Se depois ele clicar/enviar
+    // "1" (mais detalhes) ou "2" (mais orçamento), REABRE o fluxo em vez de
+    // ficar mudo (pedido do Mario 26/07). Qualquer outra coisa segue ignorada.
+    const sFin   = sessions[chatId];
+    const optsFin = sFin._menuPos || [];
+    const escFin  = optsFin.find(o => o.id === String(corpoMensagem).trim());
+    if (escFin && (escFin.acao === "detalhes" || escFin.acao === "orcamento")) {
+      sFin.step = "orcamento_pos";
+      sFin.tentativasInvalidasPos = 0;
+      sFin.ultimaInteracao = Date.now();
+      console.log(`🔄 Reativando pós-orçamento p/ ${chatId} (escolheu "${escFin.acao}" após encerrar).`);
+      await processarOrcamentoPos(chatId, sFin, corpoMensagem);
+      return;
+    }
     console.log(`ℹ️ Sessão finalizada para ${chatId}. Mensagem ignorada.`);
     return;
   }
@@ -4180,70 +4264,7 @@ const resumoEucaristia =
   // MENU PÓS-ORÇAMENTO (dinâmico) — detalhes / mais orçamento / é só
   // ======================================================
   if (session.step === "orcamento_pos") {
-
-    const opcoes  = session._menuPos || montarMenuPosOrcamento(session);
-    const escolha = opcoes.find(o => o.id === String(corpoMensagem).trim());
-
-    if (!escolha) {
-      session.tentativasInvalidasPos = (session.tentativasInvalidasPos || 0) + 1;
-      if (session.tentativasInvalidasPos >= 3) {
-        await autoPausarFluxo(chatId, session, "respostas inválidas no menu pós-orçamento");
-        return;
-      }
-      await sendTyping(chatId);
-      await sendButtonList(
-        chatId,
-        "Não entendi. Escolha uma opção:",
-        opcoes.map(o => ({ id: o.id, label: o.label }))
-      );
-      return;
-    }
-
-    session.tentativasInvalidasPos = 0;
-
-    if (escolha.acao === "fim") {
-      await sendTyping(chatId);
-      await sendText(chatId, "Perfeito! Qualquer dúvida é só me chamar 😊");
-      session.step = "finalizado";
-      return;
-    }
-
-    if (escolha.acao === "detalhes") {
-      const paraDetalhar = servicosParaDetalhar(session);
-
-      // Um só: manda direto, sem obrigar a escolher do que já é óbvio.
-      if (paraDetalhar.length === 1) {
-        await enviarDetalhesServico(chatId, session, paraDetalhar[0]);
-        await perguntarPosOrcamento(chatId, session);
-        return;
-      }
-
-      // Vários: pergunta QUAL (decisão do Mario 15/07 — evita despejar tudo
-      // de uma vez, que era justamente o problema do fluxo antigo).
-      session.step = "orcamento_escolher_detalhe";
-      await sendTyping(chatId);
-      await sendOptionList(
-        chatId,
-        "De qual serviço você quer ver mais detalhes?",
-        paraDetalhar.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
-        { title: "Seus orçamentos", buttonLabel: "Ver serviços" }
-      );
-      return;
-    }
-
-    if (escolha.acao === "orcamento") {
-      const restantes = servicosParaOrcar(session);
-      session.step = "orcamento_escolher_servico";
-      await sendTyping(chatId);
-      await sendOptionList(
-        chatId,
-        "De qual outro serviço você deseja orçamento?",
-        restantes.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
-        { title: "Serviços", buttonLabel: "Ver serviços" }
-      );
-      return;
-    }
-
+    await processarOrcamentoPos(chatId, session, corpoMensagem);
     return;
   }
 
