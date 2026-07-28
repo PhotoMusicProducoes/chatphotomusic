@@ -1804,6 +1804,12 @@ async function handleIncomingMessage(message) {
   // ======================================================
   if (ehComandoOperador) {
 
+    // Para onde vai a CONFIRMAÇÃO do comando: no privado, o DM da linha do bot
+    // (OPERADOR_TELEFONE_ID); em GRUPO, o próprio grupo, para o operador ver o
+    // resultado onde digitou. O efeito no cliente (pausar/retomar/responder) é
+    // o mesmo nos dois casos.
+    const destinoOperador = isGrupo ? chatIdRaw : OPERADOR_TELEFONE_ID;
+
     let numero = extrairNumero(corpoMensagem);
 
     if (!numero && message.quotedMsg?.phone) {
@@ -1847,7 +1853,7 @@ async function handleIncomingMessage(message) {
 
       if (!numeroBruto) {
         await sendText(
-          OPERADOR_TELEFONE_ID,
+          destinoOperador,
           "⚠ Você precisa informar um número.\nExemplo:\n#cliente 5521993290588"
         );
         return;
@@ -1857,7 +1863,7 @@ async function handleIncomingMessage(message) {
 
       if (!numeroNormalizado || numeroNormalizado.length < 11) {
         await sendText(
-          OPERADOR_TELEFONE_ID,
+          destinoOperador,
           "⚠ Número inválido. Informe no formato:\n#cliente 5521993290588"
         );
         return;
@@ -1868,7 +1874,7 @@ async function handleIncomingMessage(message) {
       console.log("📌 [MANUAL] Cliente definido manualmente:", numeroNormalizado);
 
       await sendText(
-        OPERADOR_TELEFONE_ID,
+        destinoOperador,
         `✅ Cliente definido manualmente como:\n*${numeroNormalizado}*\n\n` +
         "Agora você pode enviar o orçamento manual normalmente.\n" +
         "Exemplo:\n#fotocabine 0,8,120,6,1"
@@ -1887,7 +1893,7 @@ async function handleIncomingMessage(message) {
       console.log("🧹 [MANUAL] Cliente manual removido.");
 
       await sendText(
-        OPERADOR_TELEFONE_ID,
+        destinoOperador,
         "🧹 Cliente manual removido.\nAgora o bot tentará identificar automaticamente."
       );
 
@@ -1908,9 +1914,9 @@ async function handleIncomingMessage(message) {
         // A pausa é controlada por sessoesRetomadas[telefonNorm] (JSON)
         // ou por pausado=1 no DB — Sessions global é para fluxo de orçamento/menu
 
-        await sendText(OPERADOR_TELEFONE_ID, `✅ Cliente PAUSADO!`);
+        await sendText(destinoOperador, `✅ Cliente PAUSADO!`);
       } else {
-        await sendText(OPERADOR_TELEFONE_ID, `❌ Falha ao pausar — verifique a conexão com o servidor`);
+        await sendText(destinoOperador, `❌ Falha ao pausar — verifique a conexão com o servidor`);
       }
       return;
     }
@@ -1929,9 +1935,9 @@ async function handleIncomingMessage(message) {
         // A retomada é controlada por sessoesRetomadas[telefonNorm] (JSON)
         // ou por pausado=0 no DB — Sessions global é para fluxo de orçamento/menu
 
-        await sendText(OPERADOR_TELEFONE_ID, `✅ Cliente RETOMADO!`);
+        await sendText(destinoOperador, `✅ Cliente RETOMADO!`);
       } else {
-        await sendText(OPERADOR_TELEFONE_ID, `❌ Número não encontrado (JSON nem DB)`);
+        await sendText(destinoOperador, `❌ Número não encontrado (JSON nem DB)`);
       }
       return;
     }
@@ -1942,7 +1948,7 @@ async function handleIncomingMessage(message) {
     // ======================================================
     if (corpoNormalizado === "listarpausas") {
       listarPausadosEspeciais();
-      await sendText(OPERADOR_TELEFONE_ID, `📋 Lista enviada ao console`);
+      await sendText(destinoOperador, `📋 Lista enviada ao console`);
       return;
     }
 
@@ -1953,7 +1959,7 @@ async function handleIncomingMessage(message) {
     if (corpoNormalizado.startsWith("pausar")) {
       const normalizado = normalizarNumero(numero);
       pausarCliente(normalizado);
-      await sendText(OPERADOR_TELEFONE_ID, `⏸ Atendimento pausado para ${normalizado}`);
+      await sendText(destinoOperador, `⏸ Atendimento pausado para ${normalizado}`);
       return;
     }
 
@@ -1974,7 +1980,7 @@ async function handleIncomingMessage(message) {
       const session = sessions[normalizado];
       if (session && session.step) {
         console.log(`📌 Cliente estava em: ${session.step}`);
-        await sendText(OPERADOR_TELEFONE_ID, `▶ Atendimento retomado para ${normalizado} (estava em: ${session.step})`);
+        await sendText(destinoOperador, `▶ Atendimento retomado para ${normalizado} (estava em: ${session.step})`);
         
         // 📌 REENVIAR ÚLTIMA PERGUNTA SE EXISTIR
         if (session.ultimaPerguntaNaoRespondida) {
@@ -1986,7 +1992,7 @@ async function handleIncomingMessage(message) {
       } else {
         console.log(`📌 Cliente não tinha sessão, enviando menu inicial`);
         await mostrarMenuInicial(normalizado);
-        await sendText(OPERADOR_TELEFONE_ID, `▶ Atendimento retomado para ${normalizado} (sem contexto anterior)`);
+        await sendText(destinoOperador, `▶ Atendimento retomado para ${normalizado} (sem contexto anterior)`);
       }
       return;
     }
@@ -2000,7 +2006,7 @@ async function handleIncomingMessage(message) {
       retomarCliente(normalizado);
       delete sessions[normalizado];
       await mostrarMenuInicial(normalizado);
-      await sendText(OPERADOR_TELEFONE_ID, `🔄 Atendimento resetado para ${normalizado}`);
+      await sendText(destinoOperador, `🔄 Atendimento resetado para ${normalizado}`);
       return;
     }
 
@@ -2025,7 +2031,7 @@ async function handleIncomingMessage(message) {
       const corpoConversa = linhasCmd.slice(1).join("\n");
 
       if (!numeroRaw) {
-        await sendText(OPERADOR_TELEFONE_ID,
+        await sendText(destinoOperador,
           "⚠ Formato:\n*respondercliente NUMERO*\n[cole a conversa exportada do WhatsApp abaixo]"
         );
         return;
@@ -2033,7 +2039,7 @@ async function handleIncomingMessage(message) {
 
       const numeroCliente = normalizarNumero(numeroRaw);
       if (!numeroCliente || numeroCliente.length < 10) {
-        await sendText(OPERADOR_TELEFONE_ID,
+        await sendText(destinoOperador,
           `⚠ Número inválido: *${numeroRaw}*\n\n` +
           "Formatos aceitos:\n" +
           "  +5521995021656\n  5521995021656\n  21995021656\n  995021656"
@@ -2045,7 +2051,7 @@ async function handleIncomingMessage(message) {
       const temConversa = /\[[\d:,\/ ]+\]/.test(corpoConversa);
 
       if (!temConversa) {
-        await sendText(OPERADOR_TELEFONE_ID,
+        await sendText(destinoOperador,
           "⚠ Nenhuma conversa detectada.\n\n" +
           "Cole a conversa exportada do WhatsApp logo abaixo do número:\n\n" +
           "*respondercliente 5521995021656*\n" +
@@ -2092,7 +2098,7 @@ async function handleIncomingMessage(message) {
       const { msgs: mensagensCliente, ultimaFoiBot } = parsearConversa(corpoConversa, numeroCliente);
 
       if (mensagensCliente.length === 0) {
-        await sendText(OPERADOR_TELEFONE_ID,
+        await sendText(destinoOperador,
           `⚠ Nenhuma mensagem do cliente *${numeroCliente}* encontrada na conversa.\n\n` +
           "Verifique se o número está correto e se a conversa foi exportada corretamente."
         );
@@ -2146,7 +2152,7 @@ async function handleIncomingMessage(message) {
         ? mensagensCliente.length - 1
         : mensagensCliente.length;
 
-      await sendText(OPERADOR_TELEFONE_ID,
+      await sendText(destinoOperador,
         `🔄 Reconstruindo sessão de *${numeroCliente}*...\n` +
         `📋 ${mensagensCliente.length} mensagens do cliente encontradas:\n` +
         mensagensCliente.map((m, i) => `${i + 1}. "${m}"`).join("\n") +
@@ -2169,7 +2175,7 @@ async function handleIncomingMessage(message) {
       } catch (e) {
         replayOk = false;
         console.error("🚨 [Replay] Erro durante replay silencioso:", e.message);
-        await sendText(OPERADOR_TELEFONE_ID, `❌ Erro no replay: ${e.message}`);
+        await sendText(destinoOperador, `❌ Erro no replay: ${e.message}`);
       } finally {
         desativarModoSilencioso(numeroCliente);
       }
@@ -2184,7 +2190,7 @@ async function handleIncomingMessage(message) {
 
         await handleIncomingMessage(criarSimulada(numeroCliente, ultima));
 
-        await sendText(OPERADOR_TELEFONE_ID,
+        await sendText(destinoOperador,
           `✅ Sessão reconstruída com sucesso!\n\n` +
           `👤 Cliente: *${numeroCliente}*\n` +
           `📩 Última resposta reproduzida: *"${ultima}"*\n` +
@@ -2193,7 +2199,7 @@ async function handleIncomingMessage(message) {
         );
       } else {
         // Conversa terminou numa msg do bot: tudo reproduzido em silêncio, nada reenviado.
-        await sendText(OPERADOR_TELEFONE_ID,
+        await sendText(destinoOperador,
           `✅ Sessão reconstruída com sucesso!\n\n` +
           `👤 Cliente: *${numeroCliente}*\n` +
           `📍 Step final: *${sessions[numeroCliente]?.step || "?"}*\n\n` +
@@ -2219,7 +2225,7 @@ async function handleIncomingMessage(message) {
 
       if (!numeroRaw || !respostaTexto) {
         await sendText(
-          OPERADOR_TELEFONE_ID,
+          destinoOperador,
           "⚠ Formato correto:\n*responder NUMERO RESPOSTA*\n\n" +
           "Exemplos:\n" +
           "  `responder 5521995021656 pular`\n" +
@@ -2232,7 +2238,7 @@ async function handleIncomingMessage(message) {
       const numeroCliente = normalizarNumero(numeroRaw);
 
       if (!numeroCliente || numeroCliente.length < 10) {
-        await sendText(OPERADOR_TELEFONE_ID,
+        await sendText(destinoOperador,
           `⚠ Número inválido: *${numeroRaw}*\n\n` +
           "Formatos aceitos:\n" +
           "  +5521995021656\n  5521995021656\n  21995021656\n  995021656"
@@ -2243,7 +2249,7 @@ async function handleIncomingMessage(message) {
       const sessaoCliente = sessions[numeroCliente];
       if (!sessaoCliente) {
         await sendText(
-          OPERADOR_TELEFONE_ID,
+          destinoOperador,
           `⚠ Nenhuma sessão ativa para *${numeroCliente}*.\n` +
           `Use *resetar ${numeroCliente}* para reiniciar o atendimento.`
         );
@@ -2286,7 +2292,7 @@ async function handleIncomingMessage(message) {
 
       await handleIncomingMessage(mensagemSimulada);
       await sendText(
-        OPERADOR_TELEFONE_ID,
+        destinoOperador,
         `✅ Resposta *"${respostaTexto}"* injetada para *${numeroCliente}*\n` +
         `Step anterior: ${sessaoCliente.step} → Step atual: ${sessions[numeroCliente]?.step || "?"}`
       );
@@ -2322,7 +2328,7 @@ async function handleIncomingMessage(message) {
         .filter(c => c.startsWith("#"));
 
       if (comandos.length === 0) {
-        await sendText(OPERADOR_TELEFONE_ID, "⚠ Nenhum comando manual válido encontrado.");
+        await sendText(destinoOperador, "⚠ Nenhum comando manual válido encontrado.");
         return;
       }
 
@@ -2382,8 +2388,8 @@ async function handleIncomingMessage(message) {
           "_Só a cidade também funciona: #local Nova Iguaçu_\n\n" +
           "⚠️ *Não funciona em grupo* — mande daqui ou no chat do cliente.";
 
-        await sendText(OPERADOR_TELEFONE_ID, guia1);
-        await sendText(OPERADOR_TELEFONE_ID, guia2);
+        await sendText(destinoOperador, guia1);
+        await sendText(destinoOperador, guia2);
         return;
       }
 
@@ -2411,7 +2417,7 @@ async function handleIncomingMessage(message) {
 
         if (partes.length === 0) {
           delete sessions["__local_manual__"];
-          await sendText(OPERADOR_TELEFONE_ID,
+          await sendText(destinoOperador,
             "📍 Local apagado.\nUse: *#local Bairro, Cidade* (ou só *#local Cidade*)");
         } else {
           // USO ÚNICO + validade. Antes ficava guardado "até trocar" e grudou
@@ -2423,7 +2429,7 @@ async function handleIncomingMessage(message) {
           const L = sessions["__local_manual__"];
           const ondeFmt = (L.bairro ? L.bairro + " — " : "") + L.cidade;
           console.log(`📍 [MANUAL] Local guardado (uso único): bairro="${L.bairro}" cidade="${L.cidade}"`);
-          await sendText(OPERADOR_TELEFONE_ID,
+          await sendText(destinoOperador,
             `📍 Local definido: *${ondeFmt}*\n` +
             `Vale para o *próximo orçamento* e depois é apagado.\n` +
             `_Se enviar outro orçamento, mande o #local de novo._`);
@@ -2526,7 +2532,7 @@ async function handleIncomingMessage(message) {
       // ======================================================
       if (!numeroCliente) {
         await sendText(
-          OPERADOR_TELEFONE_ID,
+          destinoOperador,
           "⚠ Não consegui identificar o cliente destino.\n\n" +
           "Escolha uma das formas abaixo:\n\n" +
           "1️⃣ *Envie o comando no chat do cliente* (método principal)\n\n" +
@@ -2586,7 +2592,7 @@ async function handleIncomingMessage(message) {
 
       for (const cmd of comandos) {
         controlaMsgManual++;
-        await sendText(OPERADOR_TELEFONE_ID, `controlaMsgManual = ${controlaMsgManual}`);
+        await sendText(destinoOperador, `controlaMsgManual = ${controlaMsgManual}`);
       }
 
       for (const cmd of comandos) {
@@ -2633,16 +2639,16 @@ async function handleIncomingMessage(message) {
             await enviarEucaristiaManual(chatIdCliente, paroquiaId, capelaId, dataEucaristia);
             // Finaliza o fluxo — cliente não recebe mais nada do bot
             session.step = "aguardando_retorno";
-            await sendText(OPERADOR_TELEFONE_ID, `✅ Informações de 1ª Eucaristia enviadas para *${chatIdCliente}*`);
+            await sendText(destinoOperador, `✅ Informações de 1ª Eucaristia enviadas para *${chatIdCliente}*`);
           } catch (e) {
-            await sendText(OPERADOR_TELEFONE_ID, `❌ Erro ao enviar Eucaristia: ${e.message}`);
+            await sendText(destinoOperador, `❌ Erro ao enviar Eucaristia: ${e.message}`);
           }
           controlaMsgManual2++;
           continue;
         }
 
         if (!comandosServicos[nomeComando]) {
-          await sendText(OPERADOR_TELEFONE_ID, `⚠ Comando não reconhecido: ${nomeComando}`);
+          await sendText(destinoOperador, `⚠ Comando não reconhecido: ${nomeComando}`);
           continue;
         }
 
@@ -2709,7 +2715,7 @@ async function handleIncomingMessage(message) {
         }
 
         controlaMsgManual2++;
-        await sendText(OPERADOR_TELEFONE_ID, `controlaMsgManual2 = ${controlaMsgManual2}`);
+        await sendText(destinoOperador, `controlaMsgManual2 = ${controlaMsgManual2}`);
 
         // 📌 REGISTRAR SERVIÇO ENVIADO
         registrarServicoEnviado(session, servicoId);
@@ -2727,7 +2733,7 @@ async function handleIncomingMessage(message) {
         console.log("📌 Cliente via destino do webhook:", numeroCliente);
       }
 
-      await sendText(OPERADOR_TELEFONE_ID, `controlaMsgManual = ${controlaMsgManual} e controlaMsgManual2 = ${controlaMsgManual2}`);
+      await sendText(destinoOperador, `controlaMsgManual = ${controlaMsgManual} e controlaMsgManual2 = ${controlaMsgManual2}`);
 
       // 🚗 Deslocamento do orçamento MANUAL (#local): consultado ANTES da
       // decisão do resumo, para valer nos dois caminhos.
@@ -2777,7 +2783,7 @@ async function handleIncomingMessage(message) {
         }
 
         await sendText(
-          OPERADOR_TELEFONE_ID,
+          destinoOperador,
           d
             ? `🚗 Deslocamento aplicado: *${d.gratis ? "GRÁTIS" : "R$ " + d.valor}*` +
               `${d.estimado ? ` (estimado por distância, ${d.km} km)` : " (tabela)"}`
@@ -2831,7 +2837,7 @@ async function handleIncomingMessage(message) {
         if (estavaPausado) pausarCliente(chatIdCliente);
 
         await sendText(
-          OPERADOR_TELEFONE_ID,
+          destinoOperador,
           `✅ Orçamento manual enviado para *${chatIdCliente}*`
         );
       }
