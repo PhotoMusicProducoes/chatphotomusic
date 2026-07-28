@@ -11,11 +11,19 @@ function capitalizarPalavras(texto) {
 
 // Função para normalizar horários enviados pelo cliente
 // Aceita: "23", "9", "04", "1300", "17h", "18h00", "23:00", "18h30min"
+// Aceita intervalo ("15 às 17h", "15 as 17", "15 a 17h", "das 15 às 17h", "19, 22", "19 e 22"): usa a PRIMEIRA hora como início
 // Rejeita: barra/ponto/traço (formato de data), texto, hora > 23, minuto > 59
 function normalizarHorario(input) {
   if (!input) return null;
 
-  const txt = input.trim().toLowerCase();
+  let txt = input.trim().toLowerCase();
+
+  // Intervalo de horário: o cliente responde "15 às 17h" (ou "19, 22") quando perguntamos só o início.
+  // Pega a PRIMEIRA hora e ignora o resto.
+  const intervalo = txt.match(/^(?:d?as?\s+)?(\d{1,2}\s*(?:h|:)?\s*\d{0,2})\s*(?:às|as|até|ate|[-–—,]|\ba\b|\be\b)\s*\d{1,2}/);
+  if (intervalo) {
+    txt = intervalo[1].trim();
+  }
 
   // Barra, ponto ou traço indicam data — não aceitar como hora
   if (/[\/.\-]/.test(txt)) return null;

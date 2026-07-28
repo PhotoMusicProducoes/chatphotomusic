@@ -539,7 +539,7 @@ const OPERADOR_TELEFONE_ID = "5521964428172@c.us";
 // ======================================================
 function clienteQuerContratar(texto) {
   let t = String(texto || "").toLowerCase()
-    .normalize("NFD").replace(/[̀-ͯ]/g, ""); // tira acentos
+    .normalize("NFD").replace(/[0300-036f]/g, ""); // tira acentos
   if (!t) return false;
   // negação explícita → não é intenção ("não quero contratar", "ainda não vou fechar")
   if (/\bnao\b[^.!?]*\b(contrat|fechar)/.test(t)) return false;
@@ -722,15 +722,65 @@ function extrairNumerosCampos(texto, max) {
   return [...new Set(nums)].filter(n => Number.isInteger(n) && n >= 1 && n <= max);
 }
 
+// Mapa de meses por extenso (chaves SEM acento; comparação também sem acento)
+const MESES_PT = {
+  janeiro: 1, jan: 1,
+  fevereiro: 2, fev: 2,
+  marco: 3, mar: 3,
+  abril: 4, abr: 4,
+  maio: 5, mai: 5,
+  junho: 6, jun: 6,
+  julho: 7, jul: 7,
+  agosto: 8, ago: 8,
+  setembro: 9, set: 9, sete: 9,
+  outubro: 10, out: 10,
+  novembro: 11, nov: 11,
+  dezembro: 12, dez: 12,
+};
+
 // ======================================================
 // PARSE DE DATA FLEXÍVEL
-// Aceita DD/MM (assume ano corrente) e DD/MM/AA(AA).
+// Aceita DD/MM (assume ano corrente), DD/MM/AA(AA) e por extenso
+// ("9 de setembro", "09 setembro", "9 de setembro de 2026", "9 set").
 // Retorna { dia, mes, ano, str, date } ou null se inválida.
 // ======================================================
 function parsearDataFlex(texto) {
   const t = (texto || "").trim();
   const m = t.match(/^(0?[1-9]|[12][0-9]|3[01])[\/.\-](0?[1-9]|1[0-2])(?:[\/.\-](\d{2}|\d{4}))?$/);
-  if (!m) return null;
+
+  if (!m) {
+    // Tenta formato por extenso: "9 de setembro", "09 setembro de 2026", "9 set"
+    const semAcento = t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const mn = semAcento.match(/^(\d{1,2})\s*(?:de\s+)?([a-z]+)(?:\s+(?:de\s+)?(\d{2}|\d{4}))?$/);
+    if (!mn) return null;
+
+    const diaN   = parseInt(mn[1], 10);
+    const mesNum = MESES_PT[mn[2]];
+    if (!mesNum || diaN < 1 || diaN > 31) return null;
+
+    const dia = String(diaN).padStart(2, "0");
+    const mes = String(mesNum).padStart(2, "0");
+    let ano   = mn[3] || "";
+    if (ano.length === 2) {
+      ano = "20" + ano;
+    } else if (!ano) {
+      // Sem ano: usa o ano corrente; se a data já passou, assume o próximo ano
+      ano = String(new Date().getFullYear());
+      const tentativa = new Date(`${ano}-${mes}-${dia}`);
+      const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+      if (!isNaN(tentativa.getTime()) && tentativa < hoje0) {
+        ano = String(parseInt(ano, 10) + 1);
+      }
+    }
+
+    const dateExt = new Date(`${ano}-${mes}-${dia}`);
+    // Rejeita datas que o JS "rola" (ex.: 31 de fevereiro vira março)
+    if (isNaN(dateExt.getTime()) ||
+        dateExt.getUTCMonth() + 1 !== mesNum ||
+        dateExt.getUTCDate() !== diaN) return null;
+
+    return { dia, mes, ano, str: `${dia}/${mes}/${ano}`, date: dateExt };
+  }
 
   const dia = m[1].padStart(2, "0");
   const mes = m[2].padStart(2, "0");
@@ -807,7 +857,7 @@ function validarEmail(texto) {
 // ======================================================
 function interpretarSimNao(texto) {
   const t = String(texto || "").trim().toLowerCase()
-    .normalize("NFD").replace(/[̀-ͯ]/g, "");
+    .normalize("NFD").replace(/[0300-036f]/g, "");
   if (["1", "sim", "s", "yes", "y"].includes(t)) return "1";
   if (["2", "nao", "n", "no", "nope", "nah"].includes(t)) return "2";
   return null;
@@ -3493,7 +3543,7 @@ const resumoEucaristia =
     }
 
     session.step = "orcamento_data";
-    await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/02/2026*)");
+    await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/02/2026* ou *9 de setembro*)");
     return;
   }
 
@@ -3521,7 +3571,7 @@ const resumoEucaristia =
     if (dias === 1) {
       // 1 dia → fluxo normal de data/horário
       session.step = "orcamento_data";
-      await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/06/2026*)");
+      await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/06/2026* ou *9 de setembro*)");
       return;
     }
 
@@ -3608,7 +3658,7 @@ const resumoEucaristia =
     const dataFlex = parsearDataFlex(corpoMensagem);
 
     if (!dataFlex) {
-      await sendText(chatId, "*⚠ Data inválida!* Use o formato: *01/06/2026* ou *01/06*");
+      await sendText(chatId, "*⚠ Data inválida!* Use *01/06/2026*, *01/06* ou por extenso, *9 de setembro*.");
       return;
     }
 
@@ -3714,7 +3764,7 @@ const resumoEucaristia =
     const dataFlex = parsearDataFlex(corpoMensagem);
 
     if (!dataFlex) {
-      await sendText(chatId, "*⚠ Data inválida!* Use o formato: *01/02/2026* ou *01/02*");
+      await sendText(chatId, "*⚠ Data inválida!* Use *01/02/2026*, *01/02* ou por extenso, *9 de setembro*.");
       return;
     }
 
@@ -3837,7 +3887,7 @@ const resumoEucaristia =
   if (session.step === "orcamento_salao") {
     const txtSalao = corpoMensagem.trim();
     const pulou = txtSalao.toLowerCase()
-      .normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+      .normalize("NFD").replace(/[0300-036f]/g, "") === "pular";
 
     if (!pulou && txtSalao.length < 2) {
       await sendText(chatId, "*⚠ Informe o nome do salão* ou responda *pular*.");
@@ -4125,7 +4175,7 @@ const resumoEucaristia =
         break;
       }
       case "salao": {
-        const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[0300-036f]/g, "") === "pular";
         orc.salao = pulou ? null : capitalizarPalavras(txt);
         ok = true;
         break;
@@ -4135,7 +4185,7 @@ const resumoEucaristia =
         break;
       }
       case "detalhes": {
-        const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[0300-036f]/g, "") === "pular";
         orc.detalhes = pulou ? null : capitalizarPalavras(txt);
         ok = true;
         break;
@@ -4150,7 +4200,7 @@ const resumoEucaristia =
         break;
       }
       case "nascimento": {
-        const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[0300-036f]/g, "") === "pular";
         const regexNasc = /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
         if (pulou) { orc.dataNascimento = null; ok = true; }
         else if (regexNasc.test(txt)) { orc.dataNascimento = txt; ok = true; }
