@@ -794,24 +794,85 @@ function parsearDataFlex(texto) {
   return { dia, mes, ano, str: `${dia}/${mes}/${ano}`, date };
 }
 
-function extrairDatasCorporativas(texto) {
-  const partes = texto
-    .split(/[\s,;]+/)
-    .map(p => p.trim())
-    .filter(p => p.length > 0);
+// Expande um INTERVALO de datas ("30/08 a 06/09/2026") em todas as datas dia a
+// dia. A data da DIREITA é sempre a mais completa; a da ESQUERDA herda o que
+// faltar dela (só dia "01" herda mês+ano; "30/8" herda o ano). Devolve array de
+// "DD/MM/AAAA" ou null se não for um intervalo válido.
+function expandirIntervaloDatas(esq, dir) {
+  const fim = parsearDataFlex(dir);
+  if (!fim) return null;
 
-  const datasValidas = [];
+  let ini = parsearDataFlex(esq);
+  if (!ini) {
+    const soDia = esq.trim().match(/^(\d{1,2})$/);
+    const diaMes = esq.trim().match(/^(\d{1,2})[\/.\-](\d{1,2})$/);
+    if (soDia) {
+      ini = parsearDataFlex(`${soDia[1]}/${fim.mes}/${fim.ano}`);       // herda mês+ano
+    } else if (diaMes) {
+      ini = parsearDataFlex(`${diaMes[1]}/${diaMes[2]}/${fim.ano}`);     // herda ano
+    }
+  }
+  if (!ini) return null;
+
+  // Datas locais (evita deslocamento de fuso ao iterar).
+  const dIni = new Date(+ini.ano, +ini.mes - 1, +ini.dia);
+  const dFim = new Date(+fim.ano, +fim.mes - 1, +fim.dia);
+  if (dIni > dFim) return null;                       // intervalo invertido
+  if ((dFim - dIni) / 86400000 > 366) return null;    // guarda contra intervalo absurdo
+
+  const out = [];
+  const cur = new Date(dIni.getTime());
+  while (cur <= dFim) {
+    out.push(
+      String(cur.getDate()).padStart(2, "0") + "/" +
+      String(cur.getMonth() + 1).padStart(2, "0") + "/" +
+      String(cur.getFullYear())
+    );
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+// Lê as datas de um evento de vários dias. Aceita, misturado:
+//   • intervalo:  "01/08/2026 a 08/08/2026", "30/8 a 6/9/26", "01 a 08/08/2026"
+//   • datas soltas separadas por vírgula: "01/08/2026, 03/08/2026"
+//   • mistura: "01 a 03/08/2026, 07/08/2026"
+// Ordena, remove repetidas e descarta datas no passado.
+function extrairDatasCorporativas(texto) {
+  // Separa por VÍRGULA/; (NÃO por espaço — intervalos têm espaço e o "a").
+  const segmentos = String(texto || "")
+    .split(/[,;\n]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
-  for (const parte of partes) {
-    const d = parsearDataFlex(parte);
-    if (d && d.date >= hoje) {
-      datasValidas.push(d.str);
+  const set = new Set();
+  const itens = [];
+
+  const addData = (str) => {
+    const d = parsearDataFlex(str);
+    if (!d) return;
+    const dLoc = new Date(+d.ano, +d.mes - 1, +d.dia);
+    if (dLoc < hoje) return;                 // não aceita passado
+    if (set.has(d.str)) return;              // não duplica
+    set.add(d.str);
+    itens.push({ str: d.str, t: dLoc.getTime() });
+  };
+
+  for (const seg of segmentos) {
+    // Intervalo? separador " a ", " à ", " até ", " ao " ou " - " (com espaços).
+    const partes = seg.split(/\s+(?:a|à|ate|até|ao|-|—)\s+/i);
+    if (partes.length === 2) {
+      const intervalo = expandirIntervaloDatas(partes[0], partes[1]);
+      if (intervalo) { intervalo.forEach(addData); continue; }
     }
+    addData(seg); // data única
   }
 
-  return datasValidas;
+  itens.sort((a, b) => a.t - b.t);
+  return itens.map(x => x.str);
 }
 
 // ======================================================
@@ -3615,8 +3676,12 @@ const resumoEucaristia =
       await sendTyping(chatId);
       await sendText(
         chatId,
-        `Informe as *${session.orcamento.dias} datas* do evento, separadas por vírgula:\n` +
-        `*(Ex: 01/06/2026, 02/06/2026, 03/06/2026)*`
+        `📅 Seu evento tem *${session.orcamento.dias} dias*. Você *não precisa digitar data por data* 😊\n\n` +
+        `Pode me mandar de um jeito só:\n\n` +
+        `• *Datas seguidas (intervalo):*\n   01/08/2026 a 08/08/2026\n` +
+        `• *Datas separadas:*\n   01/08/2026, 03/08/2026, 05/08/2026\n` +
+        `• *Misturando as duas:*\n   01 a 03/08/2026, 07/08/2026\n\n` +
+        `Pode abreviar também: *30/8 a 6/9/26*.`
       );
       return;
     }
@@ -3642,16 +3707,27 @@ const resumoEucaristia =
 
     if (!datas.length) {
       await sendText(chatId,
-        "*⚠ Nenhuma data válida!* Use o formato DD/MM ou DD/MM/AAAA separadas por vírgula.\n" +
-        "*(Ex: 01/06/2026, 02/06/2026)*"
+        "*⚠ Não consegui entender as datas.*\n\n" +
+        "Você pode mandar um *intervalo* (ex: *01/08/2026 a 08/08/2026*), " +
+        "*datas separadas* por vírgula (ex: *01/08/2026, 03/08/2026*) " +
+        "ou *misturar* (ex: *01 a 03/08/2026, 07/08/2026*)."
       );
       return;
     }
 
     session.orcamento.datasCorporativo = datas;
     session.orcamento.data             = datas[0]; // primeira como referência
+
+    // As DATAS mandam: ajusta o nº de dias ao que foi informado, em vez de
+    // re-perguntar (re-perguntar é justamente o que faz o cliente desistir).
+    const aviso_dias = (datas.length !== session.orcamento.dias)
+      ? `\n\n_Ajustei para *${datas.length} dias*, conforme as datas._`
+      : "";
+    session.orcamento.dias = datas.length;
+
     session.step = "orcamento_hora_inicio";
     await enviarPerguntaESalvar(chatId, session,
+      `✅ Entendi *${datas.length} data(s)*: ${datas.join(", ")}.${aviso_dias}\n\n` +
       "Qual o *horário de início* (válido para todos os dias)? *(Ex: 08:00 ou 8h)*"
     );
     return;
