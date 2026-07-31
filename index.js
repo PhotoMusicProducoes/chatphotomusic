@@ -58,7 +58,7 @@ const {
 } = require("./services/fluxoOrcamento");
 
 // Atalho da foto por código (QR da cabine Lumen Capture)
-const { tratarCodigoFoto } = require("./services/fotoCodigo");
+const { tratarCodigoFoto, temCodigoFoto } = require("./services/fotoCodigo");
 
 // Ao reiniciar, resetar apenas flags de estado transitório que não fazem
 // sentido após um restart (ex: enviandoOrcamentos travado em true).
@@ -2993,6 +2993,12 @@ async function handleIncomingMessage(message) {
     if (await tratarCodigoFoto(chatId, corpoMensagem, sessions[chatId])) return;
   } catch (e) {
     console.error("❌ Falha no atalho da foto por código:", e.message);
+    // A mensagem TEM código de foto: se falhar, avisa o convidado em vez de
+    // deixar a mensagem cair no menu (foi o que aconteceu no teste de 30/07).
+    if (temCodigoFoto(corpoMensagem)) {
+      await sendText(chatId, "Tive um problema para buscar suas fotos 😕 Chame o nosso operador no evento, por favor.");
+      return;
+    }
   }
 
   // ======================================================

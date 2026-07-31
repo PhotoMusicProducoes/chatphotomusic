@@ -18,7 +18,7 @@
 
 const axios = require("axios");
 const { sendText } = require("../utils/sendText");
-const sendTyping = require("../utils/sendTyping");
+const { sendTyping } = require("../utils/sendTyping");
 
 const PM_API_BASE = process.env.PM_API_BASE || "https://photomusic.com.br/wp-json/photomusic/v1";
 const PM_CAPTURE_KEY = process.env.PM_CAPTURE_KEY || "";
@@ -167,8 +167,14 @@ async function tratarCodigoFoto(chatId, corpoMensagem, session) {
   return true;
 }
 
+/** A mensagem contém um código de foto? (usado pelo index p/ não cair no menu) */
+function temCodigoFoto(texto) {
+  return !!extrairCodigoFoto(texto);
+}
+
 module.exports = {
   tratarCodigoFoto,
   extrairCodigoFoto,
+  temCodigoFoto,
   estaAguardandoAceite,
 };
