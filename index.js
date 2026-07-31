@@ -3852,7 +3852,9 @@ const resumoEucaristia =
   // ORÇAMENTO — HORA FIM DE CADA DIA
   // ======================================================
   if (session.step === "orcamento_dia_hora_fim") {
-    const horario = normalizarHorario(corpoMensagem);
+    // Se repetir o intervalo aqui ("19h as 23h"), o término é a SEGUNDA hora.
+    const intervaloFimDia = normalizarIntervaloHorario(corpoMensagem);
+    const horario = intervaloFimDia ? intervaloFimDia.fim : normalizarHorario(corpoMensagem);
 
     if (!horario) {
       await sendText(chatId, "*⚠ Horário inválido!* Use o formato *18:00*.");
@@ -3939,7 +3941,9 @@ const resumoEucaristia =
   // ORÇAMENTO — HORA FIM
   // ======================================================
   if (session.step === "orcamento_hora_fim") {
-    const horarioNormalizado = normalizarHorario(corpoMensagem);
+    // Se repetir o intervalo aqui ("19h as 23h"), o término é a SEGUNDA hora.
+    const intervaloFim = normalizarIntervaloHorario(corpoMensagem);
+    const horarioNormalizado = intervaloFim ? intervaloFim.fim : normalizarHorario(corpoMensagem);
 
     if (!horarioNormalizado) {
       await sendText(chatId, "*⚠ Horário inválido!* Use o formato *23:00*");
