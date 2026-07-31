@@ -9,35 +9,50 @@ function capitalizarPalavras(texto) {
     .join(" ");
 }
 
-// Função para normalizar horários enviados pelo cliente
-// Aceita: "23", "9", "04", "1300", "17h", "18h00", "23:00", "18h30min"
-// Aceita intervalo ("15 às 17h", "15 as 17", "15 a 17h", "das 15 às 17h", "19, 22", "19 e 22"): usa a PRIMEIRA hora como início
-// Rejeita: barra/ponto/traço (formato de data), texto, hora > 23, minuto > 59
-function normalizarHorario(input) {
-  if (!input) return null;
+// Extrai TODAS as horas que aparecerem num texto livre, na ordem.
+// O cliente escreve como fala: "as 19h", "vai ser de 19h às 23h", "19 as 23",
+// "19:00 às 23:00", "19h00 as 23h00". Em vez de exigir formato, pegamos a hora
+// e ignoramos o resto do texto.
+// Devolve [] quando o texto parece uma DATA (01/06/2026) — aí não é horário.
+function extrairHoras(texto) {
+  if (!texto) return [];
+  const txt = String(texto).toLowerCase();
 
-  let txt = input.trim().toLowerCase();
+  // dois números separados por barra ou ponto = data, não horário
+  if (/\d\s*[\/.]\s*\d/.test(txt)) return [];
 
-  // Intervalo de horário: o cliente responde "15 às 17h" (ou "19, 22") quando perguntamos só o início.
-  // Pega a PRIMEIRA hora e ignora o resto.
-  const intervalo = txt.match(/^(?:d?as?\s+)?(\d{1,2}\s*(?:h|:)?\s*\d{0,2})\s*(?:às|as|até|ate|[-–—,]|\ba\b|\be\b)\s*\d{1,2}/);
-  if (intervalo) {
-    txt = intervalo[1].trim();
+  const horas = [];
+  // (?<!\d) e (?!\d) impedem casar pedaço de número grande (ex.: 2026)
+  const re = /(?<!\d)(\d{1,2})(?:\s*(?:h|:)\s*(\d{2})|\s*h)?(?!\d)/g;
+  let m;
+  while ((m = re.exec(txt)) !== null) {
+    const hora = parseInt(m[1], 10);
+    const min  = m[2] ? parseInt(m[2], 10) : 0;
+    if (hora > 23 || min > 59) continue;
+    horas.push(String(hora).padStart(2, "0") + ":" + String(min).padStart(2, "0"));
   }
+  return horas;
+}
 
-  // Barra, ponto ou traço indicam data — não aceitar como hora
-  if (/[\/.\-]/.test(txt)) return null;
+// Função para normalizar horários enviados pelo cliente
+// Aceita: "23", "9", "04", "17h", "18h00", "23:00", "18h30min", "as 19h",
+// e frases ("o evento começa as 19h") — pega a PRIMEIRA hora do texto.
+// Em intervalo ("15 às 17h", "19, 22") também usa a primeira, como início.
+// Rejeita: formato de data, texto sem hora, hora > 23, minuto > 59
+function normalizarHorario(input) {
+  const horas = extrairHoras(input);
+  return horas.length ? horas[0] : null;
+}
 
-  // hora (1-2 dígitos) + separador opcional (h ou :) + minutos opcionais + "min" opcional
-  const m = txt.match(/^(\d{1,2})\s*(?:h|:)?\s*(\d{2})?\s*(?:min)?$/);
-  if (!m) return null;
-
-  const hora = parseInt(m[1], 10);
-  const min  = m[2] ? parseInt(m[2], 10) : 0;
-
-  if (hora > 23 || min > 59) return null;
-
-  return String(hora).padStart(2, "0") + ":" + String(min).padStart(2, "0");
+// Quando o cliente responde o intervalo inteiro na pergunta do INÍCIO
+// ("19h as 23h", "19 as 23", "19:00 às 23:00", "das 19h às 23h30"),
+// devolve { inicio, fim } para já salvar os dois e pular a pergunta seguinte.
+// Devolve null quando só há uma hora (aí segue o fluxo normal).
+function normalizarIntervaloHorario(input) {
+  const horas = extrairHoras(input);
+  if (horas.length < 2) return null;
+  if (horas[0] === horas[1]) return null; // "19h e 19h" não é intervalo válido
+  return { inicio: horas[0], fim: horas[1] };
 }
 
 // Função para calcular a duração do evento
@@ -86,7 +101,9 @@ function validarListaDatas(texto) {
 // Exportação das funções auxiliares
 module.exports = {
   capitalizarPalavras,
+  extrairHoras,
   normalizarHorario,
+  normalizarIntervaloHorario,
   calcularDuracaoEvento,
   validarData,
   validarListaDatas

@@ -53,8 +53,12 @@ const {
 const {
   capitalizarPalavras,
   normalizarHorario,
+  normalizarIntervaloHorario,
   calcularDuracaoEvento
 } = require("./services/fluxoOrcamento");
+
+// Atalho da foto por código (QR da cabine Lumen Capture)
+const { tratarCodigoFoto } = require("./services/fotoCodigo");
 
 // Ao reiniciar, resetar apenas flags de estado transitório que não fazem
 // sentido após um restart (ex: enviandoOrcamentos travado em true).
@@ -744,6 +748,36 @@ const MESES_PT = {
 // ("9 de setembro", "09 setembro", "9 de setembro de 2026", "9 set").
 // Retorna { dia, mes, ano, str, date } ou null se inválida.
 // ======================================================
+// Depois de fechar o horário de um dia (seja respondendo início e fim
+// separados, seja respondendo o intervalo de uma vez), decide se pergunta o
+// próximo dia ou encerra a coleta de datas.
+async function avancarAposHoraFimDoDia(chatId, session) {
+  const totalDias = session.orcamento.dias || 1;
+
+  if (session.orcamento.diaAtual < totalDias) {
+    session.orcamento.diaAtual++;
+    session.step = "orcamento_dia_data";
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `📅 *Dia ${session.orcamento.diaAtual} de ${totalDias}*\n` +
+      `Qual a data? *(Ex: 01/06/2026)*`
+    );
+    return;
+  }
+
+  // Todos os dias coletados → usar 1º dia como referência de horário
+  const primeiroDia = session.orcamento.diasDetalhes[0];
+  session.orcamento.data       = primeiroDia.data;
+  session.orcamento.horaInicio = primeiroDia.horaInicio;
+  session.orcamento.horaFim    = primeiroDia.horaFim;
+  session.orcamento.duracao    = calcularDuracaoEvento(primeiroDia.horaInicio, primeiroDia.horaFim);
+  session.orcamento.horas      = Number.parseInt(session.orcamento.duracao, 10) || 4;
+
+  session.step = "orcamento_bairro";
+  await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+}
+
 function parsearDataFlex(texto) {
   const t = (texto || "").trim();
   const m = t.match(/^(0?[1-9]|[12][0-9]|3[01])[\/.\-](0?[1-9]|1[0-2])(?:[\/.\-](\d{2}|\d{4}))?$/);
@@ -2951,6 +2985,17 @@ async function handleIncomingMessage(message) {
   }
 
   // ======================================================
+  // 📸 ATALHO DA FOTO POR CÓDIGO (Lumen Capture)
+  // Roda ANTES da máquina de estados: quem escaneia o QR na cabine já vem
+  // com "Código: XXXXXX" e recebe o link na hora, mesmo com o menu aberto.
+  // ======================================================
+  try {
+    if (await tratarCodigoFoto(chatId, corpoMensagem, sessions[chatId])) return;
+  } catch (e) {
+    console.error("❌ Falha no atalho da foto por código:", e.message);
+  }
+
+  // ======================================================
   // CONTROLE DE MENSAGENS DUPLICADAS
   // ======================================================
 
@@ -3770,6 +3815,20 @@ const resumoEucaristia =
   // ORÇAMENTO — HORA INÍCIO DE CADA DIA
   // ======================================================
   if (session.step === "orcamento_dia_hora_inicio") {
+    const diaIdxIni = (session.orcamento.diaAtual || 1) - 1;
+
+    // respondeu o intervalo inteiro ("19h as 23h")? salva os dois e segue
+    const intervaloDia = normalizarIntervaloHorario(corpoMensagem);
+    if (intervaloDia) {
+      const detalhes = session.orcamento.diasDetalhes[diaIdxIni];
+      detalhes.horaInicio = intervaloDia.inicio;
+      detalhes.horaFim    = intervaloDia.fim;
+      await sendTyping(chatId);
+      await sendText(chatId, `⏰ *Dia ${session.orcamento.diaAtual}*: das *${intervaloDia.inicio}* às *${intervaloDia.fim}*.`);
+      await avancarAposHoraFimDoDia(chatId, session);
+      return;
+    }
+
     const horario = normalizarHorario(corpoMensagem);
 
     if (!horario) {
@@ -3777,7 +3836,7 @@ const resumoEucaristia =
       return;
     }
 
-    const diaIdx = (session.orcamento.diaAtual || 1) - 1;
+    const diaIdx = diaIdxIni;
     session.orcamento.diasDetalhes[diaIdx].horaInicio = horario;
     session.step = "orcamento_dia_hora_fim";
 
@@ -3810,32 +3869,7 @@ const resumoEucaristia =
     }
 
     session.orcamento.diasDetalhes[diaIdx].horaFim = horario;
-
-    if (session.orcamento.diaAtual < totalDias) {
-      // Próximo dia
-      session.orcamento.diaAtual++;
-      session.step = "orcamento_dia_data";
-      await sendTyping(chatId);
-      await sendText(
-        chatId,
-        `📅 *Dia ${session.orcamento.diaAtual} de ${totalDias}*\n` +
-        `Qual a data? *(Ex: 01/06/2026)*`
-      );
-      return;
-    }
-
-    // Todos os dias coletados → usar 1º dia como referência de horário
-    const primeiroDia = session.orcamento.diasDetalhes[0];
-    session.orcamento.data      = primeiroDia.data;
-    session.orcamento.horaInicio = primeiroDia.horaInicio;
-    session.orcamento.horaFim   = primeiroDia.horaFim;
-    session.orcamento.horas     = Number.parseInt(
-      calcularDuracaoEvento(primeiroDia.horaInicio, primeiroDia.horaFim), 10
-    ) || 4;
-    session.orcamento.duracao   = String(session.orcamento.horas);
-
-    session.step = "orcamento_bairro";
-    await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+    await avancarAposHoraFimDoDia(chatId, session);
     return;
   }
 
@@ -3869,6 +3903,24 @@ const resumoEucaristia =
   // ORÇAMENTO — HORA INÍCIO
   // ======================================================
   if (session.step === "orcamento_hora_inicio") {
+    // Muita gente responde o intervalo inteiro ("19h as 23h"). Nesse caso
+    // salvamos início E término de uma vez e pulamos a próxima pergunta.
+    const intervalo = normalizarIntervaloHorario(corpoMensagem);
+    if (intervalo) {
+      session.orcamento.horaInicio = intervalo.inicio;
+      session.orcamento.horaFim    = intervalo.fim;
+      // mesmo cálculo do passo "orcamento_hora_fim"
+      session.orcamento.duracao = calcularDuracaoEvento(intervalo.inicio, intervalo.fim);
+      session.orcamento.horas   = Number.parseInt(session.orcamento.duracao, 10) || 2;
+
+      await sendTyping(chatId);
+      await sendText(chatId, `⏰ Anotado: das *${intervalo.inicio}* às *${intervalo.fim}*.`);
+
+      session.step = "orcamento_bairro";
+      await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+      return;
+    }
+
     const horarioNormalizado = normalizarHorario(corpoMensagem);
 
     if (!horarioNormalizado) {
