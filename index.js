@@ -1001,25 +1001,16 @@ async function mostrarMenuInicial(chatId) {
   }
 
   await sendTyping(chatId);
-  await sendText(chatId, mensagemBoasVindas1);
-
-  await sendTyping(chatId);
-  await sendText(chatId, mensagemBoasVindas2a);
-
-  await sendTyping(chatId);
-  await sendText(chatId, mensagemBoasVindas2b);
-
-  await sendTyping(chatId);
-  await sendText(chatId, mensagemBoasVindas2);
-
-  await sendTyping(chatId);
-  // Lista clicável (2026-07-15): é a ENTRADA do funil, onde o lead some sem
-  // nem começar (caso Heciomar/Susteiner: a reunião não andava porque ele
-  // nunca respondia ao menu). O sendOptionList leva o menu numerado no corpo,
-  // então quem não vê a lista digita o número como sempre.
+  // ABERTURA EM 1 MENSAGEM SÓ (2026-08-04, pedido do Mario): antes eram 4 bolhas
+  // antes do menu, o que cansava o cliente. Agora é uma abertura curta com a
+  // prova social (Google) já dentro do próprio menu. O texto é PROPOSITALMENTE
+  // enxuto: se passar de ~600 caracteres o WhatsApp corta com "Ler mais" e
+  // esconde justamente as opções do menu.
   await sendOptionList(
     chatId,
-    "*Como posso te ajudar hoje?*\n\nEscolha a opção que melhor descreve o motivo do seu contato:",
+    "*Olá! Seja bem-vindo(a) à PhotoMusic Produções!* 🎉\n\n" +
+      "⭐⭐⭐⭐⭐ *Somos a empresa de experiências fotográficas mais bem avaliada do Brasil*, com mais de 1.500 avaliações 5 estrelas no Google.\n\n" +
+      "*Como posso te ajudar hoje?*",
     Object.keys(LABELS_MENU).map(k => ({ id: k, title: LABELS_MENU[k] })),
     { title: "Como posso ajudar?", buttonLabel: "Ver opções" }
   );
