@@ -1008,8 +1008,8 @@ async function mostrarMenuInicial(chatId) {
   // esconde justamente as opções do menu.
   await sendOptionList(
     chatId,
-    "*Olá! Seja bem-vindo(a) à PhotoMusic Produções!* 🎉\n\n" +
-      "⭐⭐⭐⭐⭐ *Somos a empresa de experiências fotográficas mais bem avaliada do Brasil*, com mais de 1.500 avaliações 5 estrelas no Google.\n\n" +
+    "*Olá! Seja bem-vindo(a) à PhotoMusic Produções!*\n\n" +
+      "*Somos a empresa de experiências fotográficas mais bem avaliada do Brasil*, com mais de 1.500 avaliações 5 ⭐ no Google.\n\n" +
       "*Como posso te ajudar hoje?*",
     Object.keys(LABELS_MENU).map(k => ({ id: k, title: LABELS_MENU[k] })),
     { title: "Como posso ajudar?", buttonLabel: "Ver opções" }
@@ -3575,8 +3575,20 @@ const resumoEucaristia =
 
     session.step = "orcamento_celebracao";
 
+    // Apresentação da empresa (2026-08-05, pedido do Mario): saiu da abertura
+    // (que virou 1 msg só com o menu) e passou p/ DEPOIS da confirmação do nome,
+    // já chamando a pessoa pelo nome. É onde o cliente demonstrou interesse real.
     await sendTyping(chatId);
-    await sendText(chatId, `Olá, *${session.orcamento.nome}*! \nAgora, me fale um pouco sobre o seu evento`);
+    await sendText(chatId, `*${session.orcamento.nome}*, somos uma família que atende famílias ❤️`);
+
+    await sendTyping(chatId);
+    await sendText(chatId, "Temos o compromisso de atender aos nossos clientes e a cada convidado do seu evento, com muito amor, carinho e atenção.");
+
+    await sendTyping(chatId);
+    await sendText(chatId, "A *PhotoMusic Produções* está há 15 anos transformando eventos em memórias inesquecíveis.");
+
+    await sendTyping(chatId);
+    await sendText(chatId, "Agora, me fale um pouco sobre o seu evento");
 
     await sendTyping(chatId);
     // 9 opções: cabe na lista (limite 10). O menu numerado vai no corpo pelo
