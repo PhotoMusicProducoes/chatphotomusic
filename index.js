@@ -2733,6 +2733,34 @@ async function handleIncomingMessage(message) {
           continue;
         }
 
+        // ======================================================
+        // COMANDO ESPECIAL: #todosorcamentos — manda TODOS os orçamentos
+        // (mesma entrega enxuta do lembrete de 1h: avaliação + PDF/link de
+        // cada serviço + resumo com todos os links). Serve para acionar na
+        // mão os leads parados que não responderam ao follow-up.
+        // Uso: #todosorcamentos            (usa o que já está na sessão)
+        //      #todosorcamentos 9,200,5    (celebração, convidados, horas)
+        // ======================================================
+        if (nomeComando === "#todosorcamentos") {
+          const clbP   = Number(parametros[0]) || null;
+          const convP  = Number(parametros[1]) || null;
+          const horasP = Number(parametros[2]) || null;
+
+          session.orcamento = session.orcamento || {};
+          if (clbP)   session.orcamento.celebracaoId = clbP;
+          if (convP)  session.orcamento.convidados   = convP;
+          if (horasP) session.orcamento.horas        = horasP;
+
+          try {
+            await enviarOrcamentosAutomaticos(chatIdCliente, session);
+            await sendText(destinoOperador, `✅ Todos os orçamentos enviados para *${chatIdCliente}*`);
+          } catch (e) {
+            await sendText(destinoOperador, `❌ Erro ao enviar os orçamentos: ${e.message}`);
+          }
+          controlaMsgManual2++;
+          continue;
+        }
+
         if (!comandosServicos[nomeComando]) {
           await sendText(destinoOperador, `⚠ Comando não reconhecido: ${nomeComando}`);
           continue;
@@ -4700,6 +4728,27 @@ async function enviarOrcamentosAutomaticos(chatId, session) {
   );
 }
 
+/**
+ * Quantas parcelas no PIX o cliente tem até a data do evento.
+ * Conta o MÊS ATUAL (em que ele fecha o contrato) até o mês do evento,
+ * com teto de 10. Sem data informada, devolve null (mensagem genérica).
+ */
+function parcelasPixAteEvento(dataStr) {
+  const m = String(dataStr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+
+  const mesEvento = Number(m[2]);
+  const anoEvento = Number(m[3]);
+
+  const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const meses = (anoEvento - hoje.getFullYear()) * 12
+              + (mesEvento - (hoje.getMonth() + 1))
+              + 1; // +1 = inclui o mês atual
+
+  if (!Number.isFinite(meses) || meses < 1) return 1;
+  return Math.min(10, meses);
+}
+
 async function enviarResumoCliente(chatId, session) {
   try {
     const orc = session.orcamento || {};
@@ -4848,6 +4897,25 @@ async function enviarResumoCliente(chatId, session) {
 
     await sendTyping(chatId);
     await sendText(chatId, linhas.join("\n"));
+
+    // 💠 PARCELAMENTO NO PIX — mensagem separada, em destaque, logo após o
+    // resumo. Vale para social e "outros"; NÃO vai em evento corporativo.
+    // Quando o cliente já informou a data, dizemos quantas parcelas ele tem
+    // de fato (do mês atual até o mês do evento, teto de 10).
+    if (Number(orc.celebracaoId) !== 8) {
+      const nParc = parcelasPixAteEvento(orc.data);
+      const txtPix = nParc
+        ? `💠 *Parcelamento no PIX*\n\n` +
+          `Você pode dividir o valor no PIX *até a data do seu evento*, em até *10x*.\n\n` +
+          `Como o seu evento é em *${orc.data}*, dá para parcelar em até *${nParc}x no PIX*. 🙌`
+        : `💠 *Parcelamento no PIX*\n\n` +
+          `Você pode dividir o valor no PIX *até a data do seu evento*, em até *10x*. 🙌\n\n` +
+          `Me conta a data que eu já te digo em quantas vezes dá para parcelar.`;
+
+      await new Promise(r => setTimeout(r, 600));
+      await sendTyping(chatId);
+      await sendText(chatId, txtPix);
+    }
 
     // 🎁 Vantagem Exclusiva — mensagem SEPARADA, logo após o resumo, em TODOS
     // os orçamentos (mesmo com 1 serviço, como isca p/ incluir mais um).
