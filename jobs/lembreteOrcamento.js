@@ -308,90 +308,11 @@ function montarMensagem(devido, s) {
  * 3 + 3 + 2, com 15s entre os lotes (anti-bloqueio da Meta).
  */
 async function enviarTodosOrcamentos(chatId, s) {
-  // require tardio: evita import circular com o index.js no boot
-  const {
-    enviarFotoCabine, enviarTotemFotografico, enviarPlataforma360,
-    enviarFotoPaparazzi, enviarFotoLembranca, enviarFotografia,
-    enviarSomDJ, enviarIluminacao, enviarAvaliacaoEmpresa
-  } = require("../services/index.js");
-
-  s.orcamento = s.orcamento || {};
-  const orc = s.orcamento;
-
-  const semCelebracao = !orc.celebracaoId;
-  if (semCelebracao)   orc.celebracaoId = 9;   // Outros
-  if (!orc.horas)      orc.horas = 5;          // 5 => tabela "4h5h"
-  if (!orc.convidados) orc.convidados = 200;   // até 200 pessoas
-  if (!Array.isArray(orc.servicosEnviados)) orc.servicosEnviados = [];
-
-  const clb    = Number(orc.celebracaoId);
-  const conv   = Number(orc.convidados);
-  const nome   = orc.nome ? String(orc.nome).split(" ")[0] : "";
-  const ola    = nome ? `Oi, *${nome}*!` : "Oi!";
-
-  await sendText(chatId,
-    `${ola} ❤️\n\n` +
-    `Vi que a gente não terminou o seu orçamento e não quero que você fique esperando.\n\n` +
-    `Então já vou te enviar *tudo o que temos*, pra você ver com calma e sem compromisso. 😊`
-  );
-
-  // Prova social primeiro
-  try { await enviarAvaliacaoEmpresa(chatId, sessions); } catch (e) {
-    console.error("   ⚠️ avaliações não enviadas:", e.message);
-  }
-
-  if (clb === 8) {
-    await sendText(chatId,
-      "ℹ️ Os valores a seguir atendem eventos de *até 200 pessoas*. " +
-      "Se o seu for maior, me avisa que eu faço um orçamento sob medida. 😉"
-    );
-  }
-
-  const envios = [
-    ["Foto Cabine",      enviarFotoCabine],
-    ["Totem",            enviarTotemFotografico],
-    ["Plataforma 360",   enviarPlataforma360],
-    ["Foto Paparazzi",   enviarFotoPaparazzi],
-    ["Foto Lembrança",   enviarFotoLembranca],
-    ["Cobertura",        enviarFotografia],
-    ["Som/DJ",           enviarSomDJ],
-    ["Iluminação",       enviarIluminacao],
-  ];
-
-  // Lotes de 3 + 3 + 2, 15s entre os lotes
-  const LOTES = [3, 3, 2];
-  let i = 0;
-  for (let l = 0; l < LOTES.length; l++) {
-    for (let k = 0; k < LOTES[l] && i < envios.length; k++, i++) {
-      const [rotulo, fn] = envios[i];
-      try {
-        await fn(chatId, clb, conv, sessions, false);
-      } catch (e) {
-        console.error(`   ⚠️ falha ao enviar ${rotulo}:`, e.message);
-      }
-    }
-    if (i < envios.length) await new Promise(r => setTimeout(r, 15000));
-  }
-
-  // Captura o lead: é o que faz o follow-up assumir daqui pra frente
-  try {
-    const { capturarClienteOrcamento } = require("../index.js");
-    if (typeof capturarClienteOrcamento === "function") {
-      await capturarClienteOrcamento(chatId, s);
-    }
-  } catch (e) {
-    console.error("   ⚠️ captura do lead falhou:", e.message);
-  }
-
-  // Convite para retomar de onde parou (botão Sim/Não)
-  s.lembreteRetomarStep = s.step;
+  // A entrega em si vive no index.js (junto dos outros envios). Aqui o job
+  // só decide QUANDO. require tardio p/ evitar import circular no boot.
+  const { enviarOrcamentosAutomaticos } = require("../index.js");
   s.lembreteRetomarPergunta = PERGUNTA_POR_PASSO[s.step] || "";
-  s.step = "lembrete_retomar";
-  await sendButtonList(
-    chatId,
-    "Quer um orçamento *personalizado* para o seu evento? É rapidinho, continuamos de onde paramos.",
-    [{ id: "1", label: "Sim, quero" }, { id: "2", label: "Agora não" }]
-  );
+  await enviarOrcamentosAutomaticos(chatId, s);
 }
 
 function montarMensagemOperador(chatId, s, dEvento) {
@@ -437,6 +358,19 @@ async function executarLembreteOrcamento() {
   for (const chatId of Object.keys(sessions)) {
     const s = sessions[chatId];
     try {
+      // MIGRAÇÃO (1x por sessão): quem recebeu a 1ª versão do envio automático
+      // (fluxo COMPLETO, com fotos e vídeos de cada serviço) ficou com dezenas
+      // de mensagens e sem entender nada. Reabre p/ receber a versão ENXUTA
+      // (avaliação + nome + PDF/link + resumo com todos os links).
+      if (s && s.lembreteOrcEstagio === 9 && !s.envioEnxutoOk) {
+        s.envioEnxutoOk = true;
+        s.lembreteOrcEstagio = 1;
+        s.lembreteOrcUltimoEnvio = 0;
+        if (s.step === "lembrete_retomar") {
+          s.step = s.lembreteRetomarStep || "orcamento_nome";
+        }
+      }
+
       if (!s || !PASSOS_QUESTIONARIO.has(s.step)) continue;
       if (!s.ultimaInteracao) continue;
 
@@ -511,6 +445,7 @@ async function executarLembreteOrcamento() {
         // daqui em diante, porque o lead passa a ter orçamento enviado.
         await enviarTodosOrcamentos(chatId, s);
         s.lembreteOrcEstagio = 9;          // encerrado: não há mais lembrete
+        s.envioEnxutoOk = true;            // já recebeu a versão enxuta
         s.lembreteOrcUltimoEnvio = agora;
         s.lembreteOrcamentoEnviado = true;
         enviados++;

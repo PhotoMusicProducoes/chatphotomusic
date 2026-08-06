@@ -4599,14 +4599,106 @@ const resumoEucaristia =
 // ======================================================
 module.exports = {
   handleIncomingMessage,
-  // usado pelo jobs/lembreteOrcamento quando ele entrega os orçamentos
-  // completos: captura o lead para o follow-up assumir daí em diante.
-  capturarClienteOrcamento
+  // usados pelo jobs/lembreteOrcamento no lembrete de 1h (entrega enxuta
+  // de todos os orçamentos + captura do lead p/ o follow-up assumir).
+  capturarClienteOrcamento,
+  enviarOrcamentosAutomaticos
 };
 
 // ======================================================
 // RESUMO DO CLIENTE (OPERADOR)
 // ===================================================
+
+/**
+ * ENVIO AUTOMÁTICO DE TODOS OS ORÇAMENTOS (lembrete de 1h).
+ * Versão ENXUTA: usa apenasOrcamento (avaliação + nome do serviço + PDF/link),
+ * sem o fluxo de fotos e vídeos — senão viram ~80 mensagens e o cliente se perde.
+ * Fecha com o RESUMO de todos os links (enviarResumoCliente).
+ * Fallbacks: sem horário → 4h5h (horas=5); sem celebração → Outros (9) e 200
+ * convidados; corporativo → avisa que o valor atende até 200 pessoas.
+ */
+async function enviarOrcamentosAutomaticos(chatId, session) {
+  if (!session) return;
+  const passoOriginal = session.step;
+
+  session.orcamento = session.orcamento || {};
+  const orc = session.orcamento;
+
+  if (!orc.celebracaoId) orc.celebracaoId = 9;   // Outros
+  if (!orc.horas)        orc.horas = 5;          // 5 => tabela "4h5h"
+  if (!orc.convidados)   orc.convidados = 200;   // até 200 pessoas
+  if (!Array.isArray(orc.servicosEnviados)) orc.servicosEnviados = [];
+
+  const clb   = Number(orc.celebracaoId);
+  const conv  = Number(orc.convidados);
+  const horas = Number(orc.horas) || 5;
+  const dias  = orc.dias || 1;
+  const nome  = orc.nome ? String(orc.nome).split(" ")[0] : "";
+  const ola   = nome ? `Oi, *${nome}*!` : "Oi!";
+
+  await sendTyping(chatId);
+  await sendText(chatId,
+    `${ola} ❤️\n\n` +
+    `Vi que a gente não terminou o seu orçamento e não quero te deixar esperando.\n\n` +
+    `Então já vou te enviar *todos os nossos serviços*, pra você ver com calma e sem compromisso. 😊`
+  );
+
+  try { await enviarAvaliacaoEmpresa(chatId, sessions); } catch (e) {
+    console.error("⚠️ avaliações não enviadas:", e.message);
+  }
+
+  if (clb === 8) {
+    await sendText(chatId,
+      "ℹ️ Os valores a seguir atendem eventos de *até 200 pessoas*. " +
+      "Se o seu for maior, me avisa que eu faço um orçamento sob medida. 😉"
+    );
+  }
+
+  const lista = [1, 2, 3, 4, 5, 6, 7, 8];
+  const LOTES = [3, 3, 2]; // 3 + 3 + 2, com 15s entre os lotes (anti-bloqueio)
+  let i = 0;
+
+  for (let l = 0; l < LOTES.length; l++) {
+    for (let k = 0; k < LOTES[l] && i < lista.length; k++, i++) {
+      const servico = lista[i];
+      sessions[chatId]._envioMultiplo = {
+        apenasOrcamento:    true,
+        ehUltimo:           i === lista.length - 1,
+        ehUltimoComMoldura: false,
+        servicosNaLista:    lista
+      };
+      try {
+        await enviarOrcamentoUnificado(chatId, servico, clb, conv, horas, dias, true);
+        registrarServicoEnviado(session, servico);
+      } catch (e) {
+        console.error(`⚠️ falha no serviço ${servico}:`, e.message);
+      }
+      await new Promise(r => setTimeout(r, 600));
+    }
+    if (i < lista.length) await new Promise(r => setTimeout(r, 15000));
+  }
+  delete sessions[chatId]._envioMultiplo;
+
+  // Resumo final com TODOS os links (é o que amarra tudo pro cliente)
+  try { await enviarResumoCliente(chatId, session); } catch (e) {
+    console.error("⚠️ resumo não enviado:", e.message);
+  }
+
+  // Captura o lead: é o que faz o follow-up assumir daqui em diante
+  try { await capturarClienteOrcamento(chatId, session); } catch (e) {
+    console.error("⚠️ captura do lead falhou:", e.message);
+  }
+
+  // Convite para personalizar, retomando de onde parou
+  session.lembreteRetomarStep = passoOriginal;
+  session.step = "lembrete_retomar";
+  await sendTyping(chatId);
+  await sendButtonList(
+    chatId,
+    "Quer um orçamento *personalizado* para o seu evento? É rapidinho, continuamos de onde paramos.",
+    [{ id: "1", label: "Sim, quero" }, { id: "2", label: "Agora não" }]
+  );
+}
 
 async function enviarResumoCliente(chatId, session) {
   try {
