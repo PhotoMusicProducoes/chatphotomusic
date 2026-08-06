@@ -3557,6 +3557,44 @@ const resumoEucaristia =
   // ======================================================
   // ORÇAMENTO — CONFIRMAÇÃO DO NOME
   // ======================================================
+  // ======================================================
+  // RETOMADA APÓS O ENVIO AUTOMÁTICO DOS ORÇAMENTOS
+  // (lembrete de 1h mandou tudo e perguntou se quer personalizar)
+  // ======================================================
+  if (session.step === "lembrete_retomar") {
+    const r = (corpoMensagem || "").trim().toLowerCase();
+
+    if (r === "1" || r.startsWith("sim")) {
+      session.step = session.lembreteRetomarStep || "orcamento_nome";
+      const perg = session.lembreteRetomarPergunta;
+      await sendTyping(chatId);
+      await sendText(chatId, "Que bom! ❤️ Vamos continuar de onde paramos.");
+      if (perg) {
+        await sendTyping(chatId);
+        await sendText(chatId, perg);
+        session.ultimaPerguntaNaoRespondida = perg;
+      }
+      return;
+    }
+
+    if (r === "2" || r.startsWith("nao") || r.startsWith("não") || r.startsWith("agora")) {
+      session.step = "aguardando_opcao";
+      await sendTyping(chatId);
+      await sendText(chatId,
+        "Tudo bem! 😊 Os orçamentos ficam aí com você, sem pressa e sem compromisso.\n\n" +
+        "Quando quiser, é só me chamar que eu monto um do seu jeitinho. ❤️"
+      );
+      return;
+    }
+
+    await sendButtonList(
+      chatId,
+      "Só me diz: quer um orçamento *personalizado* para o seu evento?",
+      [{ id: "1", label: "Sim, quero" }, { id: "2", label: "Agora não" }]
+    );
+    return;
+  }
+
   if (session.step === "orcamento_nome_confirmar") {
     const respNome = corpoMensagem.trim();
 
@@ -4560,7 +4598,10 @@ const resumoEucaristia =
 // EXPORTAÇÃO
 // ======================================================
 module.exports = {
-  handleIncomingMessage
+  handleIncomingMessage,
+  // usado pelo jobs/lembreteOrcamento quando ele entrega os orçamentos
+  // completos: captura o lead para o follow-up assumir daí em diante.
+  capturarClienteOrcamento
 };
 
 // ======================================================

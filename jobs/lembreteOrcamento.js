@@ -5,15 +5,16 @@
 // gente perde o contato. Este job varre as sessões, encontra quem travou
 // num passo de coleta do orçamento e manda lembretes para motivar a voltar.
 //
-// Cadência (medida desde a ÚLTIMA mensagem do cliente):
-//   2h  → 1º lembrete (mesmo dia, interesse quente)
-//   24h → 2º lembrete
-//   72h → 3º lembrete (última chamada)
-//   96h → avisa o OPERADOR para um contato manual (e encerra os lembretes)
+// Cadência (2026-08-05, medida desde a ÚLTIMA mensagem do cliente):
+//   30min → lembrete carinhoso ("vi que paramos no meio")
+//   1h    → ENTREGA todos os orçamentos + pergunta se quer personalizar,
+//           e ENCERRA o lembrete. Daí em diante quem age é o follow-up
+//           (jobs/followupLeads.js), que começa após o orçamento enviado.
+// A régua antiga (2h → 24h → 72h → 96h) demorava dias para entregar preço,
+// que é justamente o que o cliente veio buscar.
 //
-// ESPAÇAMENTO MÍNIMO (GAP_MIN ~20h): nunca manda dois lembretes colados. Se o
-// de 2h "vence" de madrugada e só sai às 7h, o de 24h NÃO sai poucas horas
-// depois — espera ~1 dia (na prática o de 24h vira ~48h); o de 72h segue normal.
+// ESPAÇAMENTO MÍNIMO (GAP_MIN ~20min): evita que os dois saiam colados quando
+// o de 30min fica represado pela janela da noite e só sai às 7h.
 //
 // CORTE POR DATA DO EVENTO (se o cliente já informou a data): a última msg sai
 // até ~2 dias antes do evento. A <=3 dias, a última chamada é antecipada; a <=2
@@ -25,7 +26,7 @@
 // inatividade são ignoradas (velhas demais).
 
 const cron = require("node-cron");
-const { sendText, estaPausadoEspecial, estaPausado } = require("../utils/index.js");
+const { sendText, sendButtonList, estaPausadoEspecial, estaPausado } = require("../utils/index.js");
 const { sessions } = require("../utils/sessions");
 
 const TIMEZONE = "America/Sao_Paulo";
@@ -35,10 +36,13 @@ const OPERADOR_TELEFONE_ID = "5521964428172@c.us";
 
 // Limiares (ms)
 const DIA    = 24 * 60 * 60 * 1000;
-const H2     = 2  * 60 * 60 * 1000;
-const H24    = 24 * 60 * 60 * 1000;
-const H72    = 72 * 60 * 60 * 1000;
-const H_OP   = 96 * 60 * 60 * 1000; // 72h + 24h de tolerância → avisa operador
+// RÉGUA NOVA (2026-08-05, pedido do Mario): 30min = lembrete carinhoso;
+// 1h = manda TODOS os orçamentos e ENCERRA o lembrete. Depois disso quem
+// segue é o follow-up (followupLeads), que começa após o orçamento enviado.
+// Antes era 2h → 24h → 72h → 96h(operador), régua longa demais: o cliente
+// ficava dias sem receber preço, que é o que ele veio buscar.
+const H30M   = 30 * 60 * 1000;
+const H1H    = 60 * 60 * 1000;
 const H_MAX  = 7  * DIA; // > 7 dias parado = ignora (sessão velha)
 
 // Espaçamento mínimo ENTRE lembretes enviados ao mesmo cliente. Sem isso, se
@@ -46,7 +50,9 @@ const H_MAX  = 7  * DIA; // > 7 dias parado = ignora (sessão velha)
 // a última msg do cliente) vence poucas horas depois e os dois saem colados —
 // parece chato. Com este intervalo, o 2º só sai ~1 dia após o 1º (na prática,
 // o de 2h vira "manhã seguinte" e o de 24h vira ~48h). O de 72h segue no 72h.
-const GAP_MIN = 20 * 60 * 60 * 1000; // ~20h entre um lembrete e o próximo
+// Com a régua curta (30min → 1h) o espaçamento vira ~20 MINUTOS: só evita que
+// os dois saiam colados quando o 1º ficou represado pela janela da noite.
+const GAP_MIN = 20 * 60 * 1000;
 
 // Corte por proximidade do evento: a ÚLTIMA mensagem deve sair até 2 dias antes
 // do evento — depois disso o cliente (e a gente) precisa de tempo para organizar.
@@ -292,6 +298,102 @@ function montarMensagem(devido, s) {
   }
 }
 
+/**
+ * 1h parado: entrega TODOS os orçamentos em vez de ficar cobrando.
+ * Regras de fallback (Mario, 2026-08-05):
+ *   • sem horário informado → pacote 4h5h (horas = 5)
+ *   • sem celebração        → "Outros" (id 9) e até 200 pessoas
+ *   • corporativo           → avisa que o valor atende até 200 pessoas
+ * Começa pelas AVALIAÇÕES (prova social) e manda os 8 serviços em lotes
+ * 3 + 3 + 2, com 15s entre os lotes (anti-bloqueio da Meta).
+ */
+async function enviarTodosOrcamentos(chatId, s) {
+  // require tardio: evita import circular com o index.js no boot
+  const {
+    enviarFotoCabine, enviarTotemFotografico, enviarPlataforma360,
+    enviarFotoPaparazzi, enviarFotoLembranca, enviarFotografia,
+    enviarSomDJ, enviarIluminacao, enviarAvaliacaoEmpresa
+  } = require("../services/index.js");
+
+  s.orcamento = s.orcamento || {};
+  const orc = s.orcamento;
+
+  const semCelebracao = !orc.celebracaoId;
+  if (semCelebracao)   orc.celebracaoId = 9;   // Outros
+  if (!orc.horas)      orc.horas = 5;          // 5 => tabela "4h5h"
+  if (!orc.convidados) orc.convidados = 200;   // até 200 pessoas
+  if (!Array.isArray(orc.servicosEnviados)) orc.servicosEnviados = [];
+
+  const clb    = Number(orc.celebracaoId);
+  const conv   = Number(orc.convidados);
+  const nome   = orc.nome ? String(orc.nome).split(" ")[0] : "";
+  const ola    = nome ? `Oi, *${nome}*!` : "Oi!";
+
+  await sendText(chatId,
+    `${ola} ❤️\n\n` +
+    `Vi que a gente não terminou o seu orçamento e não quero que você fique esperando.\n\n` +
+    `Então já vou te enviar *tudo o que temos*, pra você ver com calma e sem compromisso. 😊`
+  );
+
+  // Prova social primeiro
+  try { await enviarAvaliacaoEmpresa(chatId, sessions); } catch (e) {
+    console.error("   ⚠️ avaliações não enviadas:", e.message);
+  }
+
+  if (clb === 8) {
+    await sendText(chatId,
+      "ℹ️ Os valores a seguir atendem eventos de *até 200 pessoas*. " +
+      "Se o seu for maior, me avisa que eu faço um orçamento sob medida. 😉"
+    );
+  }
+
+  const envios = [
+    ["Foto Cabine",      enviarFotoCabine],
+    ["Totem",            enviarTotemFotografico],
+    ["Plataforma 360",   enviarPlataforma360],
+    ["Foto Paparazzi",   enviarFotoPaparazzi],
+    ["Foto Lembrança",   enviarFotoLembranca],
+    ["Cobertura",        enviarFotografia],
+    ["Som/DJ",           enviarSomDJ],
+    ["Iluminação",       enviarIluminacao],
+  ];
+
+  // Lotes de 3 + 3 + 2, 15s entre os lotes
+  const LOTES = [3, 3, 2];
+  let i = 0;
+  for (let l = 0; l < LOTES.length; l++) {
+    for (let k = 0; k < LOTES[l] && i < envios.length; k++, i++) {
+      const [rotulo, fn] = envios[i];
+      try {
+        await fn(chatId, clb, conv, sessions, false);
+      } catch (e) {
+        console.error(`   ⚠️ falha ao enviar ${rotulo}:`, e.message);
+      }
+    }
+    if (i < envios.length) await new Promise(r => setTimeout(r, 15000));
+  }
+
+  // Captura o lead: é o que faz o follow-up assumir daqui pra frente
+  try {
+    const { capturarClienteOrcamento } = require("../index.js");
+    if (typeof capturarClienteOrcamento === "function") {
+      await capturarClienteOrcamento(chatId, s);
+    }
+  } catch (e) {
+    console.error("   ⚠️ captura do lead falhou:", e.message);
+  }
+
+  // Convite para retomar de onde parou (botão Sim/Não)
+  s.lembreteRetomarStep = s.step;
+  s.lembreteRetomarPergunta = PERGUNTA_POR_PASSO[s.step] || "";
+  s.step = "lembrete_retomar";
+  await sendButtonList(
+    chatId,
+    "Quer um orçamento *personalizado* para o seu evento? É rapidinho, continuamos de onde paramos.",
+    [{ id: "1", label: "Sim, quero" }, { id: "2", label: "Agora não" }]
+  );
+}
+
 function montarMensagemOperador(chatId, s, dEvento) {
   const nome       = (s.orcamento && s.orcamento.nome) || "(sem nome)";
   const celebracao = (s.orcamento && s.orcamento.celebracao) || "(não informado)";
@@ -350,7 +452,7 @@ async function executarLembreteOrcamento() {
       if (s.step === PASSO_MENU_INICIAL && !s.menuInicialEnviado) continue;
 
       const inativo = agora - s.ultimaInteracao;
-      if (inativo < H2) continue;       // ainda cedo
+      if (inativo < H30M) continue;     // ainda cedo
       if (inativo > H_MAX) continue;    // velha demais — ignora
 
       // Se o cliente avançou de pergunta desde o último lembrete, reinicia o ciclo
@@ -369,7 +471,7 @@ async function executarLembreteOrcamento() {
         if (dEvento < hojeZero) { s.lembreteOrcEstagio = 4; continue; }
       }
 
-      // Decide a AÇÃO deste ciclo: 'operador' | 'cliente' | null (nada agora)
+      // Decide a AÇÃO deste ciclo: 'operador' | 'cliente' | 'orcamentos' | null
       let acao = null, devido = 0;
       const naFaixaCorte = dEvento && (agora >= dEvento.getTime() - CORTE_DIAS_ANTES * DIA);
 
@@ -378,28 +480,18 @@ async function executarLembreteOrcamento() {
         // operador (1x) p/ um contato manual enquanto ainda dá tempo de organizar.
         if (estagio < 4) acao = 'operador';
       } else {
-        // Limiares normais de inatividade (medidos desde a última msg do cliente)
-        if (inativo >= H2)   devido = 1;
-        if (inativo >= H24)  devido = 2;
-        if (inativo >= H72)  devido = 3;
-        if (inativo >= H_OP) devido = 4; // avisar operador
-
-        // Se faltam <= 3 dias p/ o evento, antecipa a ÚLTIMA chamada (não dá
-        // pra esperar o 72h chegar): garante que a última msg saia antes do corte.
-        let forcaUltima = false;
-        if (dEvento && agora >= dEvento.getTime() - ANTECIPA_DIAS_ANTES * DIA && estagio < 3) {
-          devido = 3; forcaUltima = true;
-        }
+        // Régua nova: 30min = lembrete · 1h = manda todos os orçamentos
+        if (inativo >= H30M) devido = 1;
+        if (inativo >= H1H)  devido = 2;
 
         if (devido > estagio) {
-          if (devido === 4) {
-            acao = 'operador';
-          } else if (forcaUltima || !ultimoEnvio || (agora - ultimoEnvio) >= GAP_MIN) {
-            // Respeita o espaçamento mínimo entre lembretes (exceto última chamada
-            // forçada) e NÃO manda pro cliente se ele está em pausa especial OU em
-            // pausa do operador (atendimento manual em andamento) — caso real
-            // 2026-07-07: Heciomar e outros pausados receberam o lembrete indevido.
-            if (!estaPausadoEspecial(chatId) && !estaPausado(chatId)) acao = 'cliente';
+          if (!ultimoEnvio || (agora - ultimoEnvio) >= GAP_MIN || devido === 1) {
+            // NÃO manda pro cliente se ele está em pausa especial OU em pausa do
+            // operador (atendimento manual em andamento) — caso real 2026-07-07:
+            // Heciomar e outros pausados receberam o lembrete indevido.
+            if (!estaPausadoEspecial(chatId) && !estaPausado(chatId)) {
+              acao = (devido === 2) ? 'orcamentos' : 'cliente';
+            }
           }
         }
       }
@@ -413,6 +505,16 @@ async function executarLembreteOrcamento() {
         s.lembreteOrcamentoEnviado = true;
         avisosOperador++;
         console.log(`   🙋 Operador avisado sobre lead parado: ${chatId}`);
+      } else if (acao === 'orcamentos') {
+        // 1h parado: em vez de ficar cobrando, ENTREGA o que o cliente veio
+        // buscar (todos os orçamentos) e encerra o lembrete. O follow-up assume
+        // daqui em diante, porque o lead passa a ter orçamento enviado.
+        await enviarTodosOrcamentos(chatId, s);
+        s.lembreteOrcEstagio = 9;          // encerrado: não há mais lembrete
+        s.lembreteOrcUltimoEnvio = agora;
+        s.lembreteOrcamentoEnviado = true;
+        enviados++;
+        console.log(`   📦 Orçamentos completos enviados para ${chatId} (parou em ${s.step})`);
       } else {
         await sendText(chatId, montarMensagem(devido, s));
         s.lembreteOrcEstagio = devido;
