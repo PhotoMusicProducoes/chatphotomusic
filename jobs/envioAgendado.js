@@ -6,7 +6,7 @@
 // madrugada não faz sentido. O operador agenda para a manhã seguinte e o bot
 // envia SÓ o que falta, sem repetir o que o cliente já recebeu.
 //
-// A marcação fica na própria sessão (session.envioFaltantesAs = "08:00"),
+// A marcação fica na própria sessão (session.envioFaltantesEm = timestamp ms),
 // que já é persistida em disco, então sobrevive a restart/deploy.
 
 const cron = require("node-cron");
@@ -15,25 +15,18 @@ const { sessions } = require("../utils/sessions");
 const TIMEZONE = "America/Sao_Paulo";
 const TODOS = [1, 2, 3, 4, 5, 6, 7, 8];
 
-/** "HH:MM" de agora no fuso de Brasília. */
-function horaAgora() {
-  const d = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE }));
-  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-}
-
 async function executarEnvioAgendado() {
-  const agora = horaAgora();
-
   for (const chatId of Object.keys(sessions)) {
     const s = sessions[chatId];
-    if (!s || !s.envioFaltantesAs) continue;
+    if (!s || !s.envioFaltantesEm) continue;
 
-    // Só dispara quando a hora chega (ou passa, se o bot estava fora do ar)
-    if (agora < s.envioFaltantesAs) continue;
+    // Só dispara quando a hora chega (ou passa, se o bot esteve fora do ar)
+    if (Date.now() < s.envioFaltantesEm) continue;
 
-    // Agendamento velho (mais de 2 dias) não vale mais
-    if (s.envioFaltantesCriadoEm && (Date.now() - s.envioFaltantesCriadoEm) > 2 * 24 * 60 * 60 * 1000) {
-      delete s.envioFaltantesAs;
+    // Agendamento velho (mais de 2 dias após a hora marcada) não vale mais
+    if ((Date.now() - s.envioFaltantesEm) > 2 * 24 * 60 * 60 * 1000) {
+      delete s.envioFaltantesEm;
+      delete s.envioFaltantesHora;
       delete s.envioFaltantesCriadoEm;
       continue;
     }
@@ -43,7 +36,8 @@ async function executarEnvioAgendado() {
 
     // Consome o agendamento ANTES de enviar: se algo falhar no meio, não
     // reenvia tudo de novo no ciclo seguinte.
-    delete s.envioFaltantesAs;
+    delete s.envioFaltantesEm;
+    delete s.envioFaltantesHora;
     delete s.envioFaltantesCriadoEm;
 
     if (!faltantes.length) continue;
@@ -58,13 +52,16 @@ async function executarEnvioAgendado() {
   }
 }
 
-// A cada 5 minutos, das 7h às 20h (mesma janela dos outros envios ao cliente)
+// A cada 5 minutos, 24h: quem escolhe a hora é o OPERADOR (ele agenda
+// só o que quer). A janela 7h-20h vale para os envios AUTOMÁTICOS, não
+// para uma ação explícita dele — em 11/08 um agendamento p/ 00:30 nunca
+// disparou por causa da janela.
 function inicializarEnvioAgendado() {
-  cron.schedule("*/5 7-20 * * *", () => {
+  cron.schedule("*/5 * * * *", () => {
     executarEnvioAgendado();
   }, { timezone: TIMEZONE });
 
-  console.log("⏰ Envio agendado de orçamentos ativo (a cada 5 min, 7h–20h).");
+  console.log("⏰ Envio agendado de orçamentos ativo (a cada 5 min, 24h).");
 }
 
 module.exports = { inicializarEnvioAgendado, executarEnvioAgendado };

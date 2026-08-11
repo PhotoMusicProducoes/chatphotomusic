@@ -2771,10 +2771,23 @@ async function handleIncomingMessage(message) {
           if (hora) {
             const h = String(hora[1]).padStart(2, "0");
             const m = String(hora[2] || "00").padStart(2, "0");
-            session.envioFaltantesAs = `${h}:${m}`;
+
+            /* Guarda o instante ABSOLUTO (ms), não o texto "HH:MM".
+               Com texto, um agendamento para 22:00 nunca disparava: a
+               comparação de string quebra na virada do dia. */
+            const agoraSP = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+            let faltaMin = (Number(h) * 60 + Number(m)) - (agoraSP.getHours() * 60 + agoraSP.getMinutes());
+            if (faltaMin <= 0) faltaMin += 24 * 60;   // já passou hoje → amanhã
+
+            session.envioFaltantesEm = Date.now() + faltaMin * 60 * 1000;
+            session.envioFaltantesHora = `${h}:${m}`;
             session.envioFaltantesCriadoEm = Date.now();
+
+            const madrugada = Number(h) >= 21 || Number(h) < 7;
             await sendText(destinoOperador,
-              `⏰ Agendado: os *${faltantes.length} serviço(s)* que faltam vão para *${chatIdCliente}* às *${h}:${m}*.`
+              `⏰ Agendado: os *${faltantes.length} serviço(s)* que faltam vão para *${chatIdCliente}* às *${h}:${m}*`
+              + (faltaMin > 12 * 60 ? " (amanhã)" : "") + "."
+              + (madrugada ? "\n\n⚠️ Fora do horário comercial — o cliente vai receber nesse horário mesmo." : "")
             );
           } else {
             try {
@@ -2801,9 +2814,10 @@ async function handleIncomingMessage(message) {
         // cliente responde antes da hora).
         // ======================================================
         if (nomeComando === "#cancelaragendamento" || nomeComando === "#cancelaragendamentos") {
-          if (session.envioFaltantesAs) {
-            const hora = session.envioFaltantesAs;
-            delete session.envioFaltantesAs;
+          if (session.envioFaltantesEm) {
+            const hora = session.envioFaltantesHora || "";
+            delete session.envioFaltantesEm;
+            delete session.envioFaltantesHora;
             delete session.envioFaltantesCriadoEm;
             await sendText(destinoOperador,
               `🚫 Agendamento das *${hora}* cancelado para *${chatIdCliente}*. Nada será enviado.`
