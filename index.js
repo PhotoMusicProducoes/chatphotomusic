@@ -2782,6 +2782,9 @@ async function handleIncomingMessage(message) {
             session.envioFaltantesEm = Date.now() + faltaMin * 60 * 1000;
             session.envioFaltantesHora = `${h}:${m}`;
             session.envioFaltantesCriadoEm = Date.now();
+            // Onde confirmar quando o envio sair: no grupo, se foi agendado
+            // no grupo; no DM do operador, se foi no privado.
+            session.envioFaltantesDestino = destinoOperador;
 
             const madrugada = Number(h) >= 21 || Number(h) < 7;
             await sendText(destinoOperador,

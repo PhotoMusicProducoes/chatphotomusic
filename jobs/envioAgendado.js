@@ -11,8 +11,10 @@
 
 const cron = require("node-cron");
 const { sessions } = require("../utils/sessions");
+const { sendText } = require("../utils/index.js");
 
 const TIMEZONE = "America/Sao_Paulo";
+const OPERADOR_TELEFONE_ID = "5521964428172@c.us"; // fallback se não houver destino salvo
 const TODOS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 async function executarEnvioAgendado() {
@@ -36,9 +38,12 @@ async function executarEnvioAgendado() {
 
     // Consome o agendamento ANTES de enviar: se algo falhar no meio, não
     // reenvia tudo de novo no ciclo seguinte.
+    const destino = s.envioFaltantesDestino || OPERADOR_TELEFONE_ID;
+    const horaMarcada = s.envioFaltantesHora || "";
     delete s.envioFaltantesEm;
     delete s.envioFaltantesHora;
     delete s.envioFaltantesCriadoEm;
+    delete s.envioFaltantesDestino;
 
     if (!faltantes.length) continue;
 
@@ -46,8 +51,21 @@ async function executarEnvioAgendado() {
       const { enviarOrcamentosAutomaticos } = require("../index.js");
       await enviarOrcamentosAutomaticos(chatId, s, faltantes);
       console.log(`   ⏰ Envio agendado concluído para ${chatId} (${faltantes.length} serviço(s)).`);
+      await sendText(destino,
+        `✅ *Envio agendado concluído*
+
+Os *${faltantes.length} serviço(s)* que faltavam foram enviados para *${chatId}*`
+        + (horaMarcada ? ` (agendado para *${horaMarcada}*).` : ".")
+      );
     } catch (e) {
       console.error(`   ❌ Envio agendado falhou para ${chatId}:`, e.message);
+      try {
+        await sendText(destino,
+          `❌ *Falha no envio agendado* para *${chatId}*: ${e.message}
+
+Use *#enviarfaltantes* para tentar de novo.`
+        );
+      } catch (_) { /* aviso é best-effort */ }
     }
   }
 }
