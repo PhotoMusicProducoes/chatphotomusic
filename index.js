@@ -402,7 +402,8 @@ function textoMenuServicos() {
     "*5* - Foto Lembrança\n" +
     "*6* - Cobertura Fotográfica\n" +
     "*7* - Som Completo com DJ\n" +
-    "*8* - Iluminação para Pista de Dança";
+    "*8* - Iluminação para Pista de Dança\n" +
+    "*9* - *TODOS os serviços*";
 }
 
 async function mostrarConfirmacaoOrcamento(chatId, session) {
@@ -698,9 +699,15 @@ function servicoJaEnviado(session, servico) {
 function extrairServicosDaMensagem(texto) {
   const numeros = texto.replace(/\D+/g, "").split("");
   const unicos = [...new Set(numeros)];
-  return unicos
+  const escolhidos = unicos
     .map(n => parseInt(n, 10))
-    .filter(n => n >= 1 && n <= 8);
+    .filter(n => n >= 1 && n <= 9);
+
+  // 9 = TODOS os serviços (pedido comum: "quero orçamento de tudo").
+  // Sem essa opção o cliente precisava digitar 1,2,3,4,5,6,7,8.
+  if (escolhidos.includes(9)) return [...TODOS_SERVICOS];
+
+  return escolhidos.filter(n => n <= 8);
 }
 
 // Extrai números de itens (1..max). Aceita colado ("256" → 2,5,6, como em
@@ -1563,23 +1570,16 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
   if (escolha.acao === "detalhes") {
     const paraDetalhar = servicosParaDetalhar(session);
 
-    // Um só: manda direto, sem obrigar a escolher do que já é óbvio.
-    if (paraDetalhar.length === 1) {
-      await enviarDetalhesServico(chatId, session, paraDetalhar[0]);
-      await perguntarPosOrcamento(chatId, session);
-      return;
+    /* Manda os detalhes de TODOS os serviços orçados (Mario, 06/08/2026).
+       Antes, com vários, o bot perguntava "de qual serviço?" e o cliente que
+       pediu 3 orçamentos recebia os detalhes de 1 só — ficava com a impressão
+       de que os outros não tinham detalhe nenhum. Quem pede "mais detalhes"
+       quer ver o que contratou, não escolher de novo. */
+    for (const servico of paraDetalhar) {
+      await enviarDetalhesServico(chatId, session, servico);
+      await new Promise(r => setTimeout(r, 1200)); // respiro entre serviços
     }
-
-    // Vários: pergunta QUAL (decisão do Mario 15/07 — evita despejar tudo
-    // de uma vez, que era justamente o problema do fluxo antigo).
-    session.step = "orcamento_escolher_detalhe";
-    await sendTyping(chatId);
-    await sendOptionList(
-      chatId,
-      "De qual serviço você quer ver mais detalhes?",
-      paraDetalhar.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
-      { title: "Seus orçamentos", buttonLabel: "Ver serviços" }
-    );
+    await perguntarPosOrcamento(chatId, session);
     return;
   }
 
@@ -2756,6 +2756,47 @@ async function handleIncomingMessage(message) {
             await sendText(destinoOperador, `✅ Todos os orçamentos enviados para *${chatIdCliente}*`);
           } catch (e) {
             await sendText(destinoOperador, `❌ Erro ao enviar os orçamentos: ${e.message}`);
+          }
+          controlaMsgManual2++;
+          continue;
+        }
+
+        // ======================================================
+        // COMANDO: #enviarfaltantes [HH:MM] — manda só os serviços que
+        // AINDA NÃO foram enviados a este cliente. Sem hora, vai agora;
+        // com hora, fica agendado para o horário de hoje (ou amanhã, se a
+        // hora já passou). Nasceu do caso real das 23h40: a cliente pediu
+        // todos os serviços, parte já tinha ido, e mandar o resto de
+        // madrugada não faz sentido.
+        // ======================================================
+        if (nomeComando === "#enviarfaltantes") {
+          const enviados = session.orcamento?.servicosEnviados || [];
+          const faltantes = [1,2,3,4,5,6,7,8].filter(s => !enviados.includes(s));
+
+          if (!faltantes.length) {
+            await sendText(destinoOperador, `✅ *${chatIdCliente}* já recebeu todos os serviços.`);
+            controlaMsgManual2++;
+            continue;
+          }
+
+          const hora = (parametros[0] || "").match(/^(\d{1,2}):?(\d{2})?$/);
+          if (hora) {
+            const h = String(hora[1]).padStart(2, "0");
+            const m = String(hora[2] || "00").padStart(2, "0");
+            session.envioFaltantesAs = `${h}:${m}`;
+            session.envioFaltantesCriadoEm = Date.now();
+            await sendText(destinoOperador,
+              `⏰ Agendado: os *${faltantes.length} serviço(s)* que faltam vão para *${chatIdCliente}* às *${h}:${m}*.`
+            );
+          } else {
+            try {
+              await enviarOrcamentosAutomaticos(chatIdCliente, session, faltantes);
+              await sendText(destinoOperador,
+                `✅ Enviados os *${faltantes.length} serviço(s)* que faltavam para *${chatIdCliente}*.`
+              );
+            } catch (e) {
+              await sendText(destinoOperador, `❌ Erro ao enviar: ${e.message}`);
+            }
           }
           controlaMsgManual2++;
           continue;
@@ -4446,7 +4487,7 @@ const resumoEucaristia =
         await autoPausarFluxo(chatId, session, "respostas inválidas na escolha de serviços");
         return;
       }
-      await sendText(chatId, "*⚠ Digite pelo menos um número válido entre 1 e 8.*");
+      await sendText(chatId, "*⚠ Digite pelo menos um número válido entre 1 e 9* (9 = todos os serviços).");
       return;
     }
     // Reseta o contador ao acertar
@@ -4645,7 +4686,7 @@ module.exports = {
  * Fallbacks: sem horário → 4h5h (horas=5); sem celebração → Outros (9) e 200
  * convidados; corporativo → avisa que o valor atende até 200 pessoas.
  */
-async function enviarOrcamentosAutomaticos(chatId, session) {
+async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null) {
   if (!session) return;
   const passoOriginal = session.step;
 
@@ -4682,7 +4723,10 @@ async function enviarOrcamentosAutomaticos(chatId, session) {
     );
   }
 
-  const lista = [1, 2, 3, 4, 5, 6, 7, 8];
+  // listaServicos: permite mandar SÓ os que faltam (comando #enviarfaltantes)
+  const lista = (Array.isArray(listaServicos) && listaServicos.length)
+    ? listaServicos
+    : [1, 2, 3, 4, 5, 6, 7, 8];
   const LOTES = [3, 3, 2]; // 3 + 3 + 2, com 15s entre os lotes (anti-bloqueio)
   let i = 0;
 

@@ -695,6 +695,17 @@ async function enviarTotemFotografico(chatId, clb, convidados, sessionsRef, oper
       diasCorporativo
     );
 
+    // GuestBook: no envio ENXUTO o fluxo completo não roda e ele sumia da
+    // proposta. Volta em 1 mensagem + 4 arquivos. Ver services/guestbook.js.
+    if (sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      try {
+        const { enviarGuestbook } = require("./guestbook.js");
+        await enviarGuestbook(chatId, clb, "Totem Fotográfico");
+      } catch (e) {
+        console.error("⚠️ GuestBook (Totem):", e.message);
+      }
+    }
+
   } catch (error) {
     console.error(`❌ Erro ao enviar Totem para ${chatId}:`, error);
 

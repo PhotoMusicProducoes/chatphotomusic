@@ -797,6 +797,18 @@ async function enviarFotoCabine(chatId, clb, convidados, sessionsRef, operatorPa
       diasCorporativo
     );
 
+    // GuestBook: no envio ENXUTO o fluxo completo não roda, então ele sumia
+    // da proposta. Aqui volta em 1 mensagem + 4 arquivos (só celebração com
+    // homenageado). Ver services/guestbook.js.
+    if (sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+      try {
+        const { enviarGuestbook } = require("./guestbook.js");
+        await enviarGuestbook(chatId, clb, "Foto Cabine");
+      } catch (e) {
+        console.error("⚠️ GuestBook (Foto Cabine):", e.message);
+      }
+    }
+
   } catch (error) {
     console.error(`❌ Erro ao enviar Foto Cabine para ${chatId}:`, error);
     if (!sessionsRef[chatId]?.pausado) {
