@@ -2669,8 +2669,19 @@ async function handleIncomingMessage(message) {
       // 🚨 ATIVAR FLAG DE ENVIO MANUAL - BLOQUEAR MENSAGENS DO CLIENTE
       session.enviandoOrcamentosManualmente = true;
       
-      // 📌 AVISAR CLIENTE QUE ESTÁ ENVIANDO (SINGULAR/PLURAL)
-      await enviarMsgAguardeOrcamento(chatIdCliente, comandos.length);
+      /* 📌 AVISAR CLIENTE QUE ESTÁ ENVIANDO (SINGULAR/PLURAL)
+         Só quando o comando REALMENTE vai mandar orçamento agora. Comandos de
+         gestão (#cancelaragendamento, #enviarfaltantes com hora, #tarefas...)
+         não podem avisar "aguarde, estou enviando" — em 11/08 o cliente
+         recebeu esse aviso ao CANCELAR um agendamento. */
+      const COMANDOS_SEM_AVISO = ["#cancelaragendamento", "#cancelaragendamentos", "#tarefas", "#ok", "#fotoeucaristia"];
+      const primeiroCmd = (comandos[0] || "").split(" ")[0].toLowerCase();
+      const ehAgendamento = primeiroCmd === "#enviarfaltantes"
+        && /^\d{1,2}:?\d{0,2}$/.test((comandos[0] || "").split(/[\s,]+/)[1] || "");
+
+      if (!COMANDOS_SEM_AVISO.includes(primeiroCmd) && !ehAgendamento) {
+        await enviarMsgAguardeOrcamento(chatIdCliente, comandos.length);
+      }
 
       let controlaMsgManual = 0;
       let controlaMsgManual2 = 0;
