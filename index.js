@@ -1657,17 +1657,6 @@ async function enviarPerguntaESalvar(chatId, session, pergunta) {
   session.ultimaPerguntaNaoRespondida = pergunta; // 📌 Guardar pergunta
 }
 
-// ======================================================
-// HELPER — MENSAGEM DE AGUARDE (SINGULAR/PLURAL)
-// ======================================================
-async function enviarMsgAguardeOrcamento(chatId, quantidade) {
-  if (quantidade === 1) {
-    await sendText(chatId, "⏳ Aguarde, estou enviando seu orçamento!");
-  } else {
-    await sendText(chatId, "⏳ Aguarde, estou enviando seus orçamentos!");
-  }
-  await new Promise(r => setTimeout(r, 500));
-}
 
 
 // ======================================================
@@ -2669,19 +2658,7 @@ async function handleIncomingMessage(message) {
       // 🚨 ATIVAR FLAG DE ENVIO MANUAL - BLOQUEAR MENSAGENS DO CLIENTE
       session.enviandoOrcamentosManualmente = true;
       
-      /* 📌 AVISAR CLIENTE QUE ESTÁ ENVIANDO (SINGULAR/PLURAL)
-         Só quando o comando REALMENTE vai mandar orçamento agora. Comandos de
-         gestão (#cancelaragendamento, #enviarfaltantes com hora, #tarefas...)
-         não podem avisar "aguarde, estou enviando" — em 11/08 o cliente
-         recebeu esse aviso ao CANCELAR um agendamento. */
-      const COMANDOS_SEM_AVISO = ["#cancelaragendamento", "#cancelaragendamentos", "#tarefas", "#ok", "#fotoeucaristia"];
-      const primeiroCmd = (comandos[0] || "").split(" ")[0].toLowerCase();
-      const ehAgendamento = primeiroCmd === "#enviarfaltantes"
-        && /^\d{1,2}:?\d{0,2}$/.test((comandos[0] || "").split(/[\s,]+/)[1] || "");
-
-      if (!COMANDOS_SEM_AVISO.includes(primeiroCmd) && !ehAgendamento) {
-        await enviarMsgAguardeOrcamento(chatIdCliente, comandos.length);
-      }
+      // Sem aviso de "aguarde": o cliente recebe o orçamento na hora.
 
       let controlaMsgManual = 0;
       let controlaMsgManual2 = 0;
@@ -4582,9 +4559,8 @@ const resumoEucaristia =
       }
     }
 
-    // 📌 AVISAR CLIENTE QUE ESTÁ ENVIANDO ORÇAMENTOS (SINGULAR/PLURAL)
-    await enviarMsgAguardeOrcamento(chatId, servicos.length);
-    
+    // Sem "aguarde": o orçamento sai na hora, o aviso só somava ruído
+    // (decisão do Mario, 11/08/2026).
     await enviarMultiplosOrcamentos(chatId, servicos);
 
     session.primeiraRodadaFinalizada = true;
