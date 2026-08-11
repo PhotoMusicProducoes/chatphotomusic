@@ -4708,7 +4708,9 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
   const horas = Number(orc.horas) || 5;
   const dias  = orc.dias || 1;
   const nome  = orc.nome ? String(orc.nome).split(" ")[0] : "";
-  const ola   = nome ? `Oi, *${nome}*!` : "Oi!";
+  // Saudação pela hora do envio (no agendado, a hora marcada pelo operador)
+  const saud  = saudacaoPorHora();
+  const ola   = nome ? `${saud}, *${nome}*!` : `${saud}!`;
 
   await sendTyping(chatId);
   await sendText(chatId,
@@ -4782,6 +4784,18 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
  * Conta o MÊS ATUAL (em que ele fecha o contrato) até o mês do evento,
  * com teto de 10. Sem data informada, devolve null (mensagem genérica).
  */
+/**
+ * "Bom dia" / "Boa tarde" / "Boa noite" pela hora de Brasília no momento do
+ * envio — que, no envio AGENDADO, é exatamente a hora marcada pelo operador.
+ */
+function saudacaoPorHora() {
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const h = d.getHours();
+  if (h >= 5 && h < 12)  return "Bom dia";
+  if (h >= 12 && h < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
 function parcelasPixAteEvento(dataStr) {
   const m = String(dataStr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
