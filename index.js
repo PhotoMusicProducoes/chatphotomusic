@@ -2807,6 +2807,27 @@ async function handleIncomingMessage(message) {
           return;
         }
 
+        // ======================================================
+        // COMANDO: #cancelaragendamento — desmarca o envio agendado
+        // pelo #enviarfaltantes (útil para testar de novo ou quando o
+        // cliente responde antes da hora).
+        // ======================================================
+        if (nomeComando === "#cancelaragendamento" || nomeComando === "#cancelaragendamentos") {
+          if (session.envioFaltantesAs) {
+            const hora = session.envioFaltantesAs;
+            delete session.envioFaltantesAs;
+            delete session.envioFaltantesCriadoEm;
+            await sendText(destinoOperador,
+              `🚫 Agendamento das *${hora}* cancelado para *${chatIdCliente}*. Nada será enviado.`
+            );
+          } else {
+            await sendText(destinoOperador,
+              `ℹ️ *${chatIdCliente}* não tem envio agendado.`
+            );
+          }
+          return;
+        }
+
         if (!comandosServicos[nomeComando]) {
           await sendText(destinoOperador, `⚠ Comando não reconhecido: ${nomeComando}`);
           continue;
