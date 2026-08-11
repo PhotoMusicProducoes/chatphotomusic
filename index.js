@@ -2757,8 +2757,9 @@ async function handleIncomingMessage(message) {
           } catch (e) {
             await sendText(destinoOperador, `❌ Erro ao enviar os orçamentos: ${e.message}`);
           }
-          controlaMsgManual2++;
-          continue;
+          // return: `enviarOrcamentosAutomaticos` já mandou o fecho completo.
+          // Com `continue`, o bloco pós-loop mandaria o fecho DE NOVO.
+          return;
         }
 
         // ======================================================
@@ -2775,8 +2776,7 @@ async function handleIncomingMessage(message) {
 
           if (!faltantes.length) {
             await sendText(destinoOperador, `✅ *${chatIdCliente}* já recebeu todos os serviços.`);
-            controlaMsgManual2++;
-            continue;
+            return;
           }
 
           const hora = (parametros[0] || "").match(/^(\d{1,2}):?(\d{2})?$/);
@@ -2798,8 +2798,13 @@ async function handleIncomingMessage(message) {
               await sendText(destinoOperador, `❌ Erro ao enviar: ${e.message}`);
             }
           }
-          controlaMsgManual2++;
-          continue;
+          /* return (e não continue): o bloco pós-loop dispara o FECHO do
+             orçamento (resumo + parcelamento + vantagem + menu) quando
+             controlaMsgManual === controlaMsgManual2. No teste de 11/08 isso
+             fez o cliente receber o fecho na hora, mesmo com o envio AGENDADO
+             para as 8h. Aqui o envio já é completo (ou nem aconteceu ainda),
+             então nada deve rodar depois. */
+          return;
         }
 
         if (!comandosServicos[nomeComando]) {
