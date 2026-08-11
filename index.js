@@ -2547,7 +2547,12 @@ async function handleIncomingMessage(message) {
       // ======================================================
       if (!numeroCliente) {
         for (const c of comandos) {
-          const matchInline = c.match(/[ \t](\+?\d[\d\s\-()]{6,}\d)\s*$/);
+          /* Aceita o número como o operador copia do WhatsApp, inclusive com
+             parêntese no DDD. 🚨 Antes o regex começava em \d, então
+             "(21) 96708-2501" casava só a partir do "96708-2501" e o DDD se
+             PERDIA — o normalizador então assumia 21 e um "(11) ..." de São
+             Paulo viraria número do Rio (mensagem para a pessoa errada). */
+          const matchInline = c.match(/[ \t](\+?[\d(][\d\s\-().]{6,}\d)\s*$/);
           if (matchInline) {
             const rawPhone = matchInline[1].trim();
             const digits = rawPhone.replace(/\D/g, '');
