@@ -83,7 +83,12 @@ const PASSOS_QUESTIONARIO = new Set([
   // sem receber nada (caso real 28/06). OBS: orcamento_escolher_servico é
   // reaproveitado no "deseja mais serviços?" — nesse caso o cliente JÁ recebeu um
   // orçamento; a guarda em executar...() ignora esse reuso (não é abandono).
-  "orcamento_confirmar", "orcamento_escolher_servico"
+  "orcamento_confirmar", "orcamento_escolher_servico",
+  // 🚨 FLUXO DE CORREÇÃO (2026-08-15): o cliente pede "corrigir algo" na
+  // confirmação e some no meio. Estes 2 passos estavam FORA da lista, então
+  // o job ignorava esses leads por completo — nem lembrete, nem orçamento.
+  // Foi o que travou 2 clientes reais.
+  "orcamento_corrigir_escolher", "orcamento_corrigir_valor"
 ]);
 
 // Passo do MENU INICIAL: cliente recebeu as boas-vindas (1-7 opções) e não
