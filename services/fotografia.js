@@ -4,6 +4,8 @@ const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, sendFileFromUrl }
 const { urlBase, urlBase3 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
+// Serviço migrado para o orçamento GERADO não manda mais o PDF estático dele.
+const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
 
 // ======================================================
 // MENSAGEM DE ABERTURA POR TIPO DE EVENTO
@@ -176,26 +178,54 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
       // apresentação (fluxo novo 2026-07-15).
       if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
         await enviarFluxoFotografia(chatId, clb);
+      } else {
+        /* 🚨 TÍTULO ANTES DA FOTO (falha pega no Totem Retrô, 17/08/2026): o
+           título mora no enviarFluxoFotografia(), que é o bloco pulado aqui.
+           📌 A FOTO existe para o cliente VER o que está contratando. */
+        await sendTyping(chatId);
+        if (estaPausado(chatId)) return;
+        await sendText(chatId, "*<<<< COBERTURA FOTOGRÁFICA >>>>*");
+
+        /* Sem foto "universal" aqui: os conjuntos são por celebração e não se
+           repetem. Como este ramo só roda para 3, 4 e 5, vai a PRIMEIRA foto
+           do conjunto certo, que casa com o tipo de evento do cliente. */
+        const capa = (clb === 3 ? fotosFotografia.infantil
+                    : clb === 4 ? fotosFotografia.adolescente
+                    : fotosFotografia.adulto)[0];
+
+        // 🚨 Sem `delay()` aqui: este arquivo não tem esse helper, diferente
+        // dos outros services. Chamar quebraria em runtime, não no lint.
+        if (estaPausado(chatId)) return;
+        await sendFileByUrl(chatId, capa, "IMAGE", "");
       }
       if (estaPausado(chatId)) return;
 
       // Multi-dia: apenas apresentação, orçamento enviado no resumo central
       if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
 
-      await sendTyping(chatId);
-      await sendText(chatId, "💰 Segue o arquivo com o orçamento da *Cobertura Fotográfica* 📸✨");
+      /* PDF ESTÁTICO DESLIGADO para quem já usa o orçamento GERADO (Cobertura
+         migrada em 18/08/2026). O PDF sai do `services/orcamentoGerado.js`,
+         uma vez, com todos os serviços juntos.
+         📌 Este ramo só roda para infantil (3), adolescente (4) e adulto (5),
+         que eram os únicos com PDF pronto. 15 anos e casamento continuam
+         recusados acima, e bodas/formatura/corporativo/outros continuam com a
+         mensagem de orçamento a preparar. Ver CELEBRACOES_POR_SERVICO. */
+      if (!usaOrcamentoGerado(6, clb)) {
+        await sendTyping(chatId);
+        await sendText(chatId, "💰 Segue o arquivo com o orçamento da *Cobertura Fotográfica* 📸✨");
 
-      await sendTyping(chatId);
-      if (estaPausado(chatId)) return;
-      await enviarPdfComLink(
-        chatId,
-        pdfFotografia[clb],
-        "Orcamento-Cobertura-Fotografica",
-        sendTyping,
-        sendText,
-        sendFileByUrl,
-        { session: sessions[chatId], servicoId: 6 }
-      );
+        await sendTyping(chatId);
+        if (estaPausado(chatId)) return;
+        await enviarPdfComLink(
+          chatId,
+          pdfFotografia[clb],
+          "Orcamento-Cobertura-Fotografica",
+          sendTyping,
+          sendText,
+          sendFileByUrl,
+          { session: sessions[chatId], servicoId: 6 }
+        );
+      }
 
       return;
     }

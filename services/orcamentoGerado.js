@@ -27,9 +27,10 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 /* Serviços que JÁ usam o orçamento gerado na hora, na ordem em que migraram:
    13 = Totem Retrô (1º, aprovado 17/08) · 1 = Foto Cabine · 3 = Plataforma 360 ·
-   2 = Totem Fotográfico · 4 = Foto Paparazzi · 5 = Foto Lembrança (18/08).
-   ⏳ Faltam: 6 = Cobertura · 7 = Som com DJ · 8 = Iluminação. */
-const SERVICOS_GERADOS = [13, 1, 3, 2, 4, 5];
+   2 = Totem Fotográfico · 4 = Foto Paparazzi · 5 = Foto Lembrança (18/08) ·
+   6 = Cobertura Fotográfica (18/08, 🚨 com restrição de celebração abaixo).
+   ⏳ Faltam: 7 = Som com DJ · 8 = Iluminação. */
+const SERVICOS_GERADOS = [13, 1, 3, 2, 4, 5, 6];
 
 /* id do serviço -> slug do catálogo do WordPress.
    🚨 SEMPRE POR SLUG: o endpoint lê número como dígito do menu do bot, então o
@@ -58,16 +59,43 @@ const NOME_POR_SERVICO = {
   13: "Totem Retrô",
 };
 
+/* 🚨 SERVIÇO QUE NÃO VALE PARA TODA CELEBRAÇÃO.
+   Só entra aqui quem tem restrição; quem não está na lista serve para as 9.
+
+   6 = Cobertura Fotográfica: a PhotoMusic **não atende** 15 anos (1) nem
+   casamento (2), e o `fotografia.js` recusa esses dois com uma mensagem
+   própria. Nas demais só existia PDF pronto para infantil (3), adolescente (4)
+   e adulto (5); bodas, formatura, corporativo e outros (6,7,8,9) continuam
+   recebendo "estamos preparando um orçamento especial", como sempre foi.
+   ⏳ Estender 6,7,8,9 para automático é decisão do Mario: o endpoint já
+   devolve preço para todas (R$ 1.797 medido em 18/08, igual em todas), mas
+   corporativo costuma pedir proposta a dedo.
+
+   🚨 SEM ESTA TRAVA o cliente de 15 anos que pedisse Cobertura receberia no
+   PDF um serviço que a empresa recusa vender: o endpoint gera preço para as 9
+   celebrações e não conhece essa regra de negócio. */
+const CELEBRACOES_POR_SERVICO = {
+  6: [3, 4, 5],
+};
+
 /** O serviço já usa o orçamento gerado? Os services consultam para saber se
- *  ainda devem mandar o PDF estático deles. */
-function usaOrcamentoGerado(servicoId) {
-  return SERVICOS_GERADOS.includes(Number(servicoId));
+ *  ainda devem mandar o PDF estático deles.
+ *  `celebracao` é opcional: sem ela responde só pela migração, que é o que os
+ *  services precisam saber (cada um só chama isso no ramo em que já atende). */
+function usaOrcamentoGerado(servicoId, celebracao = null) {
+  const id = Number(servicoId);
+  if (!SERVICOS_GERADOS.includes(id)) return false;
+
+  const permitidas = CELEBRACOES_POR_SERVICO[id];
+  if (permitidas && celebracao != null) return permitidas.includes(Number(celebracao));
+
+  return true;
 }
 
-/** Dos ids pedidos, só os que já foram migrados (na ordem de SERVICOS_GERADOS
- *  não importa; mantém a ordem do pedido do cliente). */
-function idsGerados(ids) {
-  return (ids || []).map(Number).filter(usaOrcamentoGerado);
+/** Dos ids pedidos, só os que já foram migrados E que valem para a celebração
+ *  do evento (a ordem do pedido do cliente é preservada). */
+function idsGerados(ids, celebracao = null) {
+  return (ids || []).map(Number).filter(id => usaOrcamentoGerado(id, celebracao));
 }
 
 /** "Foto Cabine, Plataforma 360º e Som Completo com DJ" */
@@ -96,7 +124,11 @@ function nomeArquivo(ids) {
  * @returns {Promise<boolean>} true se o PDF foi enviado
  */
 async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
-  const ids = idsGerados(idsPedidos);
+  /* A celebração entra no filtro por causa dos serviços que não valem para
+     todo tipo de evento (ver CELEBRACOES_POR_SERVICO). */
+  const celebracao = session?.orcamento?.celebracaoId ?? null;
+
+  const ids = idsGerados(idsPedidos, celebracao);
   if (ids.length === 0) return false;          // nada migrado nesta rodada
   if (estaPausado(chatId) || session?.pausado) return false;
 
@@ -104,7 +136,7 @@ async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
      desconto do combo enxerga os serviços das duas rodadas. */
   let idsPdf = ids;
   if (opcoes.segundaRodada) {
-    const jaEnviados = idsGerados(session?.orcamento?.servicosEnviados || []);
+    const jaEnviados = idsGerados(session?.orcamento?.servicosEnviados || [], celebracao);
     idsPdf = Array.from(new Set(jaEnviados.concat(ids)));
   }
 
