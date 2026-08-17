@@ -4,6 +4,10 @@
 const { enviarFotoCabine, enviarOrcamento } = require("./fotoCabine.js");
 const { enviarTotemFotografico } = require("./totemFotografico.js");
 const { enviarTotemRetro } = require("./totemRetro.js");
+// O ÚNICO lugar que pede o orçamento gerado ao PhotoMusic Pro (1 PDF p/ N serviços)
+const {
+  enviarOrcamentoGerado, usaOrcamentoGerado, idsGerados
+} = require("./orcamentoGerado.js");
 const { enviarPlataforma360, enviarOrcamentoPlataforma360 } = require("./plataforma360.js");
 const { enviarFotoPaparazzi } = require("./paparazziDigital.js");
 const { enviarFotoLembranca } = require("./fotoLembranca.js");
@@ -18,6 +22,9 @@ const { handleComandoTarefas, handleComandoOk, notificarTarefasAbertas } = requi
 console.log("📦 [services] Serviços carregados: FotoCabine, TotemFotografico, TotemRetro, Plataforma360, Paparazzi, Lembrança, SomDJ, Iluminação, Eucaristia, Tarefas");
 
 module.exports = {
+  enviarOrcamentoGerado,
+  usaOrcamentoGerado,
+  idsGerados,
   enviarFotoCabine,
   enviarOrcamento,
   enviarTotemFotografico,

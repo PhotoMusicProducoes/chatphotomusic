@@ -42,6 +42,8 @@ const {
   enviarSomDJ,
   enviarIluminacao,
   enviarAvaliacaoEmpresa,
+  enviarOrcamentoGerado,
+  usaOrcamentoGerado,
   enviarEucaristiaManual,
   paroquiasEucaristia,
   EUCARISTIA_PDF_URL,
@@ -1432,6 +1434,18 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
     // Limpa flags de deduplicação após todos os serviços
     delete sessions[chatId]._envioMultiplo;
 
+    /* 🧾 UM ORÇAMENTO SÓ, com todos os serviços migrados deste pedido
+       (decisão do Mario, 17/08/2026). Vem DEPOIS da apresentação de todos: cada
+       serviço mostrou a foto do seu equipamento, e aqui vai o preço de tudo
+       junto, com o desconto de R$ 100 por serviço a mais.
+       Serviço ainda não migrado continua mandando o PDF pronto dele lá dentro.
+       `segundaRodada`: se ele já tinha recebido orçamento antes, o PDF novo sai
+       com TUDO e o texto avisa que substitui o anterior. */
+    const _jaTinhaOrcamento = Object.keys(session.orcamento?.linksOrcamento || {}).length > 0;
+    await enviarOrcamentoGerado(chatId, session, listaServicos, {
+      segundaRodada: _jaTinhaOrcamento
+    });
+
     // 📌 RESUMO FINAL DO EVENTO PARA O CLIENTE (UMA VEZ)
     await enviarResumoCliente(chatId, session);
 
@@ -1707,6 +1721,13 @@ async function perguntarNascimentoOpcional(chatId, session) {
 // para não parecer spam"). Avisa antes quando é mais de um, para o cliente
 // entender que vem por partes e não achar que o bot travou no meio.
 async function enviarDetalhesEmLote(chatId, session, lista) {
+  /* 🚨 Com orçamento GERADO, um PDF só atende vários serviços, e o mesmo link
+     fica gravado em linksOrcamento para cada id. Sem deduplicar por URL, quem
+     pediu detalhes de 3 serviços recebia o MESMO arquivo 3 vezes.
+     O Set é por LOTE: se ele voltar depois e pedir outro serviço, recebe de
+     novo, o que é certo, porque aí é outra conversa. */
+  session._pdfsEnviadosNoLote = new Set();
+
   if (lista.length > 1) {
     await sendTyping(chatId);
     await sendText(
@@ -1739,6 +1760,13 @@ async function reenviarOrcamentoDoServico(chatId, session, servico) {
   // montado pela equipe): sem link, não há o que reenviar.
   if (!link) return;
   if (estaPausado(chatId) || session.pausado) return;
+
+  // Mesmo PDF já reenviado neste lote (orçamento único de vários serviços).
+  if (session._pdfsEnviadosNoLote?.has(link)) {
+    console.log(`↩️ [detalhes] PDF já reenviado neste lote, pulando: ${link}`);
+    return;
+  }
+  session._pdfsEnviadosNoLote?.add(link);
 
   const nome = SERVICOS_NOMES[servico] || "serviço";
   try {
@@ -2869,6 +2897,8 @@ async function handleIncomingMessage(message) {
       let controlaMsgManual = 0;
       let controlaMsgManual2 = 0;
       let avaliacaoEnviadaNesteLote = false; // flag local — ignora session.enviouAvaliacao do fluxo automático
+      // Ids dos serviços deste lote, para o orçamento gerado sair num PDF só.
+      const _servicosDoLote = [];
 
       /* 📅📍 DATA E LOCAL ANTES DE ENVIAR — 🚨 A ORDEM É O BUG (Mario, 17/08/2026).
          O `#data` e o `#local` eram aplicados DEPOIS do laço de envio, e para o
@@ -3157,6 +3187,7 @@ async function handleIncomingMessage(message) {
 
         // 📌 REGISTRAR SERVIÇO ENVIADO
         registrarServicoEnviado(session, servicoId);
+        if (!_servicosDoLote.includes(servicoId)) _servicosDoLote.push(servicoId);
 
         // Com "+completo" o cliente JÁ viu as fotos: marca como detalhado para
         // o menu não oferecer "mais detalhes" de algo que ele acabou de ver.
@@ -3172,6 +3203,15 @@ async function handleIncomingMessage(message) {
       }
 
       await sendText(destinoOperador, `controlaMsgManual = ${controlaMsgManual} e controlaMsgManual2 = ${controlaMsgManual2}`);
+
+      /* 🧾 Orçamento GERADO no comando manual: também UM PDF SÓ, com todos os
+         serviços migrados do lote (`#fotocabine ..., #totemretro ...` numa
+         mensagem = 1 PDF com os dois). Roda depois do laço, quando a lista
+         inteira já é conhecida, e depois do bloco de data/local acima, que é o
+         que garante data e bairro DENTRO do PDF. */
+      if (_servicosDoLote.length > 0) {
+        await enviarOrcamentoGerado(chatIdCliente, session, _servicosDoLote);
+      }
 
       // 🚗 Deslocamento do orçamento MANUAL (#local): consultado ANTES da
       // decisão do resumo, para valer nos dois caminhos.

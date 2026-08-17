@@ -468,57 +468,13 @@ async function enviarOrcamentoRetro(chatId, clb, diasCorporativo) {
   await sendFileByUrl(chatId, FOTO_RETRO_1, "IMAGE", "");
   await delay(500);
 
-  // 🚨 GERA ANTES DE ANUNCIAR. Na primeira versão o bot dizia "Segue o arquivo"
-  // e só depois tentava gerar; quando falhava, o cliente lia "Segue o arquivo"
-  // seguido de "estou finalizando", uma contradição (Mario pegou no 1º teste).
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-
-  let dados;
-  try {
-    dados = await gerarOrcamento(sessions[chatId], chatId, [SERVICO_SLUG]);
-  } catch (erro) {
-    console.error(`🚨 [totemRetro] Orçamento automático falhou para ${chatId}: ${erro.codigo} — ${erro.message}`);
-
-    // Avisa o OPERADOR com o motivo. Sem isso a falha só aparecia no log do
-    // Fly e o Mario ficava sem saber por que o cliente não recebeu o PDF.
-    try {
-      await sendText(
-        OPERADOR_TELEFONE_ID,
-        `🚨 *Orçamento do Totem Retrô não saiu*\n` +
-        `Cliente: ${String(chatId).replace(/\D+/g, "")}\n` +
-        `Motivo: *${erro.codigo}*\n${erro.message}`
-      );
-    } catch (e) {
-      console.error("⚠️ Não consegui avisar o operador:", e.message);
-    }
-
-    if (estaPausado(chatId)) return;
-    await sendText(
-      chatId,
-      "📊 Estou finalizando o seu orçamento do *Totem Retrô* e te envio em instantes! 😊"
-    );
-
-    return;
-  }
-
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "💰 Segue o arquivo com o orçamento do *Totem Retrô!* 📸✨");
-
-  if (estaPausado(chatId)) return;
-
-  await enviarPdfComLink(
-    chatId,
-    dados.url,
-    "Orcamento-Totem-Retro",
-    sendTyping,
-    sendText,
-    sendFileByUrl,
-    { session: sessions[chatId], servicoId: SERVICO_ID }
-  );
+  /* 🚨 O PDF NÃO SAI MAIS DAQUI (17/08/2026, decisão do Mario de UM PDF SÓ para
+     vários serviços). Quem gera e envia é o `services/orcamentoGerado.js`,
+     chamado UMA vez com a lista inteira depois que todos os serviços se
+     apresentaram. Se cada serviço gerasse o seu, o cliente que pede Cabine +
+     Totem Retrô receberia 2 PDFs, cada um calculado sozinho, e perderia o
+     desconto de R$ 100 por serviço a mais.
+     Aqui fica só a apresentação: o título, a foto do equipamento e o resto. */
 }
 
 // ======================================================================

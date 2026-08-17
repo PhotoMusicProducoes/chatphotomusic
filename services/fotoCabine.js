@@ -7,6 +7,8 @@ const { enviarYoutube } = require("../utils/youtubeUtils.js");
 const { urlBase, urlBase1, urlBase2, urlBase3 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
+// Serviço migrado para o orçamento GERADO não manda mais o PDF estático dele.
+const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
 
 // ======================================================
 // DELAY — evita conflito de envio na Z-API
@@ -780,22 +782,48 @@ async function enviarFotoCabine(chatId, clb, convidados, sessionsRef, operatorPa
     // apenasOrcamento: manda só o preço, sem a apresentação. É o espelho do
     // apenasFluxo abaixo, e serve ao fluxo novo (2026-07-15): o cliente
     // recebe o orçamento primeiro e só vê os detalhes se pedir.
-    if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
+    const _soOrcamento = !!sessions[chatId]?._envioMultiplo?.apenasOrcamento;
+
+    if (!_soOrcamento) {
       await enviarFluxoPadrao(chatId, evento, clb);
+    } else {
+      /* 🚨 TÍTULO ANTES DA FOTO (a falha que o Mario pegou no Totem Retrô,
+         17/08/2026): o `*<<<< FOTO CABINE >>>>*` mora no enviarFluxoPadrao(),
+         que é justamente o bloco pulado aqui, então a foto chegava solta, sem
+         nada dizer de que serviço era.
+         📌 A FOTO existe para o cliente VER O EQUIPAMENTO que está
+         contratando, não para identificar o serviço (Mario corrigiu esse
+         entendimento). No envio enxuto ele recebia o preço sem ter visto a
+         cabine. */
+      await sendTyping(chatId);
+      await delay(300);
+      if (estaPausado(chatId)) return;
+      await sendText(chatId, `*<<<< FOTO CABINE >>>>*`);
+
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, urlBase + "fotocabineacessorios.jpg", "IMAGE", "");
+      await delay(500);
     }
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
 
-    // Envio do orçamento
-    await enviarOrcamento(
-      chatId,
-      evento,
-      clb,
-      convidados,
-      duracao,
-      diasCorporativo
-    );
+    /* 🚨 PDF ESTÁTICO DESLIGADO PARA QUEM JÁ USA O ORÇAMENTO GERADO
+       (Foto Cabine migrada em 17/08/2026). O PDF agora sai do
+       `services/orcamentoGerado.js`, UMA vez, com todos os serviços do pedido
+       juntos e com o desconto de combo aplicado.
+       A migração é serviço por serviço: quem não está em SERVICOS_GERADOS
+       continua mandando o arquivo pronto, como sempre. */
+    if (!usaOrcamentoGerado(1)) {
+      await enviarOrcamento(
+        chatId,
+        evento,
+        clb,
+        convidados,
+        duracao,
+        diasCorporativo
+      );
+    }
 
     // GuestBook: no envio ENXUTO o fluxo completo não roda, então ele sumia
     // da proposta. Aqui volta em 1 mensagem + 4 arquivos (só celebração com
