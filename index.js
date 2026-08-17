@@ -2600,6 +2600,11 @@ async function handleIncomingMessage(message) {
           "_Vale para o *próximo orçamento* e depois é apagado._\n" +
           "_Cada orçamento precisa do seu próprio #local._\n" +
           "_Só a cidade também funciona: #local Nova Iguaçu_\n\n" +
+          "*DATA DO EVENTO (#data):*\n" +
+          "#data 20/12/2026\n" +
+          "_Mesma regra do #local: vale para o *próximo orçamento* e some._\n" +
+          "_Obrigatória só nos serviços com orçamento *gerado na hora*_\n" +
+          "_(hoje: *Totem Retrô*). Sem ela o PDF não sai._\n\n" +
           "⚠️ *Não funciona em grupo* — mande daqui ou no chat do cliente.";
 
         await sendText(destinoOperador, guia1);
@@ -2652,7 +2657,60 @@ async function handleIncomingMessage(message) {
         // Só o #local nesta mensagem → nada mais a fazer (não exige cliente)
         if (comandos.length === 0) return;
       }
-      
+
+      // ======================================================
+      // #data DD/MM/AAAA — data do evento para o orçamento MANUAL
+      // Irmão do #local: mesmo uso único e mesma validade de 30 min.
+      // 🚨 Nasceu com o orçamento AUTOMÁTICO (Totem Retrô): o PDF gerado na
+      // hora EXIGE data (o endpoint devolve `data_invalida` sem ela) e o
+      // comando manual não tinha como informar. Nos PDFs estáticos isso não
+      // fazia falta, então só vale para serviço automático.
+      // ======================================================
+      const cmdData = comandos.find(c => c.split(" ")[0].toLowerCase() === "#data");
+      if (cmdData) {
+        for (let i = comandos.length - 1; i >= 0; i--) {
+          if (comandos[i].split(" ")[0].toLowerCase() === "#data") comandos.splice(i, 1);
+        }
+
+        // Tira um telefone colado no fim ("#data 20/12/2026 5521999999999") e a
+        // vírgula do separador de comandos ("#data 20/12/2026, #totemretro ...").
+        // 🚨 NÃO dá para reaproveitar o strip do #local aqui: o [-+\d\s()]{11,}
+        // dele engolia o ANO junto com o telefone e a data virava "20/12/".
+        // Aqui o telefone só sai quando é um bloco separado de 10 a 13 dígitos.
+        const brutoData = cmdData.slice("#data".length)
+                                 .replace(/\s+(?:->\s*)?\+?\d{10,13}\s*$/, "")
+                                 .replace(/[,\s]+$/, "")
+                                 .trim();
+
+        if (!brutoData) {
+          delete sessions["__data_manual__"];
+          await sendText(destinoOperador,
+            "📅 Data apagada.\nUse: *#data 20/12/2026* (aceita *20/12* e por extenso)");
+        } else {
+          const df = parsearDataFlex(brutoData);
+          const hojeData = new Date();
+          hojeData.setHours(0, 0, 0, 0);
+
+          if (!df) {
+            await sendText(destinoOperador,
+              "⚠ Não entendi a data. Use *#data 20/12/2026*, *#data 20/12* ou *#data 9 de setembro*.");
+          } else if (df.date < hojeData) {
+            await sendText(destinoOperador,
+              `⚠ A data *${df.str}* já passou. O orçamento gerado não aceita data no passado.`);
+          } else {
+            sessions["__data_manual__"] = { str: df.str, em: Date.now() };
+            console.log(`📅 [MANUAL] Data guardada (uso único): ${df.str}`);
+            await sendText(destinoOperador,
+              `📅 Data do evento: *${df.str}*\n` +
+              `Vale para o *próximo orçamento* e depois é apagada.\n` +
+              `_Só é obrigatória nos serviços com orçamento gerado na hora (hoje: Totem Retrô)._`);
+          }
+        }
+
+        // Só o #data nesta mensagem → nada mais a fazer (não exige cliente)
+        if (comandos.length === 0) return;
+      }
+
       // ======================================================
       // RESOLVER CLIENTE DESTINO (MANUAL) — PRIORIDADE + VALIDAÇÃO
       // ======================================================
@@ -3084,6 +3142,21 @@ async function handleIncomingMessage(message) {
       }
       // Consome já: mesmo se algo falhar adiante, não sobra para o próximo.
       if (localManual) delete sessions["__local_manual__"];
+
+      // 📅 Data do #data — mesma regra de uso único e validade do #local.
+      // Sem ela o serviço com orçamento GERADO (Totem Retrô) não sai, porque o
+      // endpoint recusa com `data_invalida`. Nos PDFs estáticos não faz falta.
+      let dataManual = sessions["__data_manual__"];
+      if (dataManual && dataManual.em && (Date.now() - dataManual.em) > LOCAL_VALIDADE_MS) {
+        console.log(`📅 [MANUAL] #data expirada (${dataManual.str}) — ignorada`);
+        delete sessions["__data_manual__"];
+        dataManual = null;
+      }
+      if (dataManual) {
+        session.orcamento.data = dataManual.str;
+        delete sessions["__data_manual__"];
+        console.log(`📅 [MANUAL] Data aplicada ao orçamento: ${dataManual.str}`);
+      }
 
       let textoDeslocManual = null;
 
