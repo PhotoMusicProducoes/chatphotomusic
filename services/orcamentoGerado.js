@@ -27,7 +27,7 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
 /* Serviços que JÁ usam o orçamento gerado na hora.
    13 = Totem Retrô (1º, aprovado 17/08) · 1 = Foto Cabine · 3 = Plataforma 360. */
-const SERVICOS_GERADOS = [13, 1, 3];
+const SERVICOS_GERADOS = [13, 1, 3, 2];
 
 /* id do serviço -> slug do catálogo do WordPress.
    🚨 SEMPRE POR SLUG: o endpoint lê número como dígito do menu do bot, então o

@@ -7,6 +7,8 @@ const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, sendFileFromUrl }
 const { urlBase, urlBase1, urlBase2, urlBase3 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
+// Servico migrado para o orcamento GERADO nao manda mais o PDF estatico dele.
+const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
 
 // ======================================================================
 // DELAY — igual ao da Foto Cabine
@@ -680,20 +682,39 @@ async function enviarTotemFotografico(chatId, clb, convidados, sessionsRef, oper
     // apenasFluxo: só o preço, sem a apresentação (fluxo novo 2026-07-15).
     if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
       await enviarFluxoTotem(chatId, clb);
+    } else {
+      /* 🚨 TÍTULO ANTES DA FOTO (falha pega no Totem Retrô, 17/08/2026): o
+         `*<<<< TOTEM FOTOGRÁFICO >>>>*` mora no enviarFluxoTotem(), que é o
+         bloco pulado aqui, então a foto chegaria solta.
+         📌 A FOTO existe para o cliente VER O EQUIPAMENTO que está
+         contratando. 🚨 Aqui é `fotoTotem1.jpg`, o totem BRANCO; o Retrô tem
+         as fotos dele. Não trocar um pelo outro, são máquinas diferentes. */
+      await sendTyping(chatId);
+      await delay(300);
+      if (estaPausado(chatId)) return;
+      await sendText(chatId, `*<<<< TOTEM FOTOGRÁFICO >>>>*`);
+
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, urlBase3 + "fotoTotem1.jpg", "IMAGE", "");
+      await delay(500);
     }
     if (estaPausado(chatId)) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
 
-    // 2) Envia orçamento padronizado
-    await enviarOrcamentoTotem(
-      chatId,
-      clb,
-      convidados,
-      duracao,
-      diasCorporativo
-    );
+    /* 2) PDF ESTÁTICO DESLIGADO para quem já usa o orçamento GERADO
+       (Totem Fotográfico migrado em 17/08/2026). O PDF sai do
+       `services/orcamentoGerado.js`, uma vez, com todos os serviços juntos. */
+    if (!usaOrcamentoGerado(2)) {
+      await enviarOrcamentoTotem(
+        chatId,
+        clb,
+        convidados,
+        duracao,
+        diasCorporativo
+      );
+    }
 
     // GuestBook: no envio ENXUTO o fluxo completo não roda e ele sumia da
     // proposta. Volta em 1 mensagem + 4 arquivos. Ver services/guestbook.js.
