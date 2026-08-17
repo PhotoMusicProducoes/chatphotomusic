@@ -399,15 +399,9 @@ function valorCampoResumo(orc, tipo) {
 }
 
 function textoMenuServicos() {
-  return "Agora escolha os serviços que deseja orçamento (para mais de um, digite os números separados por vírgula, ex: *1,3,5 ou 124*):\n\n" +
-    "*1* - Foto Cabine\n" +
-    "*2* - Totem Fotográfico\n" +
-    "*3* - Plataforma 360º\n" +
-    "*4* - Foto Paparazzi Digital\n" +
-    "*5* - Foto Lembrança\n" +
-    "*6* - Cobertura Fotográfica\n" +
-    "*7* - Som Completo com DJ\n" +
-    "*8* - Iluminação para Pista de Dança\n" +
+  // A lista sai do EXIBICAO_PARA_ID, então menu e parser nunca discordam.
+  return "Agora escolha os serviços que deseja orçamento (para mais de um, digite os números separados por vírgula, ex: *0,3,5 ou 124*):\n\n" +
+    linhasMenuServicos(TODOS_SERVICOS) + "\n" +
     "*9* - *TODOS os serviços*";
 }
 
@@ -711,27 +705,21 @@ function extrairServicosDaMensagem(texto) {
   // responde com a palavra em vez do número, e ele ficava sem nada.
   if (/\b(todos|todas|tudo)\b/.test(limpo)) return [...TODOS_SERVICOS];
 
-  const numeros = texto.replace(/\D+/g, "").split("");
-  const unicos = [...new Set(numeros)];
-  const escolhidos = unicos
-    .map(n => parseInt(n, 10))
-    .filter(n => n >= 1 && n <= 9);
+  const digitos = String(texto).replace(/\D+/g, "").split("");
+  const escolhidos = [...new Set(digitos)].map(n => parseInt(n, 10));
 
   // 9 = TODOS os serviços (pedido comum: "quero orçamento de tudo").
-  // Sem essa opção o cliente precisava digitar 1,2,3,4,5,6,7,8.
+  // Sem essa opção o cliente precisava digitar 0,1,2,3,4,5,6,7,8.
   if (escolhidos.includes(9)) return [...TODOS_SERVICOS];
 
-  const lista = escolhidos.filter(n => n <= 8);
-
-  // 🚧 0 = TOTEM RETRÔ, número ESCONDIDO enquanto o serviço está em teste: ele
-  // não aparece no menu nem entra no "todos". Quando o Mario validar, ele vira
-  // o nº 2 do menu, os outros andam uma casa e este atalho sai daqui.
-  // O 0 só conta quando está sozinho ou separado por vírgula ("0", "0,3"). Em
-  // "10" ele é o zero do dez, não uma escolha — por isso o lookaround.
-  if (/(?<!\d)0(?!\d)/.test(texto) && !lista.includes(SERVICO_TOTEM_RETRO)) {
-    lista.unshift(SERVICO_TOTEM_RETRO);
+  /* Traduz o número do MENU para o id interno. O 0 é serviço de verdade agora
+     (Foto Cabine), então "10" precisa continuar valendo 1 e 0, que é o que o
+     split de dígitos já faz. */
+  const lista = [];
+  for (const exib of escolhidos) {
+    const id = EXIBICAO_PARA_ID[exib];
+    if (id !== undefined && !lista.includes(id)) lista.push(id);
   }
-
   return lista;
 }
 
@@ -1503,13 +1491,57 @@ const SERVICOS_NOMES = {
   13: "Totem Retrô"
 };
 
-// 🚧 TOTEM RETRÔ EM TESTE. O id 13 é o mesmo do PhotoMusic Pro de propósito,
-// para o link do orçamento casar com o serviço de lá. Ele fica FORA do
-// TODOS_SERVICOS enquanto está em teste: não entra no "9 = todos", não aparece
-// no menu e não é oferecido no "mais orçamento". Só entra pelo 0 escondido e
-// pelo #totemretro. Quando o Mario validar, ele vira o nº 2 do menu.
+// O id 13 é o mesmo do PhotoMusic Pro de propósito, para o link do orçamento
+// casar com o serviço de lá.
 const SERVICO_TOTEM_RETRO = 13;
-const TODOS_SERVICOS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+/* ======================================================
+   🔢 NÚMERO QUE O CLIENTE DIGITA  x  ID INTERNO DO SERVIÇO
+   (renumeração aprovada pelo Mario em 17/08/2026)
+   ======================================================
+   O Totem Retrô saiu do "0 escondido" e entrou no menu de verdade. Como o menu
+   do WhatsApp é de UM DÍGITO e o 9 é "TODOS", os 9 serviços só cabem usando o
+   ZERO: 0 a 8 são os serviços e o 9 segue sendo todos.
+
+   🚨 A NUMERAÇÃO INTERNA NÃO MUDOU. O Retrô continua id 13 (o mesmo do
+   WordPress), a Cabine continua id 1. O que muda é só o número que aparece
+   para o cliente, e a tradução mora AQUI, num lugar só. Nunca imprimir id
+   interno num menu: "13 - Totem Retrô" seria lido pelo parser como 1 e 3
+   (Cabine + Plataforma), que é um bug que já aconteceu no endpoint do WP. */
+const EXIBICAO_PARA_ID = {
+  0: 1,   // Foto Cabine (carro-chefe, abre a lista)
+  1: 13,  // Totem Retrô
+  2: 2,   // Totem Fotográfico
+  3: 3,   // Plataforma 360º
+  4: 4,   // Foto Paparazzi Digital
+  5: 5,   // Foto Lembrança
+  6: 6,   // Cobertura Fotográfica
+  7: 7,   // Som Completo com DJ
+  8: 8,   // Iluminação para Pista de Dança
+};
+const ID_PARA_EXIBICAO = Object.fromEntries(
+  Object.entries(EXIBICAO_PARA_ID).map(([exib, id]) => [id, Number(exib)])
+);
+
+/** Número que o cliente vê para um serviço (ex.: id 13 -> "1"). */
+function numeroExibicao(id) {
+  const n = ID_PARA_EXIBICAO[Number(id)];
+  return n === undefined ? null : n;
+}
+
+/** Ordem do MENU, não a dos ids: é ela que manda em toda lista mostrada. */
+const TODOS_SERVICOS = Object.keys(EXIBICAO_PARA_ID)
+  .map(Number).sort((a, b) => a - b)
+  .map(exib => EXIBICAO_PARA_ID[exib]);
+
+/** Linha "*0* - Foto Cabine" para os ids dados, na ordem do menu. */
+function linhasMenuServicos(ids) {
+  return ids
+    .filter(id => numeroExibicao(id) !== null)
+    .sort((a, b) => numeroExibicao(a) - numeroExibicao(b))
+    .map(id => `*${numeroExibicao(id)}* - ${SERVICOS_NOMES[id]}`)
+    .join("\n");
+}
 
 // ======================================================
 // MENU PÓS-ORÇAMENTO (dinâmico) — ideia da Adriana, 2026-07-15
@@ -1550,9 +1582,13 @@ const PAUSA_ENTRE_DETALHES_MS = 3000;
 // (1 = Foto Cabine ... 8 = Iluminação, 9 = todos), para o cliente responder
 // igual ao que já respondeu ao pedir o orçamento: "134" ou "1,3,4".
 function textoMenuDetalhes(disponiveis) {
+  /* 🚨 NÚMERO DE EXIBIÇÃO, NUNCA O ID INTERNO. Aqui era `*${s}*` com o id, e
+     com o Totem Retrô no menu isso imprimiria "13 - Totem Retrô", que o parser
+     leria como 1 e 3 (Cabine + Plataforma). Mesmo bug que já aconteceu no
+     endpoint do WordPress. (Mario, 17/08/2026.) */
   return `Você pediu orçamento de *${disponiveis.length} serviços*. De quais deles você quer ver os *detalhes*?\n\n` +
-    "Digite os números, colados ou separados por vírgula (ex: *1,3,4* ou *134*):\n\n" +
-    disponiveis.map(s => `*${s}* - ${SERVICOS_NOMES[s]}`).join("\n") +
+    "Digite os números, colados ou separados por vírgula (ex: *0,3,4* ou *034*):\n\n" +
+    linhasMenuServicos(disponiveis) +
     "\n*9* - *TODOS*";
 }
 
@@ -1677,10 +1713,15 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
     const restantes = servicosParaOrcar(session);
     session.step = "orcamento_escolher_servico";
     await sendTyping(chatId);
+    /* 🚨 id da lista = número de EXIBIÇÃO, nunca o id interno. Com o id
+       interno, o Totem Retrô viraria "13" e o parser leria 1 e 3. */
     await sendOptionList(
       chatId,
       "De qual outro serviço você deseja orçamento?",
-      restantes.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
+      restantes
+        .filter(s => numeroExibicao(s) !== null)
+        .sort((a, b) => numeroExibicao(a) - numeroExibicao(b))
+        .map(s => ({ id: String(numeroExibicao(s)), title: SERVICOS_NOMES[s] })),
       { title: "Serviços", buttonLabel: "Ver serviços" }
     );
     return;
@@ -4821,15 +4862,8 @@ const resumoEucaristia =
           await sendTyping(chatId);
           await sendText(
             chatId,
-            "Escolha novamente os serviços desejados (ex: 1,3,5):\n\n" +
-            "*1* - Foto Cabine\n" +
-            "*2* - Totem Fotográfico\n" +
-            "*3* - Plataforma 360º\n" +
-            "*4* - Foto Paparazzi Digital\n" +
-            "*5* - Foto Lembrança\n" +
-            "*6* - Cobertura Fotográfica\n" +
-            "*7* - Som Completo com DJ\n" +
-            "*8* - Iluminação para Pista de Dança"
+            "Escolha novamente os serviços desejados (ex: 0,3,5):\n\n" +
+            linhasMenuServicos(TODOS_SERVICOS)
           );
 
           return;
@@ -4952,14 +4986,9 @@ const resumoEucaristia =
     await sendText(
       chatId,
       "Certo! Me diga de quais *outros serviços* você deseja orçamento (digite apenas os números):\n\n" +
-      (restantes.includes(1) ? "*1* - Foto Cabine\n" : "") +
-      (restantes.includes(2) ? "*2* - Totem Fotográfico\n" : "") +
-      (restantes.includes(3) ? "*3* - Plataforma 360º\n" : "") +
-      (restantes.includes(4) ? "*4* - Foto Paparazzi Digital\n" : "") +
-      (restantes.includes(5) ? "*5* - Foto Lembrança\n" : "") +
-      (restantes.includes(6) ? "*6* - Cobertura Fotográfica\n" : "") +
-      (restantes.includes(7) ? "*7* - Som Completo com DJ\n" : "") +
-      (restantes.includes(8) ? "*8* - Iluminação para Pista de Dança" : "")
+      // Sai do mesmo lugar do menu principal, então o Totem Retrô aparece aqui
+      // também (era o que faltava: ele não entrava no "mais orçamento").
+      linhasMenuServicos(restantes)
     );
 
     return;
