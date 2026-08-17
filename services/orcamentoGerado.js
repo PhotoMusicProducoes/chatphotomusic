@@ -25,9 +25,11 @@ const { OPERADOR_TELEFONE_ID } = require("../utils/config.js");
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-/* Serviços que JÁ usam o orçamento gerado na hora.
-   13 = Totem Retrô (1º, aprovado 17/08) · 1 = Foto Cabine · 3 = Plataforma 360. */
-const SERVICOS_GERADOS = [13, 1, 3, 2, 4];
+/* Serviços que JÁ usam o orçamento gerado na hora, na ordem em que migraram:
+   13 = Totem Retrô (1º, aprovado 17/08) · 1 = Foto Cabine · 3 = Plataforma 360 ·
+   2 = Totem Fotográfico · 4 = Foto Paparazzi · 5 = Foto Lembrança (18/08).
+   ⏳ Faltam: 6 = Cobertura · 7 = Som com DJ · 8 = Iluminação. */
+const SERVICOS_GERADOS = [13, 1, 3, 2, 4, 5];
 
 /* id do serviço -> slug do catálogo do WordPress.
    🚨 SEMPRE POR SLUG: o endpoint lê número como dígito do menu do bot, então o

@@ -4,6 +4,8 @@ const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, sendFileFromUrl }
 const { urlBase, urlBase2, urlBase3 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
+// Serviço migrado para o orçamento GERADO não manda mais o PDF estático dele.
+const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
 const { enviarYoutube } = require("../utils/youtubeUtils.js");
 
 // ======================================================
@@ -334,54 +336,79 @@ async function enviarFotoLembranca(chatId, clb, convidados, sessionsRef, operato
     // apenasFluxo: só o preço, sem a apresentação (fluxo novo 2026-07-15).
     if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
       await enviarFluxoFotoLembranca(chatId, clb);
+    } else {
+      /* 🚨 TÍTULO ANTES DA FOTO (falha pega no Totem Retrô, 17/08/2026): o
+         título mora no enviarFluxoFotoLembranca(), que é o bloco pulado aqui.
+         📌 A FOTO existe para o cliente VER o que está contratando. A
+         fotolembranca8.jpg é a única que aparece em TODAS as celebrações da
+         lista abaixo, ou seja, já era a foto universal do serviço. */
+      await sendTyping(chatId);
+      await delay(300);
+      if (estaPausado(chatId)) return;
+      await sendText(chatId, "*<<<< FOTO LEMBRANÇA >>>>*");
+
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, urlBase2 + "fotolembranca8.jpg", "IMAGE", "");
+      await delay(500);
     }
     if (sessionsRef[chatId]?.pausado) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
 
-    // 2) Seleciona PDF
-    const pdf = selecionarPdfFotoLembranca(clb, convidados);
+    /* 2) PDF ESTÁTICO DESLIGADO para quem já usa o orçamento GERADO (Foto
+       Lembrança migrada em 18/08/2026). O PDF sai do
+       `services/orcamentoGerado.js`, uma vez, com todos os serviços juntos.
+       🚨 Aqui o bloco envolvido é maior que nos outros services porque a Foto
+       Lembrança nunca teve um `enviarOrcamentoFotoLembranca()`: a seleção do
+       PDF, a regra do corporativo multi-dia e o envio moram soltos na função
+       principal. Envolver tudo mantém o mesmo comportamento dos migrados, em
+       que a regra multi-dia vive DENTRO do trecho desligado. */
+    if (!usaOrcamentoGerado(5)) {
 
-    // 3) Caso especial — Corporativo com mais de 1 dia
-    if (clb === 8 && diasCorporativo > 1) {
+      // 2.1) Seleciona PDF
+      const pdf = selecionarPdfFotoLembranca(clb, convidados);
+
+      // 2.2) Caso especial — Corporativo com mais de 1 dia
+      if (clb === 8 && diasCorporativo > 1) {
+        await sendTyping(chatId); await delay(300);
+        if (sessionsRef[chatId]?.pausado) return;
+        await sendText(
+          chatId,
+          "📊 Estamos preparando um *orçamento especial* para o seu evento corporativo.\nEnviaremos o quanto antes! 😊"
+        );
+        return;
+      }
+
+      // 2.3) Eventos normais
+      if (!pdf) {
+        if (!sessionsRef[chatId]?.pausado) {
+          await sendText(chatId, "❌ Não foi possível localizar o orçamento para este evento.");
+        }
+        return;
+      }
+
+      // Envio do PDF
+      await sendTyping(chatId);
+      await delay(300);
+      if (sessionsRef[chatId]?.pausado) return;
+
+      await sendText(chatId, "💰 Segue o arquivo com o orçamento da *Foto Lembrança* 📸✨");
+
       await sendTyping(chatId); await delay(300);
       if (sessionsRef[chatId]?.pausado) return;
-      await sendText(
+      // Envia o PDF
+      await enviarPdfComLink(
         chatId,
-        "📊 Estamos preparando um *orçamento especial* para o seu evento corporativo.\nEnviaremos o quanto antes! 😊"
+        pdf,
+        "Orcamento-Foto-Lembranca",
+        sendTyping,
+        sendText,
+        sendFileByUrl,
+        { session: sessions[chatId], servicoId: 5 }
       );
-      return;
+      await delay(600);
     }
-
-    // 4) Eventos normais
-    if (!pdf) {
-      if (!sessionsRef[chatId]?.pausado) {
-        await sendText(chatId, "❌ Não foi possível localizar o orçamento para este evento.");
-      }
-      return;
-    }
-
-    // Envio do PDF
-    await sendTyping(chatId); 
-    await delay(300);
-    if (sessionsRef[chatId]?.pausado) return;
-    
-    await sendText(chatId, "💰 Segue o arquivo com o orçamento da *Foto Lembrança* 📸✨");
-    
-    await sendTyping(chatId); await delay(300);
-    if (sessionsRef[chatId]?.pausado) return;
-    // Envia o PDF
-    await enviarPdfComLink(
-      chatId,
-      pdf,
-      "Orcamento-Foto-Lembranca",
-      sendTyping,
-      sendText,
-      sendFileByUrl,
-      { session: sessions[chatId], servicoId: 5 }
-    );
-    await delay(600);
 
   } catch (error) {
     console.error(`❌ Erro ao enviar Foto Lembrança para ${chatId}:`, error);
