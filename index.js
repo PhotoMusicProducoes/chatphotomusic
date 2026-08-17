@@ -2603,8 +2603,12 @@ async function handleIncomingMessage(message) {
           "*DATA DO EVENTO (#data):*\n" +
           "#data 20/12/2026\n" +
           "_Mesma regra do #local: vale para o *próximo orçamento* e some._\n" +
-          "_Obrigatória só nos serviços com orçamento *gerado na hora*_\n" +
-          "_(hoje: *Totem Retrô*). Sem ela o PDF não sai._\n\n" +
+          "_É OPCIONAL. Sem ela o PDF sai e avisa que o parcelamento_\n" +
+          "_no PIX depende da data._\n\n" +
+          "*ORÇAMENTO COMPLETO (serviço gerado na hora):*\n" +
+          "#data 20/12/2026, #local Califórnia, Nova Iguaçu, #totemretro 0,1,150,5,1\n" +
+          "_Com os dois, o PDF já sai com a data e com o deslocamento._\n" +
+          "_Sem eles sai igual, só dizendo que são a combinar._\n\n" +
           "⚠️ *Não funciona em grupo* — mande daqui ou no chat do cliente.";
 
         await sendText(destinoOperador, guia1);
@@ -2865,6 +2869,52 @@ async function handleIncomingMessage(message) {
       let controlaMsgManual = 0;
       let controlaMsgManual2 = 0;
       let avaliacaoEnviadaNesteLote = false; // flag local — ignora session.enviouAvaliacao do fluxo automático
+
+      /* 📅📍 DATA E LOCAL ANTES DE ENVIAR — 🚨 A ORDEM É O BUG (Mario, 17/08/2026).
+         O `#data` e o `#local` eram aplicados DEPOIS do laço de envio, e para o
+         serviço com orçamento GERADO na hora (Totem Retrô) isso chega tarde: o
+         PDF já saiu, sem data e sem bairro, então o cliente recebia a proposta
+         com "deslocamento a consultar" mesmo com o operador tendo informado o
+         local. Com PDF estático não aparecia, porque lá data e bairro não entram
+         no arquivo.
+         Zerar antes também é mais correto: bairro velho de outro orçamento não
+         vaza para dentro do PDF novo (foi o caso de 22/07).
+         O CÁLCULO do deslocamento e as mensagens seguem depois do laço, onde
+         sempre estiveram; aqui só resolvemos os VALORES. */
+      const LOCAL_VALIDADE_MS = 30 * 60 * 1000;
+      let localManual = sessions["__local_manual__"];
+      if (localManual && localManual.em && (Date.now() - localManual.em) > LOCAL_VALIDADE_MS) {
+        console.log(`📍 [MANUAL] #local expirado (${localManual.cidade}) — ignorado`);
+        delete sessions["__local_manual__"];
+        localManual = null;
+      }
+      // Consome já: mesmo se algo falhar adiante, não sobra para o próximo.
+      if (localManual) delete sessions["__local_manual__"];
+
+      let dataManual = sessions["__data_manual__"];
+      if (dataManual && dataManual.em && (Date.now() - dataManual.em) > LOCAL_VALIDADE_MS) {
+        console.log(`📅 [MANUAL] #data expirada (${dataManual.str}) — ignorada`);
+        delete sessions["__data_manual__"];
+        dataManual = null;
+      }
+      if (dataManual) delete sessions["__data_manual__"];
+
+      if (session.orcamento) {
+        if (dataManual) {
+          session.orcamento.data = dataManual.str;
+          console.log(`📅 [MANUAL] Data aplicada ANTES do envio: ${dataManual.str}`);
+        }
+        if (localManual) {
+          session.orcamento.bairro = localManual.bairro;
+          session.orcamento.cidade = localManual.cidade;
+          console.log(`📍 [MANUAL] Local aplicado ANTES do envio: ${localManual.bairro || ''} / ${localManual.cidade}`);
+        } else {
+          // Sem #local nesta rodada: zera para não herdar do orçamento anterior.
+          session.orcamento.deslocamento = null;
+          session.orcamento.bairro = null;
+          session.orcamento.cidade = null;
+        }
+      }
 
       for (const cmd of comandos) {
         controlaMsgManual++;
@@ -3132,37 +3182,12 @@ async function handleIncomingMessage(message) {
       // USO ÚNICO + validade de 30 min: o #local vale só para o orçamento
       // seguinte. Sem isso ele vazava para o próximo cliente (aconteceu em
       // 22/07: orçamento de Casamento saiu com o bairro do orçamento anterior).
-      const LOCAL_VALIDADE_MS = 30 * 60 * 1000;
-      let localManual = sessions["__local_manual__"];
-
-      if (localManual && localManual.em && (Date.now() - localManual.em) > LOCAL_VALIDADE_MS) {
-        console.log(`📍 [MANUAL] #local expirado (${localManual.cidade}) — ignorado`);
-        delete sessions["__local_manual__"];
-        localManual = null;
-      }
-      // Consome já: mesmo se algo falhar adiante, não sobra para o próximo.
-      if (localManual) delete sessions["__local_manual__"];
-
-      // 📅 Data do #data — mesma regra de uso único e validade do #local.
-      // Sem ela o serviço com orçamento GERADO (Totem Retrô) não sai, porque o
-      // endpoint recusa com `data_invalida`. Nos PDFs estáticos não faz falta.
-      let dataManual = sessions["__data_manual__"];
-      if (dataManual && dataManual.em && (Date.now() - dataManual.em) > LOCAL_VALIDADE_MS) {
-        console.log(`📅 [MANUAL] #data expirada (${dataManual.str}) — ignorada`);
-        delete sessions["__data_manual__"];
-        dataManual = null;
-      }
-      if (dataManual) {
-        session.orcamento.data = dataManual.str;
-        delete sessions["__data_manual__"];
-        console.log(`📅 [MANUAL] Data aplicada ao orçamento: ${dataManual.str}`);
-      }
-
+      // 📌 A data e o local já foram resolvidos e consumidos ANTES do laço de
+      // envio (ver o bloco no começo do bloco manual). Aqui só resta CALCULAR o
+      // deslocamento e montar as mensagens.
       let textoDeslocManual = null;
 
       if (localManual) {
-        session.orcamento.bairro = localManual.bairro;
-        session.orcamento.cidade = localManual.cidade;
         await consultarDeslocamento(session);
         const d = session.orcamento.deslocamento;
 
@@ -3192,13 +3217,6 @@ async function handleIncomingMessage(message) {
               `${d.estimado ? ` (estimado por distância, ${d.km} km)` : " (tabela)"}`
             : `⚠ Não consegui calcular o deslocamento para *${localManual.cidade}*. O orçamento vai sem o valor.`
         );
-      } else if (session.orcamento) {
-        // Sem #local nesta rodada: ZERA o deslocamento da sessão. Senão o
-        // valor do orçamento ANTERIOR do mesmo cliente reaparecia no resumo
-        // (caso 22/07: Casamento saiu com o bairro do orçamento anterior).
-        session.orcamento.deslocamento = null;
-        session.orcamento.bairro = null;
-        session.orcamento.cidade = null;
       }
 
       const vaiTerResumo = (controlaMsgManual === controlaMsgManual2 && session.orcamento.servicosEnviados.length > 0);
