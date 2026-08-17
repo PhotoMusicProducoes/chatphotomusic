@@ -17,6 +17,7 @@ const {
   sendButtonList,
   sendTyping,
   sendFileByUrl,
+  enviarPdfComLink,
   estaPausadoEspecial,
   pausarEspecial,
   retomarEspecial,
@@ -1486,6 +1487,40 @@ function servicosParaDetalhar(session) {
   return orcados.filter(s => !detalhados.includes(s));
 }
 
+// Quantos serviços o bot detalha de uma vez sem perguntar (Mario, 17/08/2026).
+// Cada serviço detalhado é uma dezena de mídias + o PDF do orçamento; quem
+// pediu "9 - todos" e clicou em "mais detalhes" levava uma enxurrada com cara
+// de spam. Acima deste teto o bot PERGUNTA de quais serviços ele quer.
+const MAX_DETALHES_DE_UMA_VEZ = 4;
+
+// Pausa entre um serviço e o seguinte no envio em lote (o "envio pausado" que
+// o Mario pediu). Bem maior que os 600ms do orçamento, porque aqui vão fotos,
+// vídeos, áudios e o PDF de cada serviço.
+const PAUSA_ENTRE_DETALHES_MS = 3000;
+
+// Menu de quais serviços detalhar. Usa os MESMOS números do menu de serviços
+// (1 = Foto Cabine ... 8 = Iluminação, 9 = todos), para o cliente responder
+// igual ao que já respondeu ao pedir o orçamento: "134" ou "1,3,4".
+function textoMenuDetalhes(disponiveis) {
+  return `Você pediu orçamento de *${disponiveis.length} serviços*. De quais deles você quer ver os *detalhes*?\n\n` +
+    "Digite os números, colados ou separados por vírgula (ex: *1,3,4* ou *134*):\n\n" +
+    disponiveis.map(s => `*${s}* - ${SERVICOS_NOMES[s]}`).join("\n") +
+    "\n*9* - *TODOS*";
+}
+
+// Traduz a resposta do menu de detalhes na lista de serviços. Reaproveita o
+// parser do orçamento (dígitos colados, vírgula, 9 = todos) e depois filtra
+// pelos que ele realmente orçou e ainda não viu.
+function extrairServicosDetalhe(texto, disponiveis) {
+  // "todos" / "tudo" escrito por extenso vale o mesmo que o 9: tem cliente que
+  // responde com a palavra em vez do número.
+  const limpo = String(texto || "").toLowerCase();
+  if (/\b(todos|todas|tudo)\b/.test(limpo)) return [...disponiveis];
+
+  const escolhidos = extrairServicosDaMensagem(texto);
+  return disponiveis.filter(s => escolhidos.includes(s));
+}
+
 function servicosParaOrcar(session) {
   const orcados = session.orcamento?.servicosEnviados || [];
   return TODOS_SERVICOS.filter(s => !orcados.includes(s));
@@ -1574,11 +1609,18 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
        Antes, com vários, o bot perguntava "de qual serviço?" e o cliente que
        pediu 3 orçamentos recebia os detalhes de 1 só — ficava com a impressão
        de que os outros não tinham detalhe nenhum. Quem pede "mais detalhes"
-       quer ver o que contratou, não escolher de novo. */
-    for (const servico of paraDetalhar) {
-      await enviarDetalhesServico(chatId, session, servico);
-      await new Promise(r => setTimeout(r, 1200)); // respiro entre serviços
+       quer ver o que contratou, não escolher de novo.
+
+       ⚠️ Com MUITOS serviços (o "9 - todos" é comum) isso virava uma enxurrada
+       de mídia. Acima de MAX_DETALHES_DE_UMA_VEZ o bot pergunta quais, no
+       mesmo formato do menu de serviços (Mario, 17/08/2026). */
+    if (paraDetalhar.length > MAX_DETALHES_DE_UMA_VEZ) {
+      session.step = "orcamento_escolher_detalhe";
+      await enviarPerguntaESalvar(chatId, session, textoMenuDetalhes(paraDetalhar));
+      return;
     }
+
+    await enviarDetalhesEmLote(chatId, session, paraDetalhar);
     await perguntarPosOrcamento(chatId, session);
     return;
   }
@@ -1626,6 +1668,65 @@ async function perguntarNascimentoOpcional(chatId, session) {
   session.ultimaPerguntaNaoRespondida = p + "\n*1* - Sim\n*2* - Não";
 }
 
+// Envia os detalhes de uma LISTA de serviços, um de cada vez e com respiro
+// entre eles (Mario, 17/08/2026: "se for muito serviço envia pausadamente,
+// para não parecer spam"). Avisa antes quando é mais de um, para o cliente
+// entender que vem por partes e não achar que o bot travou no meio.
+async function enviarDetalhesEmLote(chatId, session, lista) {
+  if (lista.length > 1) {
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `Perfeito! Vou te mostrar os detalhes de *${lista.length} serviços*, ` +
+      "um de cada vez, com o orçamento de cada um no fim 😊"
+    );
+  }
+
+  for (const [idx, servico] of lista.entries()) {
+    // Operador assumiu a conversa no meio do lote: para na hora, senão o
+    // cliente segue recebendo mídia automática por cima da conversa humana.
+    if (estaPausado(chatId) || session.pausado) return;
+
+    await enviarDetalhesServico(chatId, session, servico);
+    if (idx < lista.length - 1) {
+      await new Promise(r => setTimeout(r, PAUSA_ENTRE_DETALHES_MS));
+    }
+  }
+}
+
+// Reenvia o PDF do orçamento do serviço logo depois dos detalhes dele
+// (Mario, 17/08/2026). Antes o cliente lia os detalhes e tinha que ROLAR a
+// conversa para trás para achar o preço; ele desistia de procurar e voltava a
+// perguntar valor por mensagem. O link fica guardado em
+// `orcamento.linksOrcamento[id]` pelo enviarPdfComLink do primeiro envio.
+async function reenviarOrcamentoDoServico(chatId, session, servico) {
+  const link = session.orcamento?.linksOrcamento?.[servico];
+  // Multi-dia e corporativo não geram PDF na hora (o orçamento vai depois,
+  // montado pela equipe): sem link, não há o que reenviar.
+  if (!link) return;
+  if (estaPausado(chatId) || session.pausado) return;
+
+  const nome = SERVICOS_NOMES[servico] || "serviço";
+  try {
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `💰 E aqui está de novo o *orçamento da ${nome}*, para você não precisar voltar na conversa 😊`
+    );
+    await enviarPdfComLink(
+      chatId,
+      link,
+      `Orcamento-${nome.replace(/[^A-Za-z0-9]+/g, "-")}`,
+      sendTyping,
+      sendText,
+      sendFileByUrl
+    );
+  } catch (e) {
+    // Falha no reenvio não pode derrubar o lote de detalhes.
+    console.error(`⚠️ Reenvio do orçamento (${nome}):`, e.message);
+  }
+}
+
 // Envia SÓ os detalhes (fotos/vídeos) de um serviço — sem repetir o preço.
 async function enviarDetalhesServico(chatId, session, servico) {
   sessions[chatId]._envioMultiplo = {
@@ -1645,6 +1746,10 @@ async function enviarDetalhesServico(chatId, session, servico) {
   } finally {
     delete sessions[chatId]?._envioMultiplo;
   }
+
+  // O PDF vai DEPOIS dos detalhes, fechando o serviço: é a última coisa que
+  // ele vê antes do próximo, e é onde está o preço.
+  await reenviarOrcamentoDoServico(chatId, session, servico);
 }
 
 
@@ -4610,29 +4715,29 @@ const resumoEucaristia =
   // ======================================================
   // ESCOLHER QUAL SERVIÇO DETALHAR
   // ======================================================
+  // Aceita VÁRIOS serviços de uma vez, no formato do menu de orçamento
+  // ("1,3,4", "134", "9" = todos) — Mario, 17/08/2026.
   if (session.step === "orcamento_escolher_detalhe") {
 
-    const escolhido    = parseInt(String(corpoMensagem).replace(/\D+/g, ""), 10);
     const paraDetalhar = servicosParaDetalhar(session);
+    const escolhidos   = extrairServicosDetalhe(corpoMensagem, paraDetalhar);
 
-    if (!paraDetalhar.includes(escolhido)) {
+    if (escolhidos.length === 0) {
       session.tentativasInvalidasDetalhe = (session.tentativasInvalidasDetalhe || 0) + 1;
       if (session.tentativasInvalidasDetalhe >= 3) {
         await autoPausarFluxo(chatId, session, "respostas inválidas ao escolher o detalhe");
         return;
       }
       await sendTyping(chatId);
-      await sendOptionList(
+      await sendText(
         chatId,
-        "Não entendi. De qual serviço você quer ver mais detalhes?",
-        paraDetalhar.map(s => ({ id: String(s), title: SERVICOS_NOMES[s] })),
-        { title: "Seus orçamentos", buttonLabel: "Ver serviços" }
+        "*⚠ Não entendi.* " + textoMenuDetalhes(paraDetalhar)
       );
       return;
     }
 
     session.tentativasInvalidasDetalhe = 0;
-    await enviarDetalhesServico(chatId, session, escolhido);
+    await enviarDetalhesEmLote(chatId, session, escolhidos);
     await perguntarPosOrcamento(chatId, session);
     return;
   }
@@ -4826,6 +4931,18 @@ function saudacaoPorHora() {
   return "Boa noite";
 }
 
+/**
+ * Quantas parcelas no PIX o cliente tem até a data do evento.
+ * Conta o MÊS ATUAL (em que ele fecha o contrato) até o mês do evento,
+ * com teto de 10. Sem data informada, devolve null (mensagem genérica).
+ *
+ * ⏳ NÃO MEXER AINDA (Mario, 17/08/2026): quando o bot parar de mandar os PDFs
+ * PRONTOS e passar a pedir o orçamento gerado pelo PhotoMusic Pro, isto muda
+ * para as regras do gerador (10x no cartão, PIX de 3 a 6x pela data, 7% à
+ * vista, 3% no 50+50 — ver PhotoMusic_Orcamentos::pix_parcelas()). Hoje os
+ * arquivos prontos estão com preço para 3x, então prometer 10x aqui deixaria a
+ * mensagem brigando com o PDF que vai anexado nela.
+ */
 function parcelasPixAteEvento(dataStr) {
   const m = String(dataStr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
@@ -5030,6 +5147,11 @@ async function enviarResumoCliente(chatId, session) {
 // os orçamentos. Parcelamento sem juros conforme o nº de serviços (regra do Mario):
 // 1 serviço = isca p/ incluir o 2º (6x); 2 serviços = 6x; 3 serviços = 9x.
 // R$ 100 de desconto no Pix a partir do 2º serviço (quando há 2+).
+//
+// ⏳ Esta escada vira *10x sem juros* quando o bot passar a pedir o orçamento
+// GERADO pelo PhotoMusic Pro (previsão: semana de 17/08/2026). Enquanto ele
+// manda os PDFs prontos, que estão com preço para 3x, o número aqui tem que
+// continuar batendo com o arquivo anexado. (Mario, 17/08/2026.)
 function montarVantagemExclusiva(nServicos, deslocamento) {
   const gratis = !!(deslocamento && deslocamento.gratis);
   const fimDesloc = gratis
