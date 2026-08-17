@@ -4,6 +4,8 @@ const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, sendFileFromUrl }
 const { urlBase, urlBase2, urlBase3 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
+// Serviço migrado para o orçamento GERADO não manda mais o PDF estático dele.
+const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
 
 // ======================================================
 // MENSAGEM DE ABERTURA POR TIPO DE EVENTO
@@ -201,38 +203,53 @@ async function enviarSomDJ(chatId, clb, convidados, sessionsRef, operatorPaused)
     // apresentação (fluxo novo 2026-07-15).
     if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
       await enviarFluxoSomDJ(chatId, clb);
+    } else {
+      /* 🚨 TÍTULO ANTES DA FOTO (falha pega no Totem Retrô, 17/08/2026): o
+         título mora no enviarFluxoSomDJ(), que é o bloco pulado aqui.
+         📌 A FOTO existe para o cliente VER o equipamento que está
+         contratando (aqui, a montagem de som com as caixas). */
+      await sendTyping(chatId);
+      if (estaPausado(chatId)) return;
+      await sendText(chatId, `*<<<< SOM COMPLETO COM DJ >>>>*`);
+
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, arquivosSomDJ.fotos2Caixas[0], "IMAGE", "");
     }
     if (estaPausado(chatId)) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
 
-    // ======================================================
-    // ENVIO DO PDF
-    // ======================================================
-    const pdf = orcamentosSomDJ[clb];
+    /* ======================================================
+       ENVIO DO PDF — ESTÁTICO DESLIGADO para quem já usa o orçamento GERADO
+       (Som Completo com DJ migrado em 18/08/2026). O PDF sai do
+       `services/orcamentoGerado.js`, uma vez, com todos os serviços juntos.
+       ====================================================== */
+    if (!usaOrcamentoGerado(7)) {
+      const pdf = orcamentosSomDJ[clb];
 
-    await sendTyping(chatId);
-    if (estaPausado(chatId)) return;
+      await sendTyping(chatId);
+      if (estaPausado(chatId)) return;
 
-    await sendText(
-      chatId,
-      `💰 Segue o arquivo com o orçamento do *Som Completo com DJ* 🎶✨`
-    );
+      await sendText(
+        chatId,
+        `💰 Segue o arquivo com o orçamento do *Som Completo com DJ* 🎶✨`
+      );
 
-    await sendTyping(chatId);
-    if (estaPausado(chatId)) return;
+      await sendTyping(chatId);
+      if (estaPausado(chatId)) return;
 
-    // Envia o PDF
-    await enviarPdfComLink(
-      chatId,
-      pdf,
-      "Orcamento-Som-DJ",
-      sendTyping,
-      sendText,
-      sendFileByUrl,
-      { session: sessions[chatId], servicoId: 7 }
-    );
+      // Envia o PDF
+      await enviarPdfComLink(
+        chatId,
+        pdf,
+        "Orcamento-Som-DJ",
+        sendTyping,
+        sendText,
+        sendFileByUrl,
+        { session: sessions[chatId], servicoId: 7 }
+      );
+    }
 
   } catch (error) {
     console.error(`❌ Erro ao enviar Som DJ para ${chatId}:`, error);

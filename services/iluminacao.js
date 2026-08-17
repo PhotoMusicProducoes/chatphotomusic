@@ -5,6 +5,8 @@ const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, sendFileFromUrl }
 const { urlBase, urlBase2, urlBase3 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
+// Serviço migrado para o orçamento GERADO não manda mais o PDF estático dele.
+const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
 
 // ======================================================
 // MENSAGEM DE ABERTURA POR TIPO DE EVENTO
@@ -117,28 +119,45 @@ async function enviarIluminacao(chatId, clb, convidados, sessionsRef, operatorPa
     // só o preço, sem a apresentação (fluxo novo 2026-07-15).
     if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
       await enviarFluxoIluminacao(chatId, clb);
+    } else {
+      /* 🚨 TÍTULO ANTES DA FOTO (falha pega no Totem Retrô, 17/08/2026): o
+         título mora no enviarFluxoIluminacao(), que é o bloco pulado aqui.
+         📌 A FOTO existe para o cliente VER o que está contratando. A primeira
+         mídia da lista é justamente a foto; as outras duas são vídeo. */
+      await sendTyping(chatId);
+      if (estaPausado(chatId)) return;
+      await sendText(chatId, "<<<< *ILUMINAÇÃO PARA PISTA DE DANÇA* >>>>");
+
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, arquivosIluminacao.midias[0], "IMAGE", "");
     }
     if (estaPausado(chatId)) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
 
-    // Envio do PDF
-    await sendTyping(chatId);
-    if (estaPausado(chatId)) return;
-    await sendText(chatId, "💰 Segue o arquivo com o orçamento da *Iluminação para Pista de Dança* ✨");
+    /* PDF ESTÁTICO DESLIGADO para quem já usa o orçamento GERADO (Iluminação
+       migrada em 18/08/2026). O PDF sai do `services/orcamentoGerado.js`, uma
+       vez, com todos os serviços juntos.
+       📌 Quando o pedido tem Som com DJ, a Iluminação nem chega no PDF: ela já
+       vem inclusa no Som e é retirada em `tirarIluminacaoSeTemSom`. */
+    if (!usaOrcamentoGerado(8)) {
+      await sendTyping(chatId);
+      if (estaPausado(chatId)) return;
+      await sendText(chatId, "💰 Segue o arquivo com o orçamento da *Iluminação para Pista de Dança* ✨");
 
-    await sendTyping(chatId);
-    if (estaPausado(chatId)) return;
-    await enviarPdfComLink(
-      chatId,
-      arquivosIluminacao.orcamento,
-      "Orcamento-Iluminacao-para-pista-de-danca",
-      sendTyping,
-      sendText,
-      sendFileByUrl,
-      { session: sessions[chatId], servicoId: 8 }
-    );
+      await sendTyping(chatId);
+      if (estaPausado(chatId)) return;
+      await enviarPdfComLink(
+        chatId,
+        arquivosIluminacao.orcamento,
+        "Orcamento-Iluminacao-para-pista-de-danca",
+        sendTyping,
+        sendText,
+        sendFileByUrl,
+        { session: sessions[chatId], servicoId: 8 }
+      );
+    }
 
   } catch (error) {
     console.error(`❌ Erro ao enviar Iluminação para ${chatId}:`, error);

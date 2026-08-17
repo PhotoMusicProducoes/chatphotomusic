@@ -28,9 +28,11 @@ const delay = (ms) => new Promise(r => setTimeout(r, ms));
 /* Serviços que JÁ usam o orçamento gerado na hora, na ordem em que migraram:
    13 = Totem Retrô (1º, aprovado 17/08) · 1 = Foto Cabine · 3 = Plataforma 360 ·
    2 = Totem Fotográfico · 4 = Foto Paparazzi · 5 = Foto Lembrança (18/08) ·
-   6 = Cobertura Fotográfica (18/08, 🚨 com restrição de celebração abaixo).
-   ⏳ Faltam: 7 = Som com DJ · 8 = Iluminação. */
-const SERVICOS_GERADOS = [13, 1, 3, 2, 4, 5, 6];
+   6 = Cobertura Fotográfica (18/08, 🚨 com restrição de celebração abaixo) ·
+   7 = Som com DJ · 8 = Iluminação (18/08).
+   ✅ MIGRAÇÃO COMPLETA: os 9 serviços saem no orçamento gerado. Nenhum PDF
+   estático é mais enviado, então o parcelamento do bot já pode mudar. */
+const SERVICOS_GERADOS = [13, 1, 3, 2, 4, 5, 6, 7, 8];
 
 /* id do serviço -> slug do catálogo do WordPress.
    🚨 SEMPRE POR SLUG: o endpoint lê número como dígito do menu do bot, então o
@@ -98,6 +100,20 @@ function idsGerados(ids, celebracao = null) {
   return (ids || []).map(Number).filter(id => usaOrcamentoGerado(id, celebracao));
 }
 
+/**
+ * 🚨 ILUMINAÇÃO (8) JÁ VEM INCLUSA NO SOM COM DJ (7): com os dois no pedido, o
+ * PDF cobraria duas vezes a mesma luz.
+ *
+ * O `index.js` já tira o 8 quando o cliente pede 7 e 8 juntos, MAS só na
+ * primeira rodada (`!session.primeiraRodadaFinalizada`). Com o PDF único isso
+ * deixou de bastar: quem pede Som na 1ª rodada e Iluminação na 2ª faz o
+ * `segundaRodada` juntar as duas listas, e aí os dois entram no MESMO arquivo.
+ * A regra passa a valer também aqui, que é o último ponto antes do preço.
+ */
+function tirarIluminacaoSeTemSom(ids) {
+  return ids.includes(7) ? ids.filter(id => id !== 8) : ids;
+}
+
 /** "Foto Cabine, Plataforma 360º e Som Completo com DJ" */
 function listarNomes(ids) {
   const nomes = ids.map(id => NOME_POR_SERVICO[id]).filter(Boolean);
@@ -139,6 +155,10 @@ async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
     const jaEnviados = idsGerados(session?.orcamento?.servicosEnviados || [], celebracao);
     idsPdf = Array.from(new Set(jaEnviados.concat(ids)));
   }
+
+  // Luz que já vem no Som não entra de novo. Ver a função para o porquê.
+  idsPdf = tirarIluminacaoSeTemSom(idsPdf);
+  if (idsPdf.length === 0) return false;
 
   const slugs = idsPdf.map(id => SLUG_POR_SERVICO[id]).filter(Boolean);
   if (slugs.length === 0) return false;
@@ -218,6 +238,7 @@ module.exports = {
   enviarOrcamentoGerado,
   usaOrcamentoGerado,
   idsGerados,
+  tirarIluminacaoSeTemSom,   // exportado para dar para testar a regra sozinha
   SERVICOS_GERADOS,
   SLUG_POR_SERVICO,
   NOME_POR_SERVICO,
