@@ -442,9 +442,27 @@ async function enviarOrcamentoRetro(chatId, clb, diasCorporativo) {
     return;
   }
 
+  /* 🚨 O TÍTULO TEM QUE VIR ANTES DA FOTO (Mario pegou no teste do cliente,
+     17/08/2026). O `*<<<< TOTEM RETRÔ >>>>*` mora no enviarFluxoRetro(), que é
+     justamente o bloco PULADO no envio enxuto (`apenasOrcamento`). Resultado: a
+     foto do equipamento chegava solta, logo depois da avaliação, sem nada dizer
+     de que serviço era.
+     Só mandamos aqui quando o fluxo completo NÃO rodou, senão sai duas vezes.
+     📌 Nos outros 8 serviços isso não aparecia porque nenhum manda foto antes
+     do preço; quem identifica lá é a frase "Segue o orçamento da <serviço>".
+     Quando a foto for replicada neles, o título tem que ir junto. */
+  const _soOrcamento = !!sessions[chatId]?._envioMultiplo?.apenasOrcamento;
+  if (_soOrcamento) {
+    await sendTyping(chatId);
+    await delay(300);
+    if (estaPausado(chatId)) return;
+    await sendText(chatId, `*<<<< TOTEM RETRÔ >>>>*`);
+  }
+
   // Foto do serviço ANTES do orçamento: no envio enxuto o cliente recebe o PDF
-  // sem ter visto nada do equipamento, e ficava difícil visualizar o que estava
-  // comprando. A foto vai sempre, mesmo no fluxo completo, porque ela abre o
+  // sem ter visto nada do equipamento, e ficava difícil VISUALIZAR o
+  // equipamento que está contratando (a razão é essa, não identificar o
+  // serviço). A foto vai sempre, mesmo no fluxo completo, porque ela abre o
   // bloco de preço.
   if (estaPausado(chatId)) return;
   await sendFileByUrl(chatId, FOTO_RETRO_1, "IMAGE", "");
