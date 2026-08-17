@@ -7,6 +7,8 @@ const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, sendFileFromUrl }
 const { urlBase, urlBase1, urlBase2, urlBase3 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
+// Serviço migrado para o orçamento GERADO não manda mais o PDF estático dele.
+const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
 
 // ======================================================================
 // DELAY — padrão dos outros serviços
@@ -544,19 +546,40 @@ async function enviarPlataforma360(chatId, clb, convidados, sessionsRef, operato
     // manda só o preço, sem a apresentação (fluxo novo 2026-07-15).
     if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
       await enviarFluxoPlataforma360(chatId, clb);
+    } else {
+      /* 🚨 TÍTULO ANTES DA FOTO (a falha que o Mario pegou no Totem Retrô,
+         17/08/2026): o `*<<<< PLATAFORMA 360º >>>>*` mora no
+         enviarFluxoPlataforma360(), que é o bloco pulado aqui, então a foto
+         chegaria solta, sem nada dizer de que serviço era.
+         📌 A FOTO existe para o cliente VER O EQUIPAMENTO que está
+         contratando: no envio enxuto ele recebia o preço sem ter visto a
+         plataforma. */
+      await sendTyping(chatId);
+      await delay(300);
+      if (estaPausado(chatId)) return;
+      await sendText(chatId, `*<<<< PLATAFORMA 360º >>>>*`);
+
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, urlBase1 + "ledplataforma1.jpg", "IMAGE", "");
+      await delay(500);
     }
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
 
-    // 2) Envia o orçamento
-    await enviarOrcamentoPlataforma360(
-      chatId,
-      clb,
-      convidados,
-      duracao,
-      diasCorporativo
-    );
+    /* 2) PDF ESTÁTICO DESLIGADO para quem já usa o orçamento GERADO
+       (Plataforma 360 migrada em 17/08/2026). O PDF sai do
+       `services/orcamentoGerado.js`, UMA vez, com todos os serviços do pedido
+       juntos e com o desconto de combo aplicado. */
+    if (!usaOrcamentoGerado(3)) {
+      await enviarOrcamentoPlataforma360(
+        chatId,
+        clb,
+        convidados,
+        duracao,
+        diasCorporativo
+      );
+    }
 
   } finally {
     sessionsRef[chatId].enviandoPlataforma360 = false;
