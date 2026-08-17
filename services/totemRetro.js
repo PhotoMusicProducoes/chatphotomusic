@@ -17,7 +17,7 @@
 // IMPORTS
 // ======================================================================
 const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, gerarOrcamento } = require("../utils/index.js");
-const { urlBase, urlBase3, urlBase4 } = require("../utils/config.js");
+const { urlBase, urlBase3, urlBase4, OPERADOR_TELEFONE_ID } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
 
@@ -450,11 +450,9 @@ async function enviarOrcamentoRetro(chatId, clb, diasCorporativo) {
   await sendFileByUrl(chatId, FOTO_RETRO_1, "IMAGE", "");
   await delay(500);
 
-  await sendTyping(chatId);
-  await delay(300);
-  if (estaPausado(chatId)) return;
-  await sendText(chatId, "💰 Segue o arquivo com o orçamento do *Totem Retrô!* 📸✨");
-
+  // 🚨 GERA ANTES DE ANUNCIAR. Na primeira versão o bot dizia "Segue o arquivo"
+  // e só depois tentava gerar; quando falhava, o cliente lia "Segue o arquivo"
+  // seguido de "estou finalizando", uma contradição (Mario pegou no 1º teste).
   await sendTyping(chatId);
   await delay(300);
   if (estaPausado(chatId)) return;
@@ -465,6 +463,19 @@ async function enviarOrcamentoRetro(chatId, clb, diasCorporativo) {
   } catch (erro) {
     console.error(`🚨 [totemRetro] Orçamento automático falhou para ${chatId}: ${erro.codigo} — ${erro.message}`);
 
+    // Avisa o OPERADOR com o motivo. Sem isso a falha só aparecia no log do
+    // Fly e o Mario ficava sem saber por que o cliente não recebeu o PDF.
+    try {
+      await sendText(
+        OPERADOR_TELEFONE_ID,
+        `🚨 *Orçamento do Totem Retrô não saiu*\n` +
+        `Cliente: ${String(chatId).replace(/\D+/g, "")}\n` +
+        `Motivo: *${erro.codigo}*\n${erro.message}`
+      );
+    } catch (e) {
+      console.error("⚠️ Não consegui avisar o operador:", e.message);
+    }
+
     if (estaPausado(chatId)) return;
     await sendText(
       chatId,
@@ -473,6 +484,11 @@ async function enviarOrcamentoRetro(chatId, clb, diasCorporativo) {
 
     return;
   }
+
+  await sendTyping(chatId);
+  await delay(300);
+  if (estaPausado(chatId)) return;
+  await sendText(chatId, "💰 Segue o arquivo com o orçamento do *Totem Retrô!* 📸✨");
 
   if (estaPausado(chatId)) return;
 
