@@ -7,6 +7,8 @@ const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, sendLinkPreview, 
 const { urlBase, urlBase1, urlBase2, urlBase3 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
+// Servico migrado para o orcamento GERADO nao manda mais o PDF estatico dele.
+const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
 const { enviarYoutube } = require("../utils/youtubeUtils.js");
 
 // ======================================================================
@@ -451,20 +453,37 @@ async function enviarFotoPaparazzi(chatId, clb, convidados, sessionsRef, operato
     // apenasFluxo: só o preço, sem a apresentação (fluxo novo 2026-07-15).
     if (!sessions[chatId]?._envioMultiplo?.apenasOrcamento) {
       await enviarFluxoPaparazzi(chatId, clb);
+    } else {
+      /* 🚨 TÍTULO ANTES DA FOTO (falha pega no Totem Retrô, 17/08/2026): o
+         título mora no enviarFluxoPaparazzi(), que é o bloco pulado aqui.
+         📌 A FOTO existe para o cliente VER O EQUIPAMENTO que está
+         contratando (aqui, o bastão de LED do paparazzi). */
+      await sendTyping(chatId);
+      await delay(300);
+      if (estaPausado(chatId)) return;
+      await sendText(chatId, `*<<<< FOTO PAPARAZZI DIGITAL >>>>*`);
+
+      if (estaPausado(chatId)) return;
+      await sendFileByUrl(chatId, urlBase1 + "fotopaparazzidigital1.jpg", "IMAGE", "");
+      await delay(500);
     }
     if (sessionsRef[chatId]?.pausado) return;
 
     // Multi-dia: apenas apresentação, orçamento enviado no resumo central
     if (sessions[chatId]?._envioMultiplo?.apenasFluxo) return;
 
-    // 2) Envia orçamento padronizado
-    await enviarOrcamentoPaparazzi(
-      chatId,
-      clb,
-      convidados,
-      duracao,
-      diasCorporativo
-    );
+    /* 2) PDF ESTÁTICO DESLIGADO para quem já usa o orçamento GERADO
+       (Foto Paparazzi migrado em 17/08/2026). O PDF sai do
+       `services/orcamentoGerado.js`, uma vez, com todos os serviços juntos. */
+    if (!usaOrcamentoGerado(4)) {
+      await enviarOrcamentoPaparazzi(
+        chatId,
+        clb,
+        convidados,
+        duracao,
+        diasCorporativo
+      );
+    }
 
   } catch (error) {
     console.error(`❌ Erro ao enviar Paparazzi para ${chatId}:`, error);
