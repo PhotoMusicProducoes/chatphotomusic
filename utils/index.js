@@ -33,7 +33,10 @@ const { waitForUserResponse } = require("./waitForUserResponse.js");
 const { copyOrcamentoData } = require("./copyOrcamentoData.js");
 
 // Config
-const { API_URL, INSTANCE_ID, TOKEN, urlBase, urlBase1, urlBase2, urlBase3 } = require("./config.js");
+const { API_URL, INSTANCE_ID, TOKEN, urlBase, urlBase1, urlBase2, urlBase3, urlBase4 } = require("./config.js");
+
+// Orçamento gerado na hora pelo PhotoMusic Pro (WordPress)
+const { gerarOrcamento } = require("./orcamentoApi.js");
 
 // Sessions
 const { sessions, getSession, deleteSession } = require("./sessions.js");
@@ -88,5 +91,9 @@ module.exports = {
   urlBase,
   urlBase1,
   urlBase2,
-  urlBase3
+  urlBase3,
+  urlBase4,
+
+  // Orçamento automático (PhotoMusic Pro)
+  gerarOrcamento
 };

@@ -34,6 +34,7 @@ const { resetSession } = require("./utils/resetSession");
 const {
   enviarFotoCabine,
   enviarTotemFotografico,
+  enviarTotemRetro,
   enviarPlataforma360,
   enviarFotoPaparazzi,
   enviarFotoLembranca,
@@ -262,7 +263,8 @@ async function capturarClienteOrcamento(chatId, session) {
       5: "Foto Lembrança",
       6: "Cobertura Fotográfica",
       7: "Som Completo com DJ",
-      8: "Iluminação para Pista de Dança"
+      8: "Iluminação para Pista de Dança",
+      13: "Totem Retrô"
     };
     const servicosIds   = orc.servicosEnviados || [];
     const servicosNomes = servicosIds.map(id => servicosMapLead[id]).filter(Boolean);
@@ -620,6 +622,9 @@ function nomeOperador(numero) {
 const comandosServicos = {
   "#fotocabine": 1,
   "#totemfotografico": 2,
+  // 🚧 EM TESTE — Totem Retrô. Id 13 é o mesmo do PhotoMusic Pro de propósito,
+  // para o link do orçamento casar com o serviço lá. Ainda fora do menu.
+  "#totemretro": 13,
   "#plataforma360": 3,
   "#fotopaparazzi": 4,
   "#fotolembranca": 5,
@@ -698,6 +703,12 @@ function servicoJaEnviado(session, servico) {
 }
 
 function extrairServicosDaMensagem(texto) {
+  const limpo = String(texto || "").toLowerCase();
+
+  // "todos" / "tudo" escrito por extenso vale o mesmo que o 9. Tem cliente que
+  // responde com a palavra em vez do número, e ele ficava sem nada.
+  if (/\b(todos|todas|tudo)\b/.test(limpo)) return [...TODOS_SERVICOS];
+
   const numeros = texto.replace(/\D+/g, "").split("");
   const unicos = [...new Set(numeros)];
   const escolhidos = unicos
@@ -708,7 +719,18 @@ function extrairServicosDaMensagem(texto) {
   // Sem essa opção o cliente precisava digitar 1,2,3,4,5,6,7,8.
   if (escolhidos.includes(9)) return [...TODOS_SERVICOS];
 
-  return escolhidos.filter(n => n <= 8);
+  const lista = escolhidos.filter(n => n <= 8);
+
+  // 🚧 0 = TOTEM RETRÔ, número ESCONDIDO enquanto o serviço está em teste: ele
+  // não aparece no menu nem entra no "todos". Quando o Mario validar, ele vira
+  // o nº 2 do menu, os outros andam uma casa e este atalho sai daqui.
+  // O 0 só conta quando está sozinho ou separado por vírgula ("0", "0,3"). Em
+  // "10" ele é o zero do dez, não uma escolha — por isso o lookaround.
+  if (/(?<!\d)0(?!\d)/.test(texto) && !lista.includes(SERVICO_TOTEM_RETRO)) {
+    lista.unshift(SERVICO_TOTEM_RETRO);
+  }
+
+  return lista;
 }
 
 // Extrai números de itens (1..max). Aceita colado ("256" → 2,5,6, como em
@@ -1204,6 +1226,10 @@ async function enviarOrcamentoUnificado(
       case 8:
         await enviarIluminacao(chatId, celebracaoId, convidados, sessions, false);
         break;
+      // 🚧 Totem Retrô em teste, entra pelo 0 escondido e pelo #totemretro
+      case 13:
+        await enviarTotemRetro(chatId, celebracaoId, convidados, sessions, false);
+        break;
       default:
         await sendText(chatId, "*⚠ Serviço inválido.*");
     }
@@ -1284,7 +1310,7 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
     }
 
     // Deduplicação de moldura/comocontratar igual ao fluxo normal
-    const servicosComMolduraM = [1, 2, 4, 5];
+    const servicosComMolduraM = [1, 2, 4, 5, 13];
     const ultimoComMolduraM   = [...listaServicos].reverse()
       .find(id => servicosComMolduraM.includes(id));
 
@@ -1332,7 +1358,7 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
   // ==============================================================
 
   // Serviços com molduradasfotos.mp3 (para deduplicação)
-  const servicosComMoldura = [1, 2, 4, 5];
+  const servicosComMoldura = [1, 2, 4, 5, 13];
   const ultimoComMoldura   = [...listaServicos].reverse()
     .find(id => servicosComMoldura.includes(id));
 
@@ -1459,8 +1485,16 @@ const SERVICOS_NOMES = {
   5: "Foto Lembrança",
   6: "Cobertura Fotográfica",
   7: "Som Completo com DJ",
-  8: "Iluminação para Pista de Dança"
+  8: "Iluminação para Pista de Dança",
+  13: "Totem Retrô"
 };
+
+// 🚧 TOTEM RETRÔ EM TESTE. O id 13 é o mesmo do PhotoMusic Pro de propósito,
+// para o link do orçamento casar com o serviço de lá. Ele fica FORA do
+// TODOS_SERVICOS enquanto está em teste: não entra no "9 = todos", não aparece
+// no menu e não é oferecido no "mais orçamento". Só entra pelo 0 escondido e
+// pelo #totemretro. Quando o Mario validar, ele vira o nº 2 do menu.
+const SERVICO_TOTEM_RETRO = 13;
 const TODOS_SERVICOS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 // ======================================================
@@ -5023,7 +5057,8 @@ async function enviarResumoCliente(chatId, session) {
       5: "Foto Lembrança",
       6: "Cobertura Fotográfica",
       7: "Som Completo com DJ",
-      8: "Iluminação para Pista de Dança"
+      8: "Iluminação para Pista de Dança",
+      13: "Totem Retrô"
     };
 
     const linksOrcamento = orc.linksOrcamento || {};
@@ -5231,7 +5266,8 @@ async function enviarResumoOperador(chatIdCliente, session, quemEnviou = "") {
         5: "Foto Lembrança",
         6: "Cobertura Fotográfica",
         7: "Som DJ",
-        8: "Iluminação"
+        8: "Iluminação",
+        13: "Totem Retrô"
       }[id]))
       .filter(Boolean)
       .join(", ");
