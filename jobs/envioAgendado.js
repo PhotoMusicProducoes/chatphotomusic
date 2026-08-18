@@ -15,7 +15,17 @@ const { sendText } = require("../utils/index.js");
 
 const TIMEZONE = "America/Sao_Paulo";
 const OPERADOR_TELEFONE_ID = "5521964428172@c.us"; // fallback se não houver destino salvo
-const TODOS = [1, 2, 3, 4, 5, 6, 7, 8];
+/* A lista vem do index.js (require preguiçoso, igual ao do envio abaixo):
+   é a MESMA que o menu usa, então serviço novo entra aqui sozinho. Escrita
+   à mão, ela deixava o Totem Retrô de fora do "enviar o que falta". */
+function todosOsServicos() {
+  try {
+    return [...require("../index.js").TODOS_SERVICOS];
+  } catch (e) {
+    console.error("⚠️ não consegui ler TODOS_SERVICOS:", e.message);
+    return [1, 2, 3, 4, 5, 6, 7, 8];
+  }
+}
 
 async function executarEnvioAgendado() {
   for (const chatId of Object.keys(sessions)) {
@@ -34,7 +44,7 @@ async function executarEnvioAgendado() {
     }
 
     const enviados  = s.orcamento?.servicosEnviados || [];
-    const faltantes = TODOS.filter(x => !enviados.includes(x));
+    const faltantes = todosOsServicos().filter(x => !enviados.includes(x));
 
     // Consome o agendamento ANTES de enviar: se algo falhar no meio, não
     // reenvia tudo de novo no ciclo seguinte.

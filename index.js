@@ -3083,7 +3083,9 @@ async function handleIncomingMessage(message) {
         // ======================================================
         if (nomeComando === "#enviarfaltantes") {
           const enviados = session.orcamento?.servicosEnviados || [];
-          const faltantes = [1,2,3,4,5,6,7,8].filter(s => !enviados.includes(s));
+          // Lista canônica (inclui o Totem Retrô); escrita à mão ela ficava velha
+          // a cada serviço novo no menu.
+          const faltantes = TODOS_SERVICOS.filter(s => !enviados.includes(s));
 
           if (!faltantes.length) {
             await sendText(destinoOperador, `✅ *${chatIdCliente}* já recebeu todos os serviços.`);
@@ -4967,9 +4969,8 @@ const resumoEucaristia =
     }
 
     // Cliente quer mais orçamentos → gerar lista atualizada
-    const todosServicos = [1, 2, 3, 4, 5, 6, 7, 8];
-
-    const restantes = todosServicos.filter(
+    // Lista canônica: com a lista à mão o Totem Retrô nunca era oferecido aqui.
+    const restantes = TODOS_SERVICOS.filter(
       s => !session.orcamento.servicosEnviados.includes(s)
     );
 
@@ -5002,6 +5003,10 @@ const resumoEucaristia =
 // ======================================================
 module.exports = {
   handleIncomingMessage,
+  // 🚨 Lista canônica dos serviços do menu, na ordem do menu. Os jobs
+  // (envio agendado, lembrete) precisam dela: cada cópia escrita à mão
+  // envelhecia e deixava serviço novo de fora.
+  TODOS_SERVICOS,
   // usados pelo jobs/lembreteOrcamento no lembrete de 1h (entrega enxuta
   // de todos os orçamentos + captura do lead p/ o follow-up assumir).
   capturarClienteOrcamento,
@@ -5060,32 +5065,52 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
   }
 
   // listaServicos: permite mandar SÓ os que faltam (comando #enviarfaltantes)
+  /* 🚨 Lista PADRÃO = TODOS_SERVICOS, não uma lista escrita à mão. Com o Totem
+     Retrô no menu são 9 serviços, e a lista fixa de 8 deixaria ele de fora
+     justamente no envio que se chama "todos os nossos serviços". */
   const lista = (Array.isArray(listaServicos) && listaServicos.length)
     ? listaServicos
-    : [1, 2, 3, 4, 5, 6, 7, 8];
-  const LOTES = [3, 3, 2]; // 3 + 3 + 2, com 15s entre os lotes (anti-bloqueio)
-  let i = 0;
+    : [...TODOS_SERVICOS];
 
-  for (let l = 0; l < LOTES.length; l++) {
-    for (let k = 0; k < LOTES[l] && i < lista.length; k++, i++) {
-      const servico = lista[i];
-      sessions[chatId]._envioMultiplo = {
-        apenasOrcamento:    true,
-        ehUltimo:           i === lista.length - 1,
-        ehUltimoComMoldura: false,
-        servicosNaLista:    lista
-      };
-      try {
-        await enviarOrcamentoUnificado(chatId, servico, clb, conv, horas, dias, true);
-        registrarServicoEnviado(session, servico);
-      } catch (e) {
-        console.error(`⚠️ falha no serviço ${servico}:`, e.message);
-      }
-      await new Promise(r => setTimeout(r, 600));
+  /* Lotes de 3 com 15s entre eles (anti-bloqueio da Meta). 🚨 Antes era um
+     array fixo [3,3,2], que comportava 8 e SILENCIOSAMENTE descartava o 9º
+     serviço. Agora fatia a lista, seja qual for o tamanho dela. */
+  const POR_LOTE = 3;
+  for (let i = 0; i < lista.length; i++) {
+    const servico = lista[i];
+    sessions[chatId]._envioMultiplo = {
+      apenasOrcamento:    true,
+      ehUltimo:           i === lista.length - 1,
+      ehUltimoComMoldura: false,
+      servicosNaLista:    lista
+    };
+    try {
+      await enviarOrcamentoUnificado(chatId, servico, clb, conv, horas, dias, true);
+      registrarServicoEnviado(session, servico);
+    } catch (e) {
+      console.error(`⚠️ falha no serviço ${servico}:`, e.message);
     }
-    if (i < lista.length) await new Promise(r => setTimeout(r, 15000));
+    await new Promise(r => setTimeout(r, 600));
+    // Respiro entre lotes, menos depois do último serviço
+    const fimDeLote = (i + 1) % POR_LOTE === 0;
+    if (fimDeLote && i < lista.length - 1) await new Promise(r => setTimeout(r, 15000));
   }
   delete sessions[chatId]._envioMultiplo;
+
+  /* 🧾 O ORÇAMENTO EM SI (bug pego pelo Mario em 17/08/2026).
+     Este envio saía SEM ARQUIVO: o laço acima manda a apresentação de cada
+     serviço com `apenasOrcamento`, e o PDF vinha de dentro de cada service.
+     Quando os 9 migraram para o orçamento GERADO, o PDF saiu de lá e passou a
+     vir do `orcamentoGerado.js`, chamado UMA vez com a lista inteira - e este
+     job, que é um TERCEIRO chamador, ficou para trás. O cliente que parou de
+     responder recebia "segue o orçamento" e nenhum arquivo.
+     🚨 Todo caminho que envia serviço precisa desta chamada: fluxo automático,
+     comando manual do operador e este envio do lembrete. */
+  try {
+    await enviarOrcamentoGerado(chatId, session, lista);
+  } catch (e) {
+    console.error("⚠️ orçamento gerado não saiu:", e.message);
+  }
 
   // Resumo final com TODOS os links (é o que amarra tudo pro cliente)
   try { await enviarResumoCliente(chatId, session); } catch (e) {

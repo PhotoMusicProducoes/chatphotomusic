@@ -56,6 +56,80 @@ function encerrarFluxoLead(telefone) {
 // ======================================================
 // Deriva o tipo do follow-up. Usa `lead.tipo` (plugin novo); se vier só o
 // número (`lead.estagio`, plugin antigo), mapeia para os 3 tipos da Fase A.
+
+/* ======================================================================
+   ESCADA DE PRECOS DO FOLLOW-UP (Mario, 17/08/2026)
+   ======================================================================
+   A escada ANTIGA era de PARCELAS (24h=4x, 48h=5x, 72h=6x) e passou a jogar
+   CONTRA a casa: com o orcamento GERADO, o PDF que o cliente ja recebeu diz
+   *10x sem juros*, entao oferecer "condicao especial: 6x" era oferecer PIOR
+   do que a proposta original.
+
+   A alavanca agora e o PRECO: o follow-up abre no pacote MAIOR e vai DESCENDO
+   a escada a cada etapa, sempre com 10x no cartao e o PIX disponivel pela data.
+
+   Os valores NAO sao inventados aqui: vem prontos em `lead.precos`, calculados
+   no WordPress pelo MESMO motor que gera o PDF. Recalcular por fora criaria
+   uma segunda verdade, e um dia o lembrete discordaria da proposta que o
+   cliente tem na mao.
+   ====================================================================== */
+
+var NL = "\n";
+
+function brl(v) {
+  return "R$ " + Number(v || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  });
+}
+
+/* Qual degrau cada etapa mostra. 0 = pacote mais caro. As etapas finais
+   repetem o ultimo degrau: abaixo do menor pacote nao ha para onde descer, e
+   inventar desconto criaria preco fora do sistema. */
+var DEGRAU_POR_ETAPA = {
+  "24h": 0, "48h": 1, "72h": 2, "7dias": 2,
+  "promo_mensal": 2, "promo_30dias": 2, "promo_15dias": 2
+};
+
+function degrauDaEtapa(precos, tipo) {
+  var d = DEGRAU_POR_ETAPA[tipo];
+  if (d === undefined) d = 0;
+  return Math.min(d, precos.colunas.length - 1);
+}
+
+/* Bloco de preco da etapa. Devolve "" quando o lead nao tem preco calculado,
+   e a mensagem sai sem valor, exatamente como era antes. */
+function blocoPreco(lead, tipo) {
+  var p = lead.precos;
+  if (!p || !Array.isArray(p.colunas) || p.colunas.length === 0) return "";
+
+  var col = p.colunas[degrauDaEtapa(p, tipo)];   // ja vem da mais cara p/ a mais barata
+  if (!col || !(col.total > 0)) return "";
+
+  var nParc = p.cartao_parcelas || 10;
+  // So nomeia o pacote quando ha mais de um: com um so, o titulo nao informa nada.
+  var titulo = (p.colunas.length > 1 && col.titulo)
+    ? " Pacote *" + col.titulo + "*"
+    : " Seu orçamento";
+
+  var txt = "💰" + titulo + ": *" + brl(col.total) + "*" + NL +
+            "💳 ou *" + nParc + "x de " + brl(col.total / nParc) + "* sem juros no cartão";
+
+  // PIX parcelado so existe com 3 meses ou mais ate a festa (npix = 0 abaixo disso)
+  if (p.npix >= (p.pix_min || 3)) {
+    txt += NL + "💠 ou *PIX em até " + p.npix + "x* até a data do seu evento";
+  }
+  return txt + NL;
+}
+
+/* Aviso de que desceu um degrau, so quando desceu de verdade. */
+function frasePrecoMenor(lead, tipo) {
+  var p = lead.precos;
+  if (!p || !Array.isArray(p.colunas) || p.colunas.length < 2) return "";
+  return degrauDaEtapa(p, tipo) > 0
+    ? "Separei uma opção com *valor mais leve* pra caber melhor no seu bolso. 🙌" + NL
+    : "";
+}
+
 function tipoDoLead(lead) {
   if (lead.tipo) return lead.tipo;
   return { 1: "24h", 2: "72h", 3: "7dias" }[lead.estagio] || "24h";
@@ -69,8 +143,12 @@ function montarMensagemFollowup(lead) {
   const tipo       = tipoDoLead(lead);
 
   // Lembrete do desconto de 2+ serviços (acumula com o do follow-up)
+  /* O desconto de R$ 100 por servico a mais JA ESTA no valor calculado (o
+     motor aplica o combo antes de devolver o total). Prometer "ainda
+     garante" seria prometer o mesmo desconto duas vezes, e o cliente
+     cobraria isso na hora de fechar. Agora a frase so INFORMA. */
   const linhaMulti = lead.multiServicos
-    ? "\nE lembrando: contratando *2 ou mais serviços*, você ainda garante *R$ 100,00 de desconto* a partir do segundo serviço! 🤩\n"
+    ? "\nEsse valor já vem com o *desconto de R$ 100,00* por contratar mais de um serviço. 🤩\n"
     : "\n";
 
   switch (tipo) {
