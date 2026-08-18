@@ -5251,14 +5251,36 @@ async function enviarResumoCliente(chatId, session) {
 
     if (servicosIds.length > 0) {
       linhas.push(`\n${index++}. Serviço(s) Contratado(s):`);
+      /* 🚨 AGRUPA OS SERVIÇOS QUE DIVIDEM O MESMO PDF (18/08/2026).
+         Desde que o orçamento virou 1 PDF para N serviços, o MESMO link fica
+         gravado em `linksOrcamento` para cada id, e o resumo repetia o arquivo
+         uma vez por serviço: "Totem Retrô 🔗 link" e "Plataforma 360 🔗 link".
+         O cliente lê como se fossem 2 propostas. Agora sai
+         "Totem Retrô e Plataforma 360 🔗 link": uma linha por ARQUIVO.
+         Serviço sem link fica em linha própria, sem inventar arquivo. */
+      const porLink = new Map();
+      const semLink = [];
+
       for (const id of servicosIds) {
         const nome = servicosMap[id];
         if (!nome) continue;
-        linhas.push(`   • *${nome}*`);
         const link = linksOrcamento[id];
-        if (link) {
-          linhas.push(`     🔗 ${link}`);
-        }
+        if (!link) { semLink.push(nome); continue; }
+        if (!porLink.has(link)) porLink.set(link, []);
+        porLink.get(link).push(nome);
+      }
+
+      // "A", "A e B", "A, B e C": o "e" antes do último, como se fala.
+      const juntarNomes = (ns) => ns.length <= 1
+        ? (ns[0] || "")
+        : ns.slice(0, -1).join(", ") + " e " + ns[ns.length - 1];
+
+      for (const [link, nomes] of porLink) {
+        linhas.push(`   • *${juntarNomes(nomes)}*`);
+        linhas.push(`     🔗 ${link}`);
+      }
+      for (const nome of semLink) {
+        linhas.push(`   • *${nome}*`);
       }
     }
 
