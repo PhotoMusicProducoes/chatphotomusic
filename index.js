@@ -5178,14 +5178,14 @@ function saudacaoPorHora() {
 /**
  * Quantas parcelas no PIX o cliente tem até a data do evento.
  * Conta o MÊS ATUAL (em que ele fecha o contrato) até o mês do evento,
- * com teto de 10. Sem data informada, devolve null (mensagem genérica).
+ * com teto de 6, a mesma regra do gerador (PhotoMusic_Orcamentos::PIX_MAX_PARCELAS,
+ * ver pix_parcelas()). Sem data informada, devolve null (mensagem genérica).
  *
- * ⏳ NÃO MEXER AINDA (Mario, 17/08/2026): quando o bot parar de mandar os PDFs
- * PRONTOS e passar a pedir o orçamento gerado pelo PhotoMusic Pro, isto muda
- * para as regras do gerador (10x no cartão, PIX de 3 a 6x pela data, 7% à
- * vista, 3% no 50+50 — ver PhotoMusic_Orcamentos::pix_parcelas()). Hoje os
- * arquivos prontos estão com preço para 3x, então prometer 10x aqui deixaria a
- * mensagem brigando com o PDF que vai anexado nela.
+ * 🐛 CORRIGIDO 2026-08 (Mario): desde a migração para o orçamento GERADO pelo
+ * PhotoMusic Pro (9 de 9 serviços, 18/08/2026), o cartão já é 10x sem juros
+ * para todo mundo e o PIX é o parcelamento de 3 a 6x pela data do evento.
+ * Este teto ficou esquecido em 10 (herança do tempo dos PDFs prontos de 3x) e
+ * o bot chegou a prometer PIX em 10x, quando o correto era 6x.
  */
 function parcelasPixAteEvento(dataStr) {
   const m = String(dataStr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -5200,7 +5200,7 @@ function parcelasPixAteEvento(dataStr) {
               + 1; // +1 = inclui o mês atual
 
   if (!Number.isFinite(meses) || meses < 1) return 1;
-  return Math.min(10, meses);
+  return Math.min(6, meses);
 }
 
 async function enviarResumoCliente(chatId, session) {
@@ -5378,15 +5378,15 @@ async function enviarResumoCliente(chatId, session) {
     // 💠 PARCELAMENTO NO PIX — mensagem separada, em destaque, logo após o
     // resumo. Vale para social e "outros"; NÃO vai em evento corporativo.
     // Quando o cliente já informou a data, dizemos quantas parcelas ele tem
-    // de fato (do mês atual até o mês do evento, teto de 10).
+    // de fato (do mês atual até o mês do evento, teto de 6).
     if (Number(orc.celebracaoId) !== 8) {
       const nParc = parcelasPixAteEvento(orc.data);
       const txtPix = nParc
         ? `💠 *Parcelamento no PIX*\n\n` +
-          `Você pode dividir o valor no PIX *até a data do seu evento*, em até *10x*.\n\n` +
+          `Você pode dividir o valor no PIX *até a data do seu evento*, em até *6x*.\n\n` +
           `Como o seu evento é em *${orc.data}*, dá para parcelar em até *${nParc}x no PIX*. 🙌`
         : `💠 *Parcelamento no PIX*\n\n` +
-          `Você pode dividir o valor no PIX *até a data do seu evento*, em até *10x*. 🙌\n\n` +
+          `Você pode dividir o valor no PIX *até a data do seu evento*, em até *6x*. 🙌\n\n` +
           `Me conta a data que eu já te digo em quantas vezes dá para parcelar.`;
 
       await new Promise(r => setTimeout(r, 600));
@@ -5411,14 +5411,14 @@ async function enviarResumoCliente(chatId, session) {
 }
 
 // 🎁 Vantagem Exclusiva — enviada como mensagem própria, após o resumo, em TODOS
-// os orçamentos. Parcelamento sem juros conforme o nº de serviços (regra do Mario):
-// 1 serviço = isca p/ incluir o 2º (6x); 2 serviços = 6x; 3 serviços = 9x.
-// R$ 100 de desconto no Pix a partir do 2º serviço (quando há 2+).
+// os orçamentos. R$ 100 de desconto a partir do 2º serviço (quando há 2+).
 //
-// ⏳ Esta escada vira *10x sem juros* quando o bot passar a pedir o orçamento
-// GERADO pelo PhotoMusic Pro (previsão: semana de 17/08/2026). Enquanto ele
-// manda os PDFs prontos, que estão com preço para 3x, o número aqui tem que
-// continuar batendo com o arquivo anexado. (Mario, 17/08/2026.)
+// 🐛 CORRIGIDO 2026-08 (Mario): a escada antiga oferecia "6x/9x sem juros no
+// cartão" como se fosse exclusividade de quem fechasse 2 ou 3 serviços. Desde
+// a migração para o orçamento GERADO pelo PhotoMusic Pro (18/08/2026), o
+// cartão já é *10x sem juros* para QUALQUER orçamento, com 1 serviço só.
+// Oferecer 6x/9x como "vantagem exclusiva" virou pior que o padrão e perdeu o
+// sentido — a vantagem real de fechar 2+ serviços é só o desconto em R$.
 function montarVantagemExclusiva(nServicos, deslocamento) {
   const gratis = !!(deslocamento && deslocamento.gratis);
   const fimDesloc = gratis
@@ -5426,19 +5426,14 @@ function montarVantagemExclusiva(nServicos, deslocamento) {
     : "!";
 
   let corpo;
-  if (nServicos >= 3) {
+  if (nServicos >= 2) {
     corpo =
-      "Contratando *3 serviços*, você garante *R$ 100,00 de desconto* a partir do " +
-      "segundo serviço no *Pix*, ou *9x sem juros* no cartão de crédito";
-  } else if (nServicos === 2) {
-    corpo =
-      "Contratando *2 serviços*, você garante *R$ 100,00 de desconto* a partir do " +
-      "segundo serviço no *Pix*, ou *6x sem juros* no cartão de crédito";
+      "Contratando *2 ou mais serviços*, você garante *R$ 100,00 de desconto* " +
+      "a partir do segundo serviço";
   } else {
     // 1 serviço — isca p/ o cliente incluir mais um
     corpo =
-      "Incluindo *mais um serviço*, você garante *R$ 100,00 de desconto* no segundo " +
-      "e ainda pode parcelar em *6x sem juros* no cartão de crédito";
+      "Incluindo *mais um serviço*, você garante *R$ 100,00 de desconto* a partir do segundo";
   }
 
   return "🎁 *Vantagem exclusiva!*\n" + corpo + fimDesloc;
