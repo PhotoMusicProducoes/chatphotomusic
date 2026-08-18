@@ -382,7 +382,9 @@ const CAMPOS_CORRIGIVEIS = [
 
 function valorCampoResumo(orc, tipo) {
   switch (tipo) {
-    case "celebracao": return orc.celebracaoId ? (celebracoes[orc.celebracaoId] || orc.celebracao || "(não informado)") : (orc.celebracao || "(não informado)");
+    // Mesmo helper dos resumos: em "Outros" mostra a descrição que ele digitou,
+    // senão a tela de confirmação também dizia só "Outros".
+    case "celebracao": return orc.celebracaoId ? textoCelebracao(orc) : (orc.celebracao || "(não informado)");
     case "numero":     return orc.convidados || "(não informado)";
     case "data":       return orc.data       || "(não informado)";
     case "hora_ini":   return orc.horaInicio || "(não informado)";
@@ -628,6 +630,29 @@ const comandosServicos = {
   "#somdj": 7,
   "#iluminacao": 8
 };
+
+/**
+ * Texto da celebração para os resumos.
+ *
+ * 🚨 "Outros" (9) é o único caso em que o bot PEDE uma descrição ("descreva o
+ * que você vai celebrar") e guarda em `orcamento.celebracao`. Os resumos
+ * imprimiam só `celebracoes[id]`, ou seja a palavra "Outros", e a descrição que
+ * o cliente digitou não aparecia em lugar nenhum. (Mario, 18/08/2026.)
+ *
+ * Nas outras 8 celebrações `orcamento.celebracao` é o próprio rótulo da tabela,
+ * então não há o que acrescentar.
+ */
+function textoCelebracao(orc) {
+  const o     = orc || {};
+  const id    = o.celebracaoId;
+  const rotulo = celebracoes[id];
+  const descr = String(o.celebracao || "").trim();
+
+  if (!rotulo) return descr || "Não especificada";
+  if (id !== 9 || descr === "" || descr.toLowerCase() === rotulo.toLowerCase()) return rotulo;
+
+  return `${rotulo}: ${descr}`;
+}
 
 const celebracoes = {
   1: "Aniversário de 15 anos",
@@ -5200,7 +5225,7 @@ async function enviarResumoCliente(chatId, session) {
     if (orc.dataNascimento) linhas.push(`${index++}. Data de Nascimento: *${orc.dataNascimento}*`);
 
     if (orc.celebracaoId) {
-      linhas.push(`${index++}. Celebração: *${celebracoes[orc.celebracaoId] || "Não especificada"}*`);
+      linhas.push(`${index++}. Celebração: *${textoCelebracao(orc)}*`);
     }
     
     if (orc.convidados) {
@@ -5442,7 +5467,7 @@ async function enviarResumoOperador(chatIdCliente, session, quemEnviou = "") {
     linhas.push(`- Cliente: *${chatIdCliente}*`);
     
     if (orc.celebracaoId) {
-      linhas.push(`- Celebração: *${celebracoes[orc.celebracaoId] || "Não especificada"}*`);
+      linhas.push(`- Celebração: *${textoCelebracao(orc)}*`);
     }
     
     if (orc.convidados) {
