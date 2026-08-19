@@ -142,10 +142,13 @@ function blocoCardapio(lead, tipo) {
   var hCheia = p.horas || 0;
   var hMenos = p.horas_menos || 0;
 
-  // Preço de uma duração: "5h: *R$ 2.697,00* · 10x de R$ 269,70"
+  /* Preço de uma duração: "5h: *10x de R$ 269,70*"
+     🚨 SÓ A PARCELA, e o negrito é dela (Mario, 19/08/2026): o valor cheio já
+     está no PDF do orçamento que o cliente tem na mão, e no follow-up ele
+     roubava o destaque justamente do número que cabe no bolso. */
   function linhaValor(h, v) {
     var prefixo = h > 0 ? h + "h: " : "";
-    return "   " + prefixo + "*" + brl(v) + "*  ·  " + nParc + "x de " + brl(v / nParc);
+    return "   " + prefixo + "*" + nParc + "x de " + brl(v / nParc) + "*";
   }
 
   // Serviços primeiro, combinações depois (e as combinações vêm do motor já
@@ -167,7 +170,9 @@ function blocoCardapio(lead, tipo) {
   if (p.npix >= (p.pix_min || 3)) {
     txt += NL + "💠 No PIX dá para dividir em até *" + p.npix + "x* até a data do seu evento" + NL;
   }
-  return txt;
+  /* Linha em branco no fim: com 1 serviço só o `linhaMulti` vem vazio e o
+     texto de fechamento colava na última parcela. */
+  return txt + NL;
 }
 
 /* Aviso de que desceu um degrau, so quando desceu de verdade. */
