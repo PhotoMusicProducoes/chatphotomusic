@@ -26,8 +26,17 @@ function extrairHoras(texto) {
   const re = /(?<!\d)(\d{1,2})(?:\s*(?:h|:)\s*(\d{2})|\s*h)?(?!\d)/g;
   let m;
   while ((m = re.exec(txt)) !== null) {
-    const hora = parseInt(m[1], 10);
-    const min  = m[2] ? parseInt(m[2], 10) : 0;
+    let hora  = parseInt(m[1], 10);
+    const min = m[2] ? parseInt(m[2], 10) : 0;
+
+    /* 🚨 24h E 24:00 SÃO MEIA-NOITE, não hora inválida (Mario, 18/08/2026).
+       Muita gente escreve o fim da festa assim. Antes caíam no `hora > 23` e
+       eram descartados EM SILÊNCIO: o `extrairHoras` voltava vazio, o bot
+       respondia "Horário inválido" e o cliente ficava preso no mesmo passo,
+       repetindo o que para ele era uma resposta correta.
+       🚨 Só vale com minuto ZERO: "24:30" não existe e continua recusado. */
+    if (hora === 24 && min === 0) hora = 0;
+
     if (hora > 23 || min > 59) continue;
     horas.push(String(hora).padStart(2, "0") + ":" + String(min).padStart(2, "0"));
   }
