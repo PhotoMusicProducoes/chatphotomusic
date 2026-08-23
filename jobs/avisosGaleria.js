@@ -61,8 +61,8 @@ function mensagemDeEncerramento(evento) {
     `Muito obrigado pela confiança em escolher a PhotoMusic para cuidar dessas memórias. 🥳\n\n` +
     `📸🎥 *Aqui está o seu acesso, com todas as fotos e vídeos:*\n${evento.link_contratante}\n\n` +
     `💻 *Uma dica que facilita muito:* abra este link *no computador*. ` +
-    `Logo na *primeira tela* existe uma *seta ⬇️* que baixa *todas as fotos de uma vez só*, ` +
-    `sem precisar salvar uma por uma.\n\n` +
+    `Depois de confirmar o aceite, na *primeira tela* existe uma *seta ⬇️* ` +
+    `que baixa *todas as fotos de uma vez só*, sem precisar salvar uma por uma.\n\n` +
     `📱 No celular também abre normalmente, mas aí o download é foto por foto.\n\n` +
     `Guarde este link com carinho, ele é o seu. Qualquer dúvida, é só me chamar por aqui.\n\n` +
     `Com carinho,\n*PhotoMusic Produções* ❤️`
