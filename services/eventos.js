@@ -123,6 +123,21 @@ async function apresentarEvento(numeroEvento, telefone = "") {
     return "Evento não encontrado. Verifique o número digitado!";
   }
 
+  return montarMensagemEvento(evento, telefone);
+}
+
+/**
+ * Monta o texto que o CONVIDADO recebe (link, redes, passo a passo).
+ *
+ * 🚨 Separado do apresentarEvento de propósito: o aviso automático ao
+ * CONTRATANTE no início do serviço manda exatamente esta mensagem, para ele
+ * ver o que chega para os convidados. Escrever o texto de novo lá faria as
+ * duas versões divergirem na primeira alteração.
+ *
+ * `evento` precisa de: titulo, preposicao, token (ou links), instagram,
+ * instagramNome, googleReview.
+ */
+function montarMensagemEvento(evento, telefone = "") {
   // Cabeçalho
   const prep = evento.preposicao || 'ao';
   let resposta =
@@ -237,5 +252,6 @@ async function fluxoEventos(chatId, session) {
 module.exports = {
   buscarEventos,
   apresentarEvento,
+  montarMensagemEvento,
   fluxoEventos,
 };

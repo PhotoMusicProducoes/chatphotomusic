@@ -7,6 +7,7 @@ const { inicializarScheduler } = require("./jobs/mensagensComemorativas");
 const { inicializarFollowupLeads } = require("./jobs/followupLeads");
 const { inicializarLembreteOrcamento } = require("./jobs/lembreteOrcamento");
 const { inicializarEnvioAgendado } = require("./jobs/envioAgendado");
+const { inicializarAvisosGaleria } = require("./jobs/avisosGaleria");
 const { inicializarPausaEspecial } = require("./utils/index.js");
 const { extrairRespostaDeClique } = require("./utils/webhookPayload.js");
 
@@ -76,6 +77,7 @@ inicializarScheduler();
 inicializarFollowupLeads();
 inicializarLembreteOrcamento();
 inicializarEnvioAgendado();
+inicializarAvisosGaleria();
 
 // ================= FILA SEQUENCIAL POR USUÁRIO =================
 // Garante que duas mensagens do mesmo número nunca sejam processadas
