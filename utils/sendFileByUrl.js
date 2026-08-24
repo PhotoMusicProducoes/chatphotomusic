@@ -50,10 +50,20 @@ async function sendFileByUrl(chatId, url, type = null, customFileName = null) {
     // ============================
     else if (['pdf', 'doc', 'docx', 'xls', 'xlsx'].includes(fileExtension)) {
       endpoint = `/send-document/${fileExtension}`;  // ✅ COM EXTENSÃO
+
+      /* 🚨 A Z-API ACRESCENTA A EXTENSÃO ao `fileName`, então ele vai SEM.
+         O nome que passamos já vem limpo, mas o fallback pega o último pedaço
+         da URL, que termina em ".pdf", e o cliente recebia ".pdf.pdf" (caso
+         CIS Brasil, 19/08/2026, do lado do WordPress). */
+      const nomeBruto = customFileName || url.split('/').pop();
+      const fileName  = String(nomeBruto).replace(
+        new RegExp("\\." + fileExtension + "$", "i"), ""
+      ) || nomeBruto;
+
       body = {
         phone: chatId.replace("@c.us", ""),
         document: url,
-        fileName: customFileName || url.split('/').pop()
+        fileName
       };
     }
 

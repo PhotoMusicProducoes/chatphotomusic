@@ -121,13 +121,38 @@ function listarNomes(ids) {
   return nomes.slice(0, -1).join(", ") + " e " + nomes[nomes.length - 1];
 }
 
-function nomeArquivo(ids) {
-  if (ids.length === 1) {
-    return "Orcamento-" + String(NOME_POR_SERVICO[ids[0]] || "Servico")
-      .normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  }
-  return "Orcamento-PhotoMusic";
+/** Tira acento e pontuação, deixando só letras, números e hífen. */
+function limparNome(txt) {
+  return String(txt || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Nome do arquivo que o CLIENTE vê no WhatsApp.
+ *
+ * 🚨 REGRA DO MARIO (19/08/2026): em evento CORPORATIVO quem nomeia a proposta
+ * é a EMPRESA, não a pessoa que pediu. Pessoa física só nomeia em evento
+ * social. Sem o nome da empresa, sai "Evento-Corporativo".
+ * 📌 O nome da PhotoMusic vem na frente: na pasta de downloads do cliente o
+ * que diferencia uma proposta da outra é o FORNECEDOR.
+ *
+ * 🚨 SEM EXTENSÃO: a Z-API acrescenta o ".pdf" ao nome. Com ".pdf" aqui o
+ * arquivo chega como ".pdf.pdf".
+ */
+function nomeArquivo(ids, session) {
+  const orc  = (session && session.orcamento) || {};
+  const corp = Number(orc.celebracaoId) === 8;
+
+  const empresa = String(orc.empresa || "").trim();
+  const cliente = String(orc.nome || "").trim();
+
+  const quem = corp
+    ? (empresa || "Evento Corporativo")
+    : (cliente || empresa || "Cliente");
+
+  return limparNome("Proposta-PhotoMusic-Producoes-" + quem);
 }
 
 /**
@@ -218,7 +243,7 @@ async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
   await enviarPdfComLink(
     chatId,
     dados.url,
-    nomeArquivo(idsPdf),
+    nomeArquivo(idsPdf, session),
     sendTyping,
     sendText,
     sendFileByUrl,
