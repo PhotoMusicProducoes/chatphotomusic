@@ -108,6 +108,7 @@ const PERGUNTA_POR_PASSO = {
   "orcamento_nome_confirmar": "Só confirmando: o seu nome está correto? (1 - Sim / 2 - Não)",
   "orcamento_celebracao": "O que você vai celebrar?",
   "orcamento_celebracao_outros": "O que você vai celebrar?",
+  "orcamento_empresa": "Qual o nome da empresa?",
   "orcamento_convidados": "Quantos convidados?",
   "orcamento_dias": "Quantos dias de evento?",
   "orcamento_horarios_iguais": "Os horários são iguais em todos os dias? (1 - Sim / 2 - Não)",

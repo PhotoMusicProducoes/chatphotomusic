@@ -274,6 +274,9 @@ async function capturarClienteOrcamento(chatId, session) {
     const payload = {
       telefone:       tel,
       nome:           orc.nome       || "",
+      // Corporativo: vai para a coluna `empresa` de pm_leads e de pm_orcamentos,
+      // e é ela que nomeia o arquivo da proposta.
+      empresa:        orc.empresa    || "",
       email:          orc.email      || "",
       dia,
       mes,
@@ -416,6 +419,14 @@ async function mostrarConfirmacaoOrcamento(chatId, session) {
     // *asterisco* fica solto. Demais campos vão em negrito normalmente.
     const vFmt = String(v).includes("@") ? v : `*${v}*`;
     txt += `*${c.id}* - ${c.label}: ${vFmt}\n`;
+
+    /* Empresa logo abaixo da Celebração, SEM número próprio: a lista tem teto
+       de 10 itens (limite do WhatsApp). Ela aparece para o cliente conferir o
+       nome que vai no arquivo da proposta; para corrigir, ele escolhe a
+       Celebração e o bot repergunta. (Mario, 19/08/2026.) */
+    if (c.tipo === "celebracao" && orc.empresa) {
+      txt += `     Empresa: *${orc.empresa}*\n`;
+    }
   }
   // Botões (2026-07-15): é a RETA FINAL — o cliente já deu todos os dados e
   // ainda não recebeu nada. Foi aqui que o caso de 28/06 abandonou, e é a
@@ -466,6 +477,7 @@ async function pedirProximaCorrecao(chatId, session) {
     bairro:     "Qual o *bairro* do evento?",
     cidade:     "Qual a *cidade* do evento?",
     salao:      "Qual o nome do *salão/local*? (ou responda *pular*)",
+    empresa:    "Qual o *nome da empresa*? (ou responda *pular*)",
     onde:       "Onde nos encontrou?",
     detalhes:   "Quais os *detalhes adicionais* do evento? (ou responda *pular*)",
     email:      "Qual o seu *e-mail*? (ou responda *pular*)",
@@ -4806,7 +4818,25 @@ const resumoEucaristia =
     switch (campo.tipo) {
       case "celebracao": {
         const op = parseInt(txt, 10);
-        if ([1,2,3,4,5,6,7,8,9].includes(op)) { orc.celebracaoId = op; orc.celebracao = celebracoes[op]; ok = true; }
+        if ([1,2,3,4,5,6,7,8,9].includes(op)) {
+          orc.celebracaoId = op;
+          orc.celebracao = celebracoes[op];
+          /* Saiu de corporativo: a empresa não faz mais sentido e ficaria
+             nomeando a proposta de um evento social. */
+          if (op !== 8) orc.empresa = "";
+          ok = true;
+        }
+        break;
+      }
+      /* 🚨 A EMPRESA NÃO ENTRA em CAMPOS_CORRIGIVEIS: a lista é limitada a 10
+         de propósito (limite da lista clicável do WhatsApp), e passar disso
+         reabre o bug dos números de 2 dígitos. Quem quiser corrigir a empresa
+         corrige a "Celebração", escolhe 8 de novo e o bot repergunta - por
+         isso este `case` existe, mesmo sem id na lista. */
+      case "empresa": {
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+        if (pulou) { orc.empresa = ""; ok = true; }
+        else if (txt.length >= 2) { orc.empresa = capitalizarPalavras(txt); ok = true; }
         break;
       }
       case "numero": {
@@ -4879,6 +4909,14 @@ const resumoEucaristia =
 
     // Campo corrigido → remove da fila e vai ao próximo (ou reconfirma)
     if (session.correcaoFila) session.correcaoFila.shift();
+
+    /* Corrigiu para CORPORATIVO: pergunta a empresa em seguida, senão a
+       proposta sairia no nome da pessoa. Entra na FRENTE da fila para o
+       cliente responder enquanto ainda está no assunto. */
+    if (campo.tipo === "celebracao" && orc.celebracaoId === 8 && !orc.empresa) {
+      session.correcaoFila = session.correcaoFila || [];
+      session.correcaoFila.unshift({ id: 0, label: "Empresa", tipo: "empresa" });
+    }
     await pedirProximaCorrecao(chatId, session);
     return;
   }
@@ -5257,6 +5295,8 @@ async function enviarResumoCliente(chatId, session) {
 
     // ✅ Corrigido: usar `orc.nome` em vez de `orc.cliente`
     if (orc.nome) linhas.push(`${index++}. Nome: *${orc.nome}*`);
+    // Empresa logo depois do nome: em corporativo é ela que assina a proposta.
+    if (orc.empresa) linhas.push(`${index++}. Empresa: *${orc.empresa}*`);
     if (orc.email) linhas.push(`${index++}. E-mail: ${orc.email}`);
     if (orc.dataNascimento) linhas.push(`${index++}. Data de Nascimento: *${orc.dataNascimento}*`);
 
@@ -5500,7 +5540,9 @@ async function enviarResumoOperador(chatIdCliente, session, quemEnviou = "") {
     if (orc.celebracaoId) {
       linhas.push(`- Celebração: *${textoCelebracao(orc)}*`);
     }
-    
+
+    if (orc.empresa) linhas.push(`- Empresa: *${orc.empresa}*`);
+
     if (orc.convidados) {
       linhas.push(`- Convidados: *${orc.convidados}*`);
     }
