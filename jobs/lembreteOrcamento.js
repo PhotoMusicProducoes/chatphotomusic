@@ -66,6 +66,10 @@ const ANTECIPA_DIAS_ANTES = 3; // a <=3 dias do evento, dispara a última chamad
 const PASSOS_QUESTIONARIO = new Set([
   "orcamento_nome", "orcamento_nome_confirmar",
   "orcamento_celebracao", "orcamento_celebracao_outros",
+  // 🚨 Passo novo (19/08/2026): só aparece no corporativo, mas quem para nele
+  // abandona o orçamento igual. Ver a lição de 15/08, quando 2 clientes reais
+  // ficaram sem receber porque o passo novo não entrou nesta lista.
+  "orcamento_empresa",
   "orcamento_convidados", "orcamento_dias",
   "orcamento_horarios_iguais", "orcamento_datas_multiplas",
   "orcamento_dia_data", "orcamento_dia_hora_inicio", "orcamento_dia_hora_fim",

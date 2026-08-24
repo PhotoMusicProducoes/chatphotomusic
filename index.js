@@ -4103,6 +4103,20 @@ const resumoEucaristia =
 
     session.orcamento.celebracao = celebracoes[opcao];
     session.orcamento.celebracaoId = opcao;
+
+    /* 🚨 CORPORATIVO PERGUNTA O NOME DA EMPRESA (Mario, 19/08/2026).
+       Sem isso a proposta de evento de empresa saía no nome da PESSOA que
+       pediu (caso CIS Brasil: "Proposta-Liz-Santiago" para um orçamento do
+       setor de Compras). O fluxo do bot nunca coletava esse dado, então
+       corporativo pelo WhatsApp caía sempre no "Evento-Corporativo".
+       É a ÚNICA celebração que ganha pergunta a mais, de propósito: em evento
+       social não existe empresa e a pergunta só atrapalharia. */
+    if (opcao === 8) {
+      session.step = "orcamento_empresa";
+      await enviarPerguntaESalvar(chatId, session, "Qual o *nome da empresa*? (se preferir não informar, digite *pular*)");
+      return;
+    }
+
     session.step = "orcamento_convidados";
 
     await enviarPerguntaESalvar(chatId, session, "Quantos convidados?");
@@ -4112,6 +4126,28 @@ const resumoEucaristia =
   // ======================================================
   // ORÇAMENTO — CELEBRAÇÃO OUTROS
   // ======================================================
+  // ======================================================
+  // ORÇAMENTO — NOME DA EMPRESA (só no corporativo)
+  // ======================================================
+  if (session.step === "orcamento_empresa") {
+    const txt   = String(corpoMensagem || "").trim();
+    const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+
+    /* Nome de empresa curto demais quase sempre é erro de digitação, e o nome
+       vai para o ARQUIVO da proposta que o cliente recebe. Melhor perguntar de
+       novo do que mandar "Proposta-PhotoMusic-Producoes-X.pdf". */
+    if (!pulou && txt.length < 2) {
+      await sendText(chatId, "*⚠ Não entendi o nome da empresa.* Digite o nome, ou *pular* se preferir não informar.");
+      return;
+    }
+
+    session.orcamento.empresa = pulou ? "" : capitalizarPalavras(txt);
+    session.step = "orcamento_convidados";
+
+    await enviarPerguntaESalvar(chatId, session, "Quantos convidados? (*Digite somente número*)");
+    return;
+  }
+
   if (session.step === "orcamento_celebracao_outros") {
     session.orcamento.celebracao = corpoMensagem;
     session.orcamento.celebracaoId = 9;
