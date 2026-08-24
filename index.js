@@ -1742,6 +1742,12 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
     }
 
     await enviarDetalhesEmLote(chatId, session, paraDetalhar);
+    /* Resumo de novo depois dos detalhes (Mario, 19/08/2026): os detalhes sao
+       dezenas de fotos e videos, e os dados do evento ficam soterrados no meio
+       da conversa. Repetir aqui poe data, local, horario e os links de volta na
+       ULTIMA tela, que e onde o operador olha. O "mais orcamento" ja fazia isso
+       por dentro do enviarMultiplosOrcamentos; so o "mais detalhes" nao fazia. */
+    await enviarResumoCliente(chatId, session);
     await perguntarPosOrcamento(chatId, session);
     return;
   }
@@ -5038,6 +5044,8 @@ const resumoEucaristia =
 
     session.tentativasInvalidasDetalhe = 0;
     await enviarDetalhesEmLote(chatId, session, escolhidos);
+    // Mesmo resumo do outro caminho de detalhes: sao 2 pontos, ver acima.
+    await enviarResumoCliente(chatId, session);
     await perguntarPosOrcamento(chatId, session);
     return;
   }
