@@ -5282,13 +5282,40 @@ function saudacaoPorHora() {
    mensagem do bot tem que dizer o mesmo número. Mudou lá, mude aqui. */
 const CARTAO_PARCELAS = 10;
 
-/* Texto único do cartão, usado nos DOIS momentos: na abertura do orçamento
-   (antes de perguntar o nome) e depois do resumo, antes do PIX. Uma constante
-   só para as duas mensagens nunca discordarem no número de parcelas. */
+/* ABERTURA: seca e informativa de propósito. Aqui o cliente ainda não disse
+   nada, nem o nome; o objetivo é só tirar a objeção de valor da frente antes
+   das ~10 perguntas do questionário. */
 const MSG_CARTAO_PARCELAS =
   `💳 *Parcelamento no Cartão*\n\n` +
   `Você pode parcelar em até *${CARTAO_PARCELAS}x sem juros* no cartão de crédito, ` +
   `sem acréscimo nenhum sobre o valor da proposta. 🙌`;
+
+/**
+ * DEPOIS DO RESUMO: mesma informação, tom de carinho (pedido do Mario,
+ * 24/08/2026). Aqui ele já viu o preço, então é o momento da objeção.
+ * Segue os 3 ingredientes do tom da casa: carinho + referência ao evento dele,
+ * a condição como FACILITADOR (não como isca) e um convite para contar o que
+ * está segurando.
+ *
+ * 🚨 CONVITE, NÃO PERGUNTA DIRETA: depois desta vêm o PIX, a Vantagem, o "como
+ * contratar" e o menu numerado "1 - mais detalhes / 2 - mais orçamento". Uma
+ * pergunta aberta aqui faria o cliente responder no meio da fila e cair no
+ * menu errado, que é o tipo de colisão que já travou cliente antes.
+ * 📌 Só roda em evento SOCIAL: em corporativo a decisão é de outra natureza e
+ * o Mario não quis esta mensagem lá.
+ */
+function montarCartaoCarinho() {
+  return (
+    `💳 *E dá para caber no seu bolso* ❤️\n\n` +
+    `A gente sabe que organizar um evento é muita coisa ao mesmo tempo, e não queremos que o valor ` +
+    `fique no caminho do dia que você imaginou.\n\n` +
+    `Por isso você pode dividir em até *${CARTAO_PARCELAS}x sem juros* no cartão, ` +
+    `sem nenhum acréscimo sobre o valor da proposta. Assim dá para garantir a sua data com tranquilidade ` +
+    `e cuidar do resto com calma. 🙌\n\n` +
+    `Se tiver alguma coisa te segurando, o valor, a data ou qualquer detalhe, é só me contar. ` +
+    `Sem pressa e sem compromisso, a gente vê o melhor jeito juntos. ❤️`
+  );
+}
 
 function parcelasPixAteEvento(dataStr) {
   const m = String(dataStr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -5496,7 +5523,7 @@ async function enviarResumoCliente(chatId, session) {
          data; o PIX depende de quantos meses faltam para o evento. */
       await new Promise(r => setTimeout(r, 600));
       await sendTyping(chatId);
-      await sendText(chatId, MSG_CARTAO_PARCELAS);
+      await sendText(chatId, montarCartaoCarinho());
 
       const nParc = parcelasPixAteEvento(orc.data);
       const txtPix = nParc
