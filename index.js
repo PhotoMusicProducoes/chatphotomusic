@@ -5269,6 +5269,11 @@ function saudacaoPorHora() {
  * Este teto ficou esquecido em 10 (herança do tempo dos PDFs prontos de 3x) e
  * o bot chegou a prometer PIX em 10x, quando o correto era 6x.
  */
+/* Parcelas do CARTÃO. Espelha `PhotoMusic_Orcamentos::CARTAO_PARCELAS` do
+   gerador: o PDF que o cliente recebe diz "em até 10x sem juros", então a
+   mensagem do bot tem que dizer o mesmo número. Mudou lá, mude aqui. */
+const CARTAO_PARCELAS = 10;
+
 function parcelasPixAteEvento(dataStr) {
   const m = String(dataStr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
@@ -5464,6 +5469,24 @@ async function enviarResumoCliente(chatId, session) {
     // Quando o cliente já informou a data, dizemos quantas parcelas ele tem
     // de fato (do mês atual até o mês do evento, teto de 6).
     if (Number(orc.celebracaoId) !== 8) {
+
+      /* 💳 CARTÃO ANTES DO PIX (Mario, 24/08/2026).
+         🚨 A informação do cartão tinha SUMIDO do bot: ela morava dentro da
+         "Vantagem exclusiva", que oferecia 6x/9x como prêmio por fechar 2 ou 3
+         serviços. Quando o orçamento gerado passou a dar 10x para todo mundo,
+         aquela oferta virou pior que o padrão e foi removida - mas ninguém pôs
+         o 10x em outro lugar, e o cliente ficou sem saber do cartão.
+         Vem ANTES do PIX porque é a condição mais forte e vale para qualquer
+         data; o PIX depende de quantos meses faltam para o evento. */
+      await new Promise(r => setTimeout(r, 600));
+      await sendTyping(chatId);
+      await sendText(
+        chatId,
+        `💳 *Parcelamento no Cartão*\n\n` +
+        `Você pode parcelar em até *${CARTAO_PARCELAS}x sem juros* no cartão de crédito, ` +
+        `sem acréscimo nenhum sobre o valor da proposta. 🙌`
+      );
+
       const nParc = parcelasPixAteEvento(orc.data);
       const txtPix = nParc
         ? `💠 *Parcelamento no PIX*\n\n` +
