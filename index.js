@@ -1108,6 +1108,14 @@ async function executarOpcaoMenu(chatId, session, opcaoMenu, chatIdNormalizado) 
       session.servicosEnviados = [];
       session.lembreteOrcamentoEnviado = false;
 
+      /* 💳 O CARTÃO 10x LOGO NA ABERTURA (Mario, 24/08/2026): o cliente
+         responde ~10 perguntas antes de ver qualquer preço, e saber que dá
+         para parcelar em 10x sem juros já no começo tira a objeção de valor
+         antes dela aparecer. A mesma informação volta depois do resumo,
+         quando ele já tem o número na mão. */
+      await sendTyping(chatId);
+      await sendText(chatId, MSG_CARTAO_PARCELAS);
+
       await sendTyping(chatId);
       await sendText(chatId, "Perfeito! Vamos começar seu orçamento.\nQual o seu nome?");
       return;
@@ -5274,6 +5282,14 @@ function saudacaoPorHora() {
    mensagem do bot tem que dizer o mesmo número. Mudou lá, mude aqui. */
 const CARTAO_PARCELAS = 10;
 
+/* Texto único do cartão, usado nos DOIS momentos: na abertura do orçamento
+   (antes de perguntar o nome) e depois do resumo, antes do PIX. Uma constante
+   só para as duas mensagens nunca discordarem no número de parcelas. */
+const MSG_CARTAO_PARCELAS =
+  `💳 *Parcelamento no Cartão*\n\n` +
+  `Você pode parcelar em até *${CARTAO_PARCELAS}x sem juros* no cartão de crédito, ` +
+  `sem acréscimo nenhum sobre o valor da proposta. 🙌`;
+
 function parcelasPixAteEvento(dataStr) {
   const m = String(dataStr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
@@ -5480,12 +5496,7 @@ async function enviarResumoCliente(chatId, session) {
          data; o PIX depende de quantos meses faltam para o evento. */
       await new Promise(r => setTimeout(r, 600));
       await sendTyping(chatId);
-      await sendText(
-        chatId,
-        `💳 *Parcelamento no Cartão*\n\n` +
-        `Você pode parcelar em até *${CARTAO_PARCELAS}x sem juros* no cartão de crédito, ` +
-        `sem acréscimo nenhum sobre o valor da proposta. 🙌`
-      );
+      await sendText(chatId, MSG_CARTAO_PARCELAS);
 
       const nParc = parcelasPixAteEvento(orc.data);
       const txtPix = nParc
