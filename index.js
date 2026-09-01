@@ -155,9 +155,29 @@ const LOOP_JANELA_MS  = 3 * 60 * 1000; // janela de observação: 3 minutos
 const LOOP_MAX_IGUAIS = 5;             // mesma mensagem repetida seguidas
 const antiLoop = new Map();            // chatId -> { inicio, total, ultima, iguais }
 
+/* 🚨 RESPOSTA DE MENU NAO CONTA PARA O ANTI-LOOP (Mario, 01/09/2026).
+   O fluxo do orcamento faz QUATRO perguntas de "1 - Sim / 2 - Nao" seguidas
+   (detalhes, e-mail, nascimento, confirmacao) e o clique no botao chega como
+   o proprio numero. Um cliente que responde "nao, nao, nao", clica em
+   "Corrigir algo" (= "2") e escolhe o item 1 ou 2 fecha CINCO mensagens "2"
+   iguais em menos de 1 minuto: o anti-loop pausava ele e o bot emudecia no
+   ponto mais caro do funil, com todos os dados dados e nenhum orcamento
+   entregue (caso 21 96868-4218, 01/09/2026). Robo em ping-pong nunca manda
+   "2" sozinho, ele repete o MENU INTEIRO, entao ignorar resposta de menu nao
+   enfraquece a protecao. */
+function ehRespostaDeMenu(txt) {
+  // So numeros e separadores: "2", "10", "3,4", "1;2" - sempre menu nosso.
+  return /^[\d\s,;.]{1,12}$/.test(txt);
+}
+
 function registrarMensagemAntiLoop(chatId, texto) {
   const agora = Date.now();
   const txt = String(texto || "").trim().toLowerCase();
+
+  // Resposta de menu nao entra na contagem e tambem NAO quebra a sequencia
+  // de um robo de verdade: simplesmente nao e observada.
+  if (ehRespostaDeMenu(txt)) return { bloquear: false };
+
   let e = antiLoop.get(chatId);
   if (!e || agora - e.inicio > LOOP_JANELA_MS) {
     e = { inicio: agora, total: 0, ultima: null, iguais: 0 };
@@ -5118,6 +5138,9 @@ const resumoEucaristia =
 // ======================================================
 module.exports = {
   handleIncomingMessage,
+  // Exposto para o banco de medicao do anti-loop (teste-antiloop-menu.js):
+  // sem teste, a regra volta a engolir resposta de menu sem ninguem ver.
+  registrarMensagemAntiLoop,
   // 🚨 Lista canônica dos serviços do menu, na ordem do menu. Os jobs
   // (envio agendado, lembrete) precisam dela: cada cópia escrita à mão
   // envelhecia e deixava serviço novo de fora.
