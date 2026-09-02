@@ -137,6 +137,43 @@ function normalizarNumero(numero) {
   return numero;
 }
 
+/* ======================================================
+   LOCAL DO ORÇAMENTO MANUAL — de quem é o bairro/cidade?
+   ======================================================
+   Função PURA de propósito: a decisão morava dentro do bloco gigante do
+   comando manual e não dava para medir. Banco em
+   `teste-local-orcamento-manual.js`.
+
+   Três origens possíveis, nesta ordem:
+     1. `#local` desta rodada  -> manda ele;
+     2. `#local` de uma rodada ANTERIOR (`_localOrigem === "manual"`) -> apaga,
+        senão o bairro de um cliente vaza para o orçamento do próximo (foi o
+        caso de 22/07/2026);
+     3. local que o PRÓPRIO CLIENTE informou no fluxo -> MANTÉM.
+
+   🚨 O item 3 é o conserto de 01/09/2026: antes o código zerava sempre que não
+   houvesse `#local`, então o operador mandava o orçamento manual e a proposta
+   saía sem deslocamento mesmo com o cliente tendo dito "Botafogo, Rio de
+   Janeiro" (caso 21 96868-4218). Sessão antiga sem `_localOrigem` cai aqui e é
+   preservada, que é o comportamento certo para quem já está no meio do fluxo.
+*/
+function resolverLocalOrcamentoManual(orc, localManual) {
+  if (localManual) {
+    return {
+      acao:   "manual",
+      bairro: localManual.bairro || null,
+      cidade: localManual.cidade || null
+    };
+  }
+  if (orc && orc._localOrigem === "manual") {
+    return { acao: "limpar", bairro: null, cidade: null };
+  }
+  if (orc && (orc.bairro || orc.cidade)) {
+    return { acao: "cliente", bairro: orc.bairro || null, cidade: orc.cidade || null };
+  }
+  return { acao: "vazio", bairro: null, cidade: null };
+}
+
 // ======================================================
 // ANTI-LOOP — evita ping-pong infinito com OUTRO chatbot
 // Caso real (20/07/2026): o bot da PhotoMusic ficou trocando mensagens
@@ -1561,6 +1598,73 @@ const SERVICOS_NOMES = {
 const SERVICO_TOTEM_RETRO = 13;
 
 /* ======================================================
+   SERVIÇO DITO POR EXTENSO (Mario, 01/09/2026)
+   ======================================================
+   Caso real: "Gostaria de saber do valor da cabine?". O bot só sabia ler o
+   NÚMERO do menu, então respondeu com o mesmo menu de boas-vindas duas vezes,
+   o cliente não voltou e uma hora depois levou os 9 orçamentos de uma vez. A
+   palavra "cabine" estava lá na mensagem desde o primeiro minuto.
+
+   🚨 A ORDEM DA LISTA IMPORTA: "totem retrô" tem a palavra "totem" dentro.
+   O Retrô vem antes do Totem Fotográfico, senão todo Retrô vira Totem.
+
+   O texto é comparado SEM acento e em minúsculas, por isso os padrões são
+   escritos em ascii. As bordas `\b` são obrigatórias: sem elas "som" casa
+   dentro de "somos" (a própria mensagem de boas-vindas diz "Somos a empresa").
+*/
+const PALAVRAS_SERVICO = [
+  { id: 13, re: /\b(totem\s*retro|retro)\b/ },
+  { id: 1,  re: /\b(foto\s*cabine|cabine\s*de\s*foto|cabine|photo\s*booth|fotocabine)\b/ },
+  { id: 2,  re: /\b(totem\s*fotografico|totem)\b/ },
+  { id: 3,  re: /(plataforma\s*360|\b360\b|\bgiratoria\b)/ },
+  { id: 4,  re: /\bpaparazz?i\b/ },
+  { id: 5,  re: /\b(foto\s*lembranca|lembranca|ima\s*de\s*geladeira)\b/ },
+  { id: 6,  re: /\b(cobertura\s*fotografica|fotografo|fotografa|fotografia)\b/ },
+  { id: 7,  re: /\b(som\s*e?\s*dj|dj|sonorizacao|som\s*completo)\b/ },
+  { id: 8,  re: /\b(iluminacao|luz\s*da\s*pista|pista\s*de\s*danca)\b/ },
+];
+
+/* Quem NÃO pode receber orçamento automático: o cliente que já contratou e
+   está com problema. Ele cita o serviço do mesmo jeito ("a cabine do meu
+   casamento não chegou") e receber uma tabela de preços no lugar de ajuda
+   seria péssimo. Nesses casos o menu continua sendo a resposta certa
+   (opções 3 e 4). */
+const NAO_E_ORCAMENTO = /\b(contratei|contratado|contratada|contratamos|ja\s*fechei|suporte|problema|reclamacao|reclamar|nao\s*chegou|atras[ao]|cancelar|cancelamento|nota\s*fiscal|contrato)\b/;
+
+/** Tira acento e baixa a caixa, para os padrões acima serem simples. */
+function normalizarParaBusca(texto) {
+  return String(texto || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Serviços citados por extenso numa mensagem livre.
+ * Devolve [] quando não achou nada ou quando a mensagem é de quem JÁ é
+ * cliente (aí quem responde é o menu, não a tabela de preços).
+ */
+function detectarServicosNoTexto(texto) {
+  const t = normalizarParaBusca(texto);
+  if (!t || NAO_E_ORCAMENTO.test(t)) return [];
+
+  /* 🚨 O trecho que casou é CONSUMIDO (vira espaco). "totem retro" tem a
+     palavra "totem" dentro: sem consumir, um pedido de Retro saia como Retro
+     + Totem Fotografico e o cliente recebia dois orcamentos, um deles errado.
+     Foi o banco de medicao que pegou. */
+  let resto = t;
+  const achados = [];
+  for (const { id, re } of PALAVRAS_SERVICO) {
+    if (re.test(resto) && !achados.includes(id)) {
+      achados.push(id);
+      resto = resto.replace(re, " ");
+    }
+  }
+  return achados;
+}
+
+
+/* ======================================================
    🔢 NÚMERO QUE O CLIENTE DIGITA  x  ID INTERNO DO SERVIÇO
    (renumeração aprovada pelo Mario em 17/08/2026)
    ======================================================
@@ -2734,12 +2838,14 @@ async function handleIncomingMessage(message) {
           "*SÓ PREÇO x COMPLETO:*\n" +
           "• *Sem flag* (padrão): manda *só o preço* (PDF). O cliente pede as fotos no menu se quiser.\n" +
           "• *+completo*: manda a *apresentação inteira* (fotos, vídeos, pacotes) e depois o PDF. Use para cliente que *nunca viu* o serviço.\n\n" +
-          "*DESLOCAMENTO:*\n" +
-          "Mande o local antes (ou junto) do comando:\n" +
+          "*DESLOCAMENTO (#local):*\n" +
+          "🟢 *Se o cliente JÁ informou o bairro e a cidade no atendimento, não precisa fazer nada:* o bot usa o local que ele deu e o deslocamento vai junto do orçamento.\n\n" +
+          "Use o *#local* quando o cliente *não* informou, ou para *trocar* o que ele disse:\n" +
           "#local Califórnia, Nova Iguaçu\n" +
           "_Vale para o *próximo orçamento* e depois é apagado._\n" +
-          "_Cada orçamento precisa do seu próprio #local._\n" +
-          "_Só a cidade também funciona: #local Nova Iguaçu_\n\n" +
+          "_Para apagar um local errado: *#local* sozinho._\n" +
+          "_Só a cidade também funciona: #local Nova Iguaçu_\n" +
+          "📌 _Depois do envio eu te aviso aqui o valor aplicado (tabela ou estimado por distância), ou que não consegui calcular._\n\n" +
           "*DATA DO EVENTO (#data):*\n" +
           "#data 20/12/2026\n" +
           "_Mesma regra do #local: vale para o *próximo orçamento* e some._\n" +
@@ -2748,7 +2854,8 @@ async function handleIncomingMessage(message) {
           "*ORÇAMENTO COMPLETO (serviço gerado na hora):*\n" +
           "#data 20/12/2026, #local Califórnia, Nova Iguaçu, #totemretro 0,1,150,5,1\n" +
           "_Com os dois, o PDF já sai com a data e com o deslocamento._\n" +
-          "_Sem eles sai igual, só dizendo que são a combinar._\n\n" +
+          "_Sem a data o PDF sai igual, só dizendo que é a combinar._\n" +
+          "_Sem o #local vale o local que o CLIENTE informou._\n\n" +
           "⚠️ *Não funciona em grupo* — mande daqui ou no chat do cliente.";
 
         await sendText(destinoOperador, guia1);
@@ -3046,15 +3153,19 @@ async function handleIncomingMessage(message) {
           session.orcamento.data = dataManual.str;
           console.log(`📅 [MANUAL] Data aplicada ANTES do envio: ${dataManual.str}`);
         }
-        if (localManual) {
-          session.orcamento.bairro = localManual.bairro;
-          session.orcamento.cidade = localManual.cidade;
-          console.log(`📍 [MANUAL] Local aplicado ANTES do envio: ${localManual.bairro || ''} / ${localManual.cidade}`);
-        } else {
-          // Sem #local nesta rodada: zera para não herdar do orçamento anterior.
-          session.orcamento.deslocamento = null;
-          session.orcamento.bairro = null;
-          session.orcamento.cidade = null;
+        // Quem manda no local desta rodada (ver resolverLocalOrcamentoManual).
+        const _loc = resolverLocalOrcamentoManual(session.orcamento, localManual);
+        session.orcamento.bairro = _loc.bairro;
+        session.orcamento.cidade = _loc.cidade;
+        session.orcamento.deslocamento = null; // sempre recalculado abaixo
+        if (_loc.acao === "manual") {
+          session.orcamento._localOrigem = "manual";
+          console.log(`📍 [MANUAL] Local do #local: ${_loc.bairro || ''} / ${_loc.cidade}`);
+        } else if (_loc.acao === "limpar") {
+          session.orcamento._localOrigem = null;
+          console.log("📍 [MANUAL] Sem #local — apaguei o local do orçamento manual anterior.");
+        } else if (_loc.acao === "cliente") {
+          console.log(`📍 [MANUAL] Sem #local — usando o local que o CLIENTE informou: ${_loc.bairro || ''} / ${_loc.cidade || ''}`);
         }
       }
 
@@ -3341,7 +3452,16 @@ async function handleIncomingMessage(message) {
       // deslocamento e montar as mensagens.
       let textoDeslocManual = null;
 
-      if (localManual) {
+      /* 🚗 Roda TAMBÉM sem #local (Mario, 01/09/2026). Antes só calculava
+         quando o operador digitava o #local, então o cliente que já tinha
+         informado bairro e cidade no fluxo recebia o orçamento manual SEM o
+         deslocamento — e o valor tinha que ir na mão depois. */
+      const _cidadeDesloc = localManual
+        ? localManual.cidade
+        : (session.orcamento?.cidade || session.orcamento?.bairro || "");
+      const _temLocalDesloc = !!(localManual || session.orcamento?.bairro || session.orcamento?.cidade);
+
+      if (_temLocalDesloc) {
         await consultarDeslocamento(session);
         const d = session.orcamento.deslocamento;
 
@@ -3369,7 +3489,7 @@ async function handleIncomingMessage(message) {
           d
             ? `🚗 Deslocamento aplicado: *${d.gratis ? "GRÁTIS" : "R$ " + d.valor}*` +
               `${d.estimado ? ` (estimado por distância, ${d.km} km)` : " (tabela)"}`
-            : `⚠ Não consegui calcular o deslocamento para *${localManual.cidade}*. O orçamento vai sem o valor.`
+            : `⚠ Não consegui calcular o deslocamento para *${_cidadeDesloc}*. O orçamento vai sem o valor.`
         );
       }
 
@@ -3660,8 +3780,13 @@ async function handleIncomingMessage(message) {
   if (!session.menuInicialEnviado) {
     await mostrarMenuInicial(chatId);
 
-    // se veio número junto (ex.: "1"), continua e processa abaixo
-    if (opcaoMenu === "") return;
+    // Primeira mensagem já citando o serviço ("quanto custa a cabine?"):
+    // boas-vindas e, na sequência, o valor. Ver detectarServicosNoTexto.
+    if (opcaoMenu === "") {
+      const _serv1 = detectarServicosNoTexto(texto);
+      if (_serv1.length) await enviarOrcamentoPadraoDetectado(chatId, session, _serv1);
+      return;
+    }
   }
 
   // ✅ CONFIRMAÇÃO DA OPÇÃO: antes de entrar no fluxo, o cliente confirma
@@ -3684,6 +3809,15 @@ async function handleIncomingMessage(message) {
 
   // Texto puro (ex.: "oi") → reenvia boas-vindas; número inválido → avisa
   if (opcaoMenu === "") {
+    /* 🚨 Antes daqui: o serviço dito por extenso. Sem isso o bot repetia o
+       MESMO menu de boas-vindas que acabou de mandar (foi o que o cliente
+       21 96882-3244 recebeu duas vezes em 01/09/2026, com a palavra "cabine"
+       escrita na mensagem dele). */
+    const _serv2 = detectarServicosNoTexto(texto);
+    if (_serv2.length) {
+      await enviarOrcamentoPadraoDetectado(chatId, session, _serv2);
+      return;
+    }
     session.menuInicialEnviado = false;
     await mostrarMenuInicial(chatId);
   } else {
@@ -4566,6 +4700,9 @@ const resumoEucaristia =
     }
 
     session.orcamento.bairro = capitalizarPalavras(txtBairro);
+    // Marca a ORIGEM: local dito pelo cliente nunca pode ser apagado pelo
+    // orcamento manual (ver o bloco de #local no comando manual).
+    session.orcamento._localOrigem = "cliente";
     session.step = "orcamento_cidade";
     await enviarPerguntaESalvar(chatId, session, "Qual a *cidade* do evento?");
     return;
@@ -4895,11 +5032,11 @@ const resumoEucaristia =
         break;
       }
       case "bairro": {
-        if (txt.length >= 2 && /[a-zA-ZÀ-ÿ]/.test(txt)) { orc.bairro = capitalizarPalavras(txt); ok = true; }
+        if (txt.length >= 2 && /[a-zA-ZÀ-ÿ]/.test(txt)) { orc.bairro = capitalizarPalavras(txt); orc._localOrigem = "cliente"; ok = true; }
         break;
       }
       case "cidade": {
-        if (txt.length >= 2 && /[a-zA-ZÀ-ÿ]/.test(txt)) { orc.cidade = capitalizarPalavras(txt); ok = true; }
+        if (txt.length >= 2 && /[a-zA-ZÀ-ÿ]/.test(txt)) { orc.cidade = capitalizarPalavras(txt); orc._localOrigem = "cliente"; ok = true; }
         break;
       }
       case "salao": {
@@ -5141,6 +5278,10 @@ module.exports = {
   // Exposto para o banco de medicao do anti-loop (teste-antiloop-menu.js):
   // sem teste, a regra volta a engolir resposta de menu sem ninguem ver.
   registrarMensagemAntiLoop,
+  // idem, para teste-local-orcamento-manual.js
+  resolverLocalOrcamentoManual,
+  // idem, para teste-servico-por-extenso.js
+  detectarServicosNoTexto,
   // 🚨 Lista canônica dos serviços do menu, na ordem do menu. Os jobs
   // (envio agendado, lembrete) precisam dela: cada cópia escrita à mão
   // envelhecia e deixava serviço novo de fora.
@@ -5156,6 +5297,43 @@ module.exports = {
 // ===================================================
 
 /**
+ * ORÇAMENTO PADRÃO DO SERVIÇO QUE O CLIENTE CITOU POR EXTENSO.
+ *
+ * Reaproveita inteiro o envio do lembrete de 1h (mesmos fallbacks: até 200
+ * convidados, 4h5h, celebração "Outros"), só que com UMA lista curta e com a
+ * abertura certa para quem acabou de chegar. Ele já termina oferecendo o
+ * orçamento personalizado, então o cliente não fica num beco.
+ */
+async function enviarOrcamentoPadraoDetectado(chatId, session, ids) {
+  // Teto de 3: quem escreve um texto citando meia dúzia de serviços quer o
+  // menu, não seis apresentações seguidas.
+  const lista = ids.slice(0, 3);
+  const nomes = lista.map(id => SERVICOS_NOMES[id]).filter(Boolean);
+  const comE  = nomes.length > 1
+    ? nomes.slice(0, -1).join(", ") + " e " + nomes[nomes.length - 1]
+    : (nomes[0] || "nosso serviço");
+
+  console.log(`🔎 Serviço citado por extenso por ${chatId}: ${lista.join(", ")} (${comE})`);
+
+  session.orcamento = session.orcamento || { servicosEnviados: [] };
+
+  await enviarOrcamentosAutomaticos(chatId, session, lista, {
+    textoAbertura:
+      `${saudacaoPorHora()}! ❤️\n\n` +
+      `Vi que você quer saber sobre *${comE}* — já te mando o valor, ` +
+      `sem você precisar esperar. 😊\n\n` +
+      `_É o nosso orçamento base: evento de até 200 convidados, de 4h a 5h._`
+  });
+
+  /* O envio automático guarda "de onde parou" para o botão de personalizar.
+     Aqui o cliente não tinha parado em lugar nenhum (estava no menu), então
+     o "Sim, quero" tem que começar o questionário no NOME — senão ele voltava
+     para o menu de boas-vindas e o funil andava em círculo. */
+  session.lembreteRetomarStep     = "orcamento_nome";
+  session.lembreteRetomarPergunta = "Qual o seu nome?";
+}
+
+/**
  * ENVIO AUTOMÁTICO DE TODOS OS ORÇAMENTOS (lembrete de 1h).
  * Versão ENXUTA: usa apenasOrcamento (avaliação + nome do serviço + PDF/link),
  * sem o fluxo de fotos e vídeos — senão viram ~80 mensagens e o cliente se perde.
@@ -5163,7 +5341,7 @@ module.exports = {
  * Fallbacks: sem horário → 4h5h (horas=5); sem celebração → Outros (9) e 200
  * convidados; corporativo → avisa que o valor atende até 200 pessoas.
  */
-async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null) {
+async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null, opcoes = {}) {
   if (!session) return;
   const passoOriginal = session.step;
 
@@ -5185,11 +5363,15 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
   const ola   = nome ? `${saud}, *${nome}*!` : `${saud}!`;
 
   await sendTyping(chatId);
-  await sendText(chatId,
+  /* A abertura padrão é a do lembrete de 1h ("a gente não terminou"). Quem
+     chama com `opcoes.textoAbertura` manda a sua — é o caso do serviço
+     detectado por extenso, em que o cliente ainda nem começou nada e essa
+     frase não faria sentido nenhum. */
+  await sendText(chatId, opcoes.textoAbertura || (
     `${ola} ❤️\n\n` +
     `Vi que a gente não terminou o seu orçamento e não quero te deixar esperando.\n\n` +
     `Então já vou te enviar *todos os nossos serviços*, pra você ver com calma e sem compromisso. 😊`
-  );
+  ));
 
   try { await enviarAvaliacaoEmpresa(chatId, sessions); } catch (e) {
     console.error("⚠️ avaliações não enviadas:", e.message);
