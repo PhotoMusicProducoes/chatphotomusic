@@ -2890,7 +2890,17 @@ async function handleIncomingMessage(message) {
           "_Cabine, sem avaliação, 15 anos, 150 convidados, 5h_\n\n" +
           "*TELEFONE:* no fim, com ou sem seta\n" +
           "#fotocabine 0,1,50,4,1 5521999999999\n" +
-          "#fotocabine 0,1,50,4,1 -> 5521999999999";
+          "#fotocabine 0,1,50,4,1 -> 5521999999999\n\n" +
+          "*MAIS DE UM SERVIÇO NA MESMA MENSAGEM:*\n" +
+          "Emende os comandos. Serve *vírgula*, *espaço* ou *linha nova*: " +
+          "o que separa é o próprio *#*.\n\n" +
+          "#fotocabine 0,1,150,5,1, #somdj 0,1,150,5,1 5521999999999\n\n" +
+          "📌 *O telefone vai UMA vez só, no fim de tudo* (ou com a seta, em " +
+          "qualquer lugar).\n" +
+          "📌 _Sai *um PDF só*, com todos os serviços do lote._\n" +
+          "📌 _A avaliação sai *uma vez* por lote, mesmo com o *A* em 1 em " +
+          "todos os comandos._\n" +
+          "📌 _O *+completo* vale para o lote inteiro, não para um serviço só._";
 
         const guia2 =
           "📋 *ORÇAMENTO MANUAL — LISTAS*\n\n" +
@@ -3224,16 +3234,19 @@ async function handleIncomingMessage(message) {
           console.log(`📍 [MANUAL] Local do #local: ${_loc.bairro || ''} / ${_loc.cidade}`);
         } else if (_loc.acao === "limpar") {
           session.orcamento._localOrigem = null;
-          console.log("📍 [MANUAL] Sem #local — apaguei o local do orçamento manual anterior.");
+          console.log("📍 [MANUAL] Sem #local: apaguei o local do orçamento manual anterior.");
         } else if (_loc.acao === "cliente") {
-          console.log(`📍 [MANUAL] Sem #local — usando o local que o CLIENTE informou: ${_loc.bairro || ''} / ${_loc.cidade || ''}`);
+          console.log(`📍 [MANUAL] Sem #local, usando o local que o CLIENTE informou: ${_loc.bairro || ''} / ${_loc.cidade || ''}`);
         }
       }
 
-      for (const cmd of comandos) {
-        controlaMsgManual++;
-        await sendText(destinoOperador, `controlaMsgManual = ${controlaMsgManual}`);
-      }
+      /* Conta os comandos do lote. `controlaMsgManual2` conta os que deram
+         certo, e a comparação dos dois é o que decide se o resumo final sai.
+         🚨 Aqui havia um `sendText(destinoOperador, "controlaMsgManual = N")`
+         por comando: eco de depuração que chegava ao operador em toda venda,
+         e que com o lote de 3 serviços virava 3 mensagens de lixo antes do
+         orçamento. A CONTAGEM continua; só o eco saiu. (Mario, 03/09/2026.) */
+      controlaMsgManual += comandos.length;
 
       for (const cmd of comandos) {
         console.log("⚙️ [MANUAL] Processando:", cmd);
@@ -3468,8 +3481,7 @@ async function handleIncomingMessage(message) {
           delete sessions[chatIdCliente]?._envioMultiplo;
         }
 
-        controlaMsgManual2++;
-        await sendText(destinoOperador, `controlaMsgManual2 = ${controlaMsgManual2}`);
+        controlaMsgManual2++; // eco de debug removido em 03/09/2026
 
         // 📌 REGISTRAR SERVIÇO ENVIADO
         registrarServicoEnviado(session, servicoId);
@@ -3488,7 +3500,9 @@ async function handleIncomingMessage(message) {
         console.log("📌 Cliente via destino do webhook:", numeroCliente);
       }
 
-      await sendText(destinoOperador, `controlaMsgManual = ${controlaMsgManual} e controlaMsgManual2 = ${controlaMsgManual2}`);
+      // O placar dos contadores agora vai só para o LOG. Ele chegava ao
+      // operador em toda venda, junto do orçamento do cliente.
+      console.log(`📌 [MANUAL] comandos=${controlaMsgManual} enviados=${controlaMsgManual2}`);
 
       /* 🧾 Orçamento GERADO no comando manual: também UM PDF SÓ, com todos os
          serviços migrados do lote (`#fotocabine ..., #totemretro ...` numa
@@ -5383,7 +5397,7 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids) {
   await enviarOrcamentosAutomaticos(chatId, session, lista, {
     textoAbertura:
       `${saudacaoPorHora()}! ❤️\n\n` +
-      `Vi que você quer saber sobre *${comE}* — já te mando o valor, ` +
+      `Vi que você quer saber sobre *${comE}*, já te mando o valor ` +
       `sem você precisar esperar. 😊\n\n` +
       `_É o nosso orçamento base: evento de até 200 convidados, de 4h a 5h._`
   });
