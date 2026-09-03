@@ -1631,6 +1631,64 @@ const PALAVRAS_SERVICO = [
    (opções 3 e 4). */
 const NAO_E_ORCAMENTO = /\b(contratei|contratado|contratada|contratamos|ja\s*fechei|suporte|problema|reclamacao|reclamar|nao\s*chegou|atras[ao]|cancelar|cancelamento|nota\s*fiscal|contrato)\b/;
 
+/* ======================================================
+   COMANDO DO OPERADOR DIGITADO ERRADO (Mario, 02/09/2026)
+   ======================================================
+   O guia só respondia à igualdade EXATA de "#orcamentomanual". Bastou sair
+   "#orcamentomanuel" para o bot ignorar o pedido e cuspir a parede de
+   "não consegui identificar o cliente destino", que não tem nada a ver com
+   o que foi pedido. Acento tem o mesmo efeito: "#orçamentomanual" também
+   não batia.
+
+   A comparação agora tira acento, tira o que não é letra e ainda aceita até
+   DOIS erros de digitação (Levenshtein), que cobre letra trocada, faltando,
+   sobrando ou invertida. É comando de OPERADOR, não de cliente: errar para
+   o lado de responder é sempre melhor do que a parede. */
+function distanciaEdicao(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let linha = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    let anterior = linha[0];
+    linha[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const guardado = linha[j];
+      linha[j] = Math.min(
+        linha[j] + 1,          // remoção
+        linha[j - 1] + 1,      // inserção
+        anterior + (a[i - 1] === b[j - 1] ? 0 : 1) // troca
+      );
+      anterior = guardado;
+    }
+  }
+  return linha[n];
+}
+
+/** "#Orçamento-Manual" -> "orcamentomanual" (só letras e números). */
+function chaveComando(texto) {
+  return String(texto || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * O comando digitado é um destes? Aceita apelido exato ou até 2 erros de
+ * digitação (só para palavras de 6+ letras, senão "#som" viraria "#sim").
+ */
+function comandoBate(digitado, apelidos) {
+  const k = chaveComando(digitado);
+  if (!k) return false;
+  for (const alvo of apelidos) {
+    const a = chaveComando(alvo);
+    if (k === a) return true;
+    if (a.length >= 6 && distanciaEdicao(k, a) <= 2) return true;
+  }
+  return false;
+}
+
 /** Tira acento e baixa a caixa, para os padrões acima serem simples. */
 function normalizarParaBusca(texto) {
   return String(texto || "")
@@ -2796,10 +2854,13 @@ async function handleIncomingMessage(message) {
       // celebracoes), então o guia nunca fica desatualizado. Não precisa de
       // cliente destino, por isso é tratado antes da resolução do cliente.
       // ======================================================
-      const pedeGuia = comandos.some(c => {
-        const n = c.split(" ")[0].toLowerCase();
-        return n === "#orcamentomanual" || n === "#ajuda" || n === "#comandos";
-      });
+      /* Apelidos do guia + tolerância a erro de digitação (comandoBate).
+         "#orcamentomanuel" mandou o Mario para a parede de "não identifiquei
+         o cliente" em 02/09/2026. */
+      const APELIDOS_GUIA = [
+        "#orcamentomanual", "#ajuda", "#comandos", "#guia", "#guiarapido", "#help"
+      ];
+      const pedeGuia = comandos.some(c => comandoBate(c.split(" ")[0], APELIDOS_GUIA));
 
       if (pedeGuia) {
         const listaServicos = Object.keys(comandosServicos)
@@ -5282,6 +5343,8 @@ module.exports = {
   resolverLocalOrcamentoManual,
   // idem, para teste-servico-por-extenso.js
   detectarServicosNoTexto,
+  // idem, para teste-comando-guia.js
+  comandoBate,
   // 🚨 Lista canônica dos serviços do menu, na ordem do menu. Os jobs
   // (envio agendado, lembrete) precisam dela: cada cópia escrita à mão
   // envelhecia e deixava serviço novo de fora.
