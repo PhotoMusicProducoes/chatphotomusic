@@ -84,3 +84,7 @@ psj-batismo.json
 services/psj-batismo.json
 psj-batismo-docs/
 services/psj-batismo-docs/
+
+# Dados da bancada de teste da Oficina do Narciso (nunca versionar)
+oficina-narciso-atendimentos.json
+services/oficina-narciso-atendimentos.json

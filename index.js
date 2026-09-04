@@ -8,6 +8,8 @@ const { fluxoEventos, apresentarEvento } = require("./services/eventos.js");
 // ⛪ A bancada da paróquia foi APOSENTADA em 24/07/2026: o sistema virou app
 // próprio da Rapha Lumen (`paroquia-pro`, gru). Os arquivos services/paroquia*.js
 // e a rota /psj continuam aqui só como histórico e não são mais usados.
+// 🔧 Bancada de teste NOVA (mesmo padrão): Oficina do Narciso, gatilho "#oficina".
+const { handleOficina } = require("./services/oficinaNarciso.js");
 const { INSTANCE_ID, TOKEN, API_URL, PM_API_BASE, PM_API_KEY } = require("./utils/config.js");
 const axios = require("axios");
 
@@ -2205,6 +2207,19 @@ async function handleIncomingMessage(message) {
       "O sistema agora roda no WhatsApp da *própria paróquia*. Use o *#psj* lá. 🙏"
     );
     return;
+  }
+
+  // ======================================================
+  // 🔧 BANCADA DE TESTE — Oficina do Narciso (demo Rapha Lumen Pro)
+  // ======================================================
+  // Gatilho oculto "#oficina" (só o Mario usa, para mostrar a experiência ao
+  // Narciso). Isolado em services/oficinaNarciso.js — não mexe no fluxo de
+  // orçamento do evento. Migra para número/app próprio se ele aprovar (mesmo
+  // caminho que a bancada da paróquia percorreu).
+  const _ofcLow = (corpoMensagem || "").trim().toLowerCase();
+  if (_ofcLow === "#oficina" || String(sessions[chatId]?.step || "").startsWith("ofc_")) {
+    const tratou = await handleOficina(chatId, sessions, corpoMensagem);
+    if (tratou) return;
   }
 
   // ======================================================
