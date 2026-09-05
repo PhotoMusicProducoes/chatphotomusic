@@ -161,9 +161,18 @@ function horaSaoPaulo() {
   return parseInt(fmt.format(new Date()), 10);
 }
 
-function dentroDaJanela() {
-  const h = horaSaoPaulo();
-  return h >= 7 && h < 20; // permitido 7h–19h59; bloqueado 20h–6h59
+/* Janela de envio automático. 🚨 Ia até 19h59 e isso escondia um caso comum:
+   quem escreve no comecinho da noite. Cliente de 04/09/2026 chegou às 19:56;
+   o empurrão venceria 20:26 e os orçamentos 20:56, os dois na faixa bloqueada,
+   e ela só receberia tudo às 7h do dia seguinte. Nada se perdia, mas o lead
+   esfriava a noite inteira. Mario decidiu (04/09/2026) esticar para 22h.
+   O parâmetro `hora` existe para o banco de medição; em produção ninguém
+   passa nada e vale a hora de São Paulo. */
+const JANELA_INICIO = 7;   // primeira hora permitida
+const JANELA_FIM    = 22;  // primeira hora BLOQUEADA (permite até 21h59)
+
+function dentroDaJanela(hora = horaSaoPaulo()) {
+  return hora >= JANELA_INICIO && hora < JANELA_FIM;
 }
 
 // Lê a data do evento da sessão ("DD/MM/AAAA" em orcamento.data) → Date 00:00,
@@ -358,7 +367,7 @@ function montarMensagemOperador(chatId, s, dEvento) {
 // EXECUÇÃO
 // ======================================================
 async function executarLembreteOrcamento() {
-  if (!dentroDaJanela()) return; // proteção extra à janela 7h–20h
+  if (!dentroDaJanela()) return; // proteção extra à janela (ver JANELA_FIM)
 
   console.log("\n⏰ ===== LEMBRETE DE ORÇAMENTO ABANDONADO =====");
   const agora = Date.now();
@@ -489,15 +498,24 @@ async function executarLembreteOrcamento() {
 
 // ======================================================
 // SCHEDULER — a cada 30 min, das 7h às 20h (Brasília)
-// (mesma janela do follow-up de leads; a guarda dentroDaJanela() garante
-//  que nada saia 20h–7h mesmo nos minutos finais do ciclo das 20h.)
+// (a guarda dentroDaJanela() garante que nada saia fora da faixa mesmo nos
+//  minutos finais do último ciclo. 🚨 O follow-up de leads, em followupLeads.js,
+//  continua parando às 20h: ele aborda lead FRIO, este aqui responde a quem
+//  acabou de falar. Se um dia forem igualados, tem que ser nos dois arquivos.)
 // ======================================================
 function inicializarLembreteOrcamento() {
-  cron.schedule("*/30 7-20 * * *", () => {
+  cron.schedule("*/30 7-22 * * *", () => {
     executarLembreteOrcamento();
   }, { timezone: TIMEZONE });
 
-  console.log("⏰ Lembrete de orçamento abandonado agendado (a cada 30 min, 7h–20h).");
+  console.log(`⏰ Lembrete de orçamento abandonado agendado (a cada 30 min, ${JANELA_INICIO}h às ${JANELA_FIM - 1}h59).`);
 }
 
-module.exports = { inicializarLembreteOrcamento, executarLembreteOrcamento };
+module.exports = {
+  inicializarLembreteOrcamento,
+  executarLembreteOrcamento,
+  // para teste-janela-lembrete.js
+  dentroDaJanela,
+  JANELA_INICIO,
+  JANELA_FIM
+};
