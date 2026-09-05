@@ -767,6 +767,24 @@ const mensagemBoasVindas3 =
   "*6* - Não sou cliente, mas preciso falar com você\n" +
   "*7* - Estou em um evento e desejo baixar minha foto";
 
+/* ======================================================
+   AVISO DE OPÇÃO INVÁLIDA NO MENU INICIAL (Mario, 04/09/2026)
+   ======================================================
+   🚨 Antes, mensagem sem número REENVIAVA o menu de boas-vindas inteiro. Como
+   o bot responde uma mensagem por vez, o cliente que mandava duas seguidas
+   ("oi boa noite" + "qual valor") recebia o MESMO menu duas vezes, uma para
+   cada mensagem. Repetir a mesma coisa não avisa nada a ninguém, e ainda
+   empurra o número na direção do anti-loop do menu (MENU_MAX_REPETICOES).
+
+   O certo é o mesmo tratamento das outras respostas inválidas do fluxo: dizer
+   que não entendeu e dizer o que digitar. A lista sai do LABELS_MENU, a mesma
+   fonte do menu de verdade, então as duas nunca discordam.
+*/
+function avisoOpcaoInvalidaMenu() {
+  return "⚠ Opção inválida! Por favor, escolha uma opção válida (*Digite somente o número*):\n\n" +
+    Object.keys(LABELS_MENU).map(k => `*${k}* - ${LABELS_MENU[k]}`).join("\n");
+}
+
 // Rótulos curtos de cada opção do menu — usados na tela de confirmação
 // (evita o erro de digitar a opção errada e já entrar no fluxo errado).
 const LABELS_MENU = {
@@ -3897,26 +3915,22 @@ async function handleIncomingMessage(message) {
     return;
   }
 
-  // Texto puro (ex.: "oi") → reenvia boas-vindas; número inválido → avisa
+  /* 🚨 Antes daqui: o serviço dito por extenso. Sem isso o bot repetia o
+     MESMO menu de boas-vindas que acabou de mandar (foi o que o cliente
+     21 96882-3244 recebeu duas vezes em 01/09/2026, com a palavra "cabine"
+     escrita na mensagem dele). */
   if (opcaoMenu === "") {
-    /* 🚨 Antes daqui: o serviço dito por extenso. Sem isso o bot repetia o
-       MESMO menu de boas-vindas que acabou de mandar (foi o que o cliente
-       21 96882-3244 recebeu duas vezes em 01/09/2026, com a palavra "cabine"
-       escrita na mensagem dele). */
     const _serv2 = detectarServicosNoTexto(texto);
     if (_serv2.length) {
       await enviarOrcamentoPadraoDetectado(chatId, session, _serv2);
       return;
     }
-    session.menuInicialEnviado = false;
-    await mostrarMenuInicial(chatId);
-  } else {
-    await sendText(
-      chatId,
-      "*⚠ Opção inválida!* Escolha uma das opções do menu digitando apenas o número: *(Digite somente número)*\n\n" +
-      mensagemBoasVindas3.split("\n").slice(2).join("\n")
-    );
   }
+
+  /* Texto sem número OU número fora de 1-7: os dois são a mesma coisa para o
+     cliente (ele não escolheu opção nenhuma), então recebem o mesmo aviso.
+     O menu de boas-vindas NÃO é reenviado: ver avisoOpcaoInvalidaMenu(). */
+  await sendText(chatId, avisoOpcaoInvalidaMenu());
   return;
   }
 
@@ -5374,6 +5388,9 @@ module.exports = {
   detectarServicosNoTexto,
   // idem, para teste-comando-guia.js
   comandoBate,
+  // idem, para teste-menu-opcao-invalida.js
+  avisoOpcaoInvalidaMenu,
+  LABELS_MENU,
   // 🚨 Lista canônica dos serviços do menu, na ordem do menu. Os jobs
   // (envio agendado, lembrete) precisam dela: cada cópia escrita à mão
   // envelhecia e deixava serviço novo de fora.
