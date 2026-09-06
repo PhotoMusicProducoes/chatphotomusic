@@ -1,7 +1,5 @@
-[
 {
-  "horario": "0 7 * * *",     
+  "horario": "0 10 * * *",
   "timezone": "America/Sao_Paulo",
   "ativo": true
 }
-]

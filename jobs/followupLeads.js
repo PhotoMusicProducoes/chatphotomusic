@@ -16,6 +16,7 @@
 
 const axios = require("axios");
 const cron = require("node-cron");
+const { esperaEntreEnvios } = require("../utils/intervaloEnvio.js");
 const { sendText } = require("../utils/index.js");
 const { sessions } = require("../utils/sessions");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
@@ -357,8 +358,7 @@ async function executarFollowupLeads() {
         // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
         // a partir do 2º, varia aleatoriamente entre 5 e 15s — parece humano.
         idxEnvio++;
-        const espera = idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001);
-        await new Promise(r => setTimeout(r, espera));
+        await new Promise(r => setTimeout(r, esperaEntreEnvios(idxEnvio)));
       } catch (e) {
         console.error(`   ❌ Erro no lead #${lead.id}: ${e.message}`);
         erros++;
@@ -390,7 +390,7 @@ async function registrarFollowup(id, tipo, estagio) {
 // janela (à noite/madrugada) é enviado no primeiro ciclo das 7h.
 // ======================================================
 function inicializarFollowupLeads() {
-  cron.schedule("*/30 7-20 * * *", () => {
+  cron.schedule("*/30 10-20 * * *", () => {
     executarFollowupLeads();
   }, { timezone: TIMEZONE });
 

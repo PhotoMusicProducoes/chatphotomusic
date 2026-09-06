@@ -26,6 +26,7 @@
 // inatividade são ignoradas (velhas demais).
 
 const cron = require("node-cron");
+const { esperaEntreEnvios } = require("../utils/intervaloEnvio.js");
 const { sendText, sendButtonList, estaPausadoEspecial, estaPausado } = require("../utils/index.js");
 const { sessions } = require("../utils/sessions");
 
@@ -166,9 +167,13 @@ function horaSaoPaulo() {
    o empurrão venceria 20:26 e os orçamentos 20:56, os dois na faixa bloqueada,
    e ela só receberia tudo às 7h do dia seguinte. Nada se perdia, mas o lead
    esfriava a noite inteira. Mario decidiu (04/09/2026) esticar para 22h.
+   🕙 05/09/2026, Mario: o começo saiu das 7h para as **10h**. Às 7h a
+   mensagem chega antes de a pessoa estar olhando o celular, some no meio das
+   notificações da manhã e vira "lida sem resposta". Vale para TODOS os envios
+   automáticos, não só este.
    O parâmetro `hora` existe para o banco de medição; em produção ninguém
    passa nada e vale a hora de São Paulo. */
-const JANELA_INICIO = 7;   // primeira hora permitida
+const JANELA_INICIO = 10;  // primeira hora permitida
 const JANELA_FIM    = 22;  // primeira hora BLOQUEADA (permite até 21h59)
 
 function dentroDaJanela(hora = horaSaoPaulo()) {
@@ -478,12 +483,9 @@ async function executarLembreteOrcamento() {
         console.log(`   ✅ Lembrete ${devido} enviado para ${chatId} (parou em ${s.step})`);
       }
 
-      // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
-      // a partir do 2º, varia aleatoriamente entre 5 e 15s — assim a Meta
-      // entende como envio humano e não restringe o número.
+      // Intervalo anti-bloqueio da Meta (ver utils/intervaloEnvio.js).
       idxEnvio++;
-      const espera = idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001);
-      await new Promise(r => setTimeout(r, espera));
+      await new Promise(r => setTimeout(r, esperaEntreEnvios(idxEnvio)));
     } catch (e) {
       erros++;
       console.error(`   ❌ Erro no lembrete de ${chatId}: ${e.message}`);
@@ -504,7 +506,7 @@ async function executarLembreteOrcamento() {
 //  acabou de falar. Se um dia forem igualados, tem que ser nos dois arquivos.)
 // ======================================================
 function inicializarLembreteOrcamento() {
-  cron.schedule("*/30 7-22 * * *", () => {
+  cron.schedule("*/30 10-22 * * *", () => {
     executarLembreteOrcamento();
   }, { timezone: TIMEZONE });
 

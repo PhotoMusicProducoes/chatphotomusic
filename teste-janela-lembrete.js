@@ -5,6 +5,9 @@
 // ou seja 20:26 e 20:56 — os dois dentro da faixa que era bloqueada (a janela
 // ia até 19h59). Ela só receberia tudo às 7h do dia seguinte.
 // Decisão do Mario em 04/09/2026: esticar a janela até 22h.
+// Decisão do Mario em 05/09/2026: o começo saiu das 7h para as 10h, em TODOS
+// os envios automáticos. Às 7h a mensagem chega antes de a pessoa estar
+// olhando o celular e some no meio das notificações da manhã.
 //
 // Rodar:  node teste-janela-lembrete.js
 
@@ -28,10 +31,12 @@ hora(21, true, "orçamentos que venceram 20:56, no ciclo seguinte");
 
 console.log("\n— AS BORDAS —");
 hora(6,  false, "madrugada");
-hora(7,  true,  "primeira hora permitida");
+hora(7,  false, "era a primeira hora permitida até 05/09");
+hora(9,  false, "véspera do corte da manhã");
+hora(10, true,  "primeira hora permitida");
 hora(19, true);
 hora(21, true,  "última hora permitida");
-hora(22, false, "corte");
+hora(22, false, "corte da noite");
 hora(23, false);
 hora(0,  false, "meia-noite");
 hora(3,  false);
@@ -44,12 +49,17 @@ for (let h = 0; h < 24; h++) {
 }
 console.log(`✅ 24 horas conferidas contra a faixa ${JANELA_INICIO}h–${JANELA_FIM - 1}h59`);
 
-console.log("\n— NINGUÉM RECEBE DE MADRUGADA (o que a janela existe para impedir) —");
-const madrugada = [0, 1, 2, 3, 4, 5, 6, 22, 23];
+console.log("\n— NINGUÉM RECEBE FORA DA FAIXA —");
+const fora = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 22, 23];
 checar(
-  "nenhuma hora de 22h às 6h59 envia",
-  madrugada.every(h => dentroDaJanela(h) === false),
-  madrugada.filter(h => dentroDaJanela(h)).join(",")
+  "nenhuma hora de 22h às 9h59 envia",
+  fora.every(h => dentroDaJanela(h) === false),
+  fora.filter(h => dentroDaJanela(h)).join(",")
+);
+checar(
+  "a faixa tem 12 horas (10h às 21h)",
+  Array.from({ length: 24 }, (_, h) => h).filter(h => dentroDaJanela(h)).length === 12,
+  String(Array.from({ length: 24 }, (_, h) => h).filter(h => dentroDaJanela(h)).length)
 );
 
 console.log(falhas === 0 ? "\n🎉 Banco passou." : `\n🚨 ${falhas} falha(s).`);

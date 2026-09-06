@@ -2,6 +2,7 @@
 
 const axios = require("axios");
 const cron = require("node-cron");
+const { esperaEntreEnvios } = require("../utils/intervaloEnvio.js");
 const { sendText } = require("../utils/index.js");
 
 // ================= NORMALIZAÇÃO DE NÚMEROS (VERSÃO COMPLETA DO CHATBOT) =================
@@ -75,7 +76,7 @@ async function carregarConfiguracao() {
     // Fallback apenas se arquivo não existir
     console.log(`⚠️  Usando fallback padrão`);
     return {
-      horario: "0 7 * * *",
+      horario: "0 10 * * *",
       timezone: TIMEZONE_PADRAO,
       ativo: true
     };
@@ -549,7 +550,7 @@ async function executarEnvioComemoracoes() {
       // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
       // a partir do 2º, varia aleatoriamente entre 5 e 15s — parece humano.
       idxEnvio++;
-      await new Promise(r => setTimeout(r, idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001)));
+      await new Promise(r => setTimeout(r, esperaEntreEnvios(idxEnvio)));
     }
 
     console.log(`\n📌 Processando ${registrosSemAno.length} registros SEM ANO...`);
@@ -659,7 +660,7 @@ async function executarEnvioComemoracoes() {
       // Intervalo anti-bloqueio da Meta: o 1º envio do ciclo sai em ~3s e,
       // a partir do 2º, varia aleatoriamente entre 5 e 15s — parece humano.
       idxEnvio++;
-      await new Promise(r => setTimeout(r, idxEnvio <= 1 ? 3000 : 5000 + Math.floor(Math.random() * 10001)));
+      await new Promise(r => setTimeout(r, esperaEntreEnvios(idxEnvio)));
     }
 
     console.log(`\n📊 ========== RESUMO FINAL ==========`);

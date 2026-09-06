@@ -24,7 +24,7 @@ const TIMEZONE = "America/Sao_Paulo";
 /* A mensagem carinhosa NÃO sai de madrugada. O aviso de início é preso ao
    horário do serviço e sai a qualquer hora (festa que começa 22h precisa dele
    na hora); o de encerramento é um agrado e pode esperar o dia clarear. */
-const HORA_MIN_AGRADO = 8;
+const HORA_MIN_AGRADO = 10; // era 8h (Mario, 05/09/2026: 10h, ver utils/intervaloEnvio.js)
 const HORA_MAX_AGRADO = 21;
 
 function horaDeBrasilia() {
