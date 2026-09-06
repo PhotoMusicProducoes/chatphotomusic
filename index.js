@@ -780,6 +780,67 @@ const mensagemBoasVindas3 =
    que não entendeu e dizer o que digitar. A lista sai do LABELS_MENU, a mesma
    fonte do menu de verdade, então as duas nunca discordam.
 */
+/* ======================================================
+   RETOMADA DEPOIS DO "SIM, QUERO" (Mario, 05/09/2026)
+   ======================================================
+   🚨 Quem recebeu os orçamentos SEM nunca ter interagido não tem "de onde
+   parar": o passo guardado é o menu de entrada (`aguardando_opcao`, que nem
+   está no PERGUNTA_POR_PASSO do job) e a pergunta guardada é vazia. O bot
+   dizia "vamos continuar de onde paramos" e ficava MUDO, e ainda devolvia o
+   cliente para o menu de entrada logo depois de ele dizer que queria o
+   orçamento personalizado. Caso real relatado pelo Mario.
+
+   Para quem parou no meio de verdade, a ordem de preferência da pergunta é a
+   mesma do job: a pergunta guardada na hora do envio e, se faltar, a última
+   pergunta não respondida da sessão. Sem nenhuma das duas, recomeça pelo
+   nome: os dados já ditos continuam em `session.orcamento`, e perguntar de
+   novo é sempre melhor do que o bot emudecer.
+
+   Passos que NÃO são retomada (todos levam ao começo do questionário): menu de
+   entrada, o próprio convite, e os finais de atendimento.
+*/
+const PASSOS_SEM_RETOMADA = [
+  "aguardando_opcao", "confirmar_opcao_menu", "lembrete_retomar",
+  "finalizado", "aguardando_retorno", "pausado_fluxo", "pausado_followup"
+];
+const PERGUNTA_NOME = "Qual o seu nome?";
+
+/* A abertura DIZ POR QUE estamos perguntando (pedido do Mario, 05/09/2026):
+   o cliente acabou de receber um orçamento pronto, então precisa entender que
+   as perguntas existem para o valor sair sob medida para o evento DELE, e não
+   porque o bot quer enrolar. Tom carinhoso, coração sempre vermelho. */
+const ABERTURA_DO_ZERO =
+  "Que bom! ❤️\n\n" +
+  "Para eu preparar um orçamento *feito para o seu evento*, preciso de algumas " +
+  "informações. São perguntas rapidinhas, prometo! 😊";
+
+const ABERTURA_CONTINUAR =
+  "Que bom! ❤️\n\n" +
+  "Vamos continuar de onde paramos. Faltam só algumas informações para eu " +
+  "preparar o seu orçamento *personalizado*. 😊";
+
+function resolverRetomada(session) {
+  const s = session || {};
+  const passo = s.lembreteRetomarStep;
+
+  if (!passo || PASSOS_SEM_RETOMADA.includes(passo)) {
+    return { passo: "orcamento_nome", pergunta: PERGUNTA_NOME, doZero: true,
+             abertura: ABERTURA_DO_ZERO };
+  }
+
+  const pergunta =
+    (s.lembreteRetomarPergunta && String(s.lembreteRetomarPergunta).trim()) ||
+    (s.ultimaPerguntaNaoRespondida && String(s.ultimaPerguntaNaoRespondida).trim()) ||
+    "";
+
+  if (!pergunta) {
+    return { passo: "orcamento_nome", pergunta: PERGUNTA_NOME, doZero: true,
+             abertura: ABERTURA_DO_ZERO };
+  }
+
+  return { passo, pergunta, doZero: false, abertura: ABERTURA_CONTINUAR };
+}
+
 function avisoOpcaoInvalidaMenu() {
   return "⚠ Opção inválida! Por favor, escolha uma opção válida (*Digite somente o número*):\n\n" +
     Object.keys(LABELS_MENU).map(k => `*${k}* - ${LABELS_MENU[k]}`).join("\n");
@@ -4292,15 +4353,14 @@ const resumoEucaristia =
     const r = (corpoMensagem || "").trim().toLowerCase();
 
     if (r === "1" || r.startsWith("sim")) {
-      session.step = session.lembreteRetomarStep || "orcamento_nome";
-      const perg = session.lembreteRetomarPergunta;
+      // Ver resolverRetomada: quem nunca interagiu COMEÇA, não "continua".
+      const ret = resolverRetomada(session);
+      session.step = ret.passo;
       await sendTyping(chatId);
-      await sendText(chatId, "Que bom! ❤️ Vamos continuar de onde paramos.");
-      if (perg) {
-        await sendTyping(chatId);
-        await sendText(chatId, perg);
-        session.ultimaPerguntaNaoRespondida = perg;
-      }
+      await sendText(chatId, ret.abertura);
+      await sendTyping(chatId);
+      await sendText(chatId, ret.pergunta);
+      session.ultimaPerguntaNaoRespondida = ret.pergunta;
       return;
     }
 
@@ -5391,6 +5451,8 @@ module.exports = {
   // idem, para teste-menu-opcao-invalida.js
   avisoOpcaoInvalidaMenu,
   LABELS_MENU,
+  // idem, para teste-retomar-personalizado.js
+  resolverRetomada,
   // 🚨 Lista canônica dos serviços do menu, na ordem do menu. Os jobs
   // (envio agendado, lembrete) precisam dela: cada cópia escrita à mão
   // envelhecia e deixava serviço novo de fora.
@@ -5434,12 +5496,10 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids) {
       `_É o nosso orçamento base: evento de até 200 convidados, de 4h a 5h._`
   });
 
-  /* O envio automático guarda "de onde parou" para o botão de personalizar.
-     Aqui o cliente não tinha parado em lugar nenhum (estava no menu), então
-     o "Sim, quero" tem que começar o questionário no NOME — senão ele voltava
-     para o menu de boas-vindas e o funil andava em círculo. */
-  session.lembreteRetomarStep     = "orcamento_nome";
-  session.lembreteRetomarPergunta = "Qual o seu nome?";
+  /* Não precisa mexer no "de onde parou": quem chega por aqui estava no menu,
+     e resolverRetomada() já manda esse caso para o começo do questionário.
+     Este arquivo tinha a regra escrita à mão, o que deixava DUAS versões dela
+     no código, e só esta cobria o cliente. A do job continuava muda. */
 }
 
 /**
