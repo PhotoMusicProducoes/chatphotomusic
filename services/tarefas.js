@@ -116,16 +116,16 @@ async function notificarTarefasAbertas(grupoId = null) {
     console.log(`📤 [Tarefas] Notificação enviada ao grupo: ${grupoId}`);
   }
 
-  // Incrementa contador de notificações via API
-  for (const p of dados.tarefas) {
-    try {
-      await axios.post(
-        `${PM_API_BASE}/tarefas/${p.id}/concluir`,
-        {},
-        { headers: { ...headersApi(), "X-Only-Increment": "1" }, timeout: 5000 }
-      );
-    } catch (_) {}
-  }
+  /* 🚨 AQUI HAVIA UM LAÇO QUE APAGAVA A LISTA INTEIRA (achado em 06/09/2026).
+     Ele chamava POST /tarefas/{id}/concluir para cada tarefa, com o cabeçalho
+     "X-Only-Increment: 1", na intenção de só somar 1 no contador de avisos.
+     Só que o plugin NÃO conhece esse cabeçalho: o endpoint lê o id, confere se
+     está pendente e chama PhotoMusic_Tarefas::concluir(), ponto. Ou seja, todo
+     aviso diário marcaria TODAS as tarefas como concluídas e a lista chegaria
+     vazia no dia seguinte, sem ninguém ter feito nada.
+     Nunca explodiu porque o job que chamava esta função estava morto.
+     Tarefa só se conclui pelo comando #ok ID do operador ou pela tela do
+     WordPress. É esse o pedido do Mario: avisar TODO DIA até ele confirmar. */
 }
 
 // ======================================================

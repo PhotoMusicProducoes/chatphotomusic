@@ -62,6 +62,49 @@ let cronTask = null;
 let configAtual = null;
 let taskLimpeza = null;
 
+/* ======================================================
+   HORA MÍNIMA DOS ENVIOS AUTOMÁTICOS (Mario, 06/09/2026)
+   ======================================================
+   🚨 A regra do Mario é do NEGÓCIO, não de um arquivo: nada automático sai
+   antes das 10h, porque antes disso a mensagem chega enquanto a pessoa ainda
+   não está olhando o celular e some no meio das notificações da manhã.
+
+   Todos os outros jobs guardam essa hora no CÓDIGO. Só as comemorações liam de
+   `wp-content/dados/comemoracoes-config.json`, no servidor do WordPress. Quando
+   o horário mudou para 10h, os outros mudaram no deploy e este ficou às 7h,
+   esperando alguém lembrar de trocar um arquivo por FTP. Regra de negócio não
+   pode depender de memória de gente.
+
+   Agora o arquivo do servidor continua mandando (dá para escolher 10h, 11h,
+   14h, sem deploy), mas ele NÃO CONSEGUE MAIS marcar antes das 10h: se vier
+   mais cedo, o bot sobe para as 10h e avisa no log. */
+const HORA_MINIMA_ENVIO = 10;
+
+/**
+ * Puxa para as 10h qualquer agendamento mais cedo. Mantém os minutos.
+ * "0 7 * * *" -> "0 10 * * *"   |   "30 8 * * *" -> "30 10 * * *"
+ * Hora que já está de tarde, ou expressão que eu não entendo (lista, faixa,
+ * "*"), passa intacta: mexer no que não entendo seria pior.
+ */
+function aplicarHoraMinima(expressao) {
+  const bruta = String(expressao || "").trim();
+  const partes = bruta.split(/\s+/);
+  if (partes.length < 5) return bruta;
+
+  const hora = partes[1];
+  if (!/^\d{1,2}$/.test(hora)) return bruta;      // "*", "7-20", "7,8" -> não mexo
+  if (Number(hora) >= HORA_MINIMA_ENVIO) return bruta;
+
+  partes[1] = String(HORA_MINIMA_ENVIO);
+  const nova = partes.join(" ");
+  console.warn(
+    `🕙 [Comemorações] O agendamento veio como "${bruta}", antes das ${HORA_MINIMA_ENVIO}h. ` +
+    `Subindo para "${nova}". Para valer outro horário, troque o comemoracoes-config.json ` +
+    `no servidor por um horário a partir das ${HORA_MINIMA_ENVIO}h.`
+  );
+  return nova;
+}
+
 // ================= CARREGAR CONFIGURAÇÃO =================
 async function carregarConfiguracao() {
   try {
@@ -70,13 +113,14 @@ async function carregarConfiguracao() {
     const novaConfig = resposta.data;
 
     console.log(`✅ Configuração carregada:`, novaConfig);
-    return novaConfig;
+    // A hora mínima vale para o que vem do servidor também.
+    return { ...novaConfig, horario: aplicarHoraMinima(novaConfig.horario) };
   } catch (erro) {
     console.error(`⚠️  Erro ao carregar configuração:`, erro.message);
     // Fallback apenas se arquivo não existir
     console.log(`⚠️  Usando fallback padrão`);
     return {
-      horario: "0 10 * * *",
+      horario: aplicarHoraMinima("0 10 * * *"),
       timezone: TIMEZONE_PADRAO,
       ativo: true
     };
@@ -721,6 +765,9 @@ async function inicializarScheduler() {
 // ================= EXPORTAÇÃO =================
 module.exports = {
   inicializarScheduler,
+  // para teste-hora-minima-comemoracoes.js
+  aplicarHoraMinima,
+  HORA_MINIMA_ENVIO,
   executarEnvioComemoracoes
 };
 

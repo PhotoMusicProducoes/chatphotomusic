@@ -209,6 +209,38 @@ function ehRespostaDeMenu(txt) {
   return /^[\d\s,;.]{1,12}$/.test(txt);
 }
 
+/* Qual comando de serviço o operador quis digitar? Devolve o nome oficial
+   (ex.: "#fotocabine") ou null. Mesma régua do guia: exato primeiro e, depois,
+   até 2 erros de digitação em nomes de 6+ letras. 🚨 Se DOIS comandos ficarem
+   igualmente perto, devolve null de propósito: mandar o orçamento do serviço
+   errado para um cliente é pior do que pedir para o operador repetir. */
+function resolverComandoServico(nome) {
+  const chave = chaveComando(nome);
+  if (!chave) return null;
+
+  for (const cmd of Object.keys(comandosServicos)) {
+    if (chaveComando(cmd) === chave) return cmd;
+  }
+
+  /* Quanto erro cada nome aguenta depende do TAMANHO dele. "somdj" tem 5
+     letras: com 2 erros de folga, quase tudo viraria "somdj". Com 1 erro,
+     "#somdjj" é corrigido e nada mais chega perto. Nome curtinho (menos de 5)
+     só bate exato. */
+  const folgaPara = (n) => (n >= 8 ? 2 : n >= 5 ? 1 : 0);
+
+  let melhor = null, melhorDist = 99, empatados = 0;
+  for (const cmd of Object.keys(comandosServicos)) {
+    const alvo = chaveComando(cmd);
+    const folga = folgaPara(alvo.length);
+    if (folga === 0) continue;
+    const d = distanciaEdicao(chave, alvo);
+    if (d > folga) continue;
+    if (d < melhorDist) { melhor = cmd; melhorDist = d; empatados = 1; }
+    else if (d === melhorDist) { empatados++; }
+  }
+  return empatados === 1 ? melhor : null;
+}
+
 function registrarMensagemAntiLoop(chatId, texto) {
   const agora = Date.now();
   const txt = String(texto || "").trim().toLowerCase();
@@ -472,19 +504,28 @@ function textoMenuServicos() {
 async function mostrarConfirmacaoOrcamento(chatId, session) {
   const orc = session.orcamento || {};
   let txt = "📋 *Confira os dados do seu evento:*\n\n";
+  /* 🚨 OS DADOS SAEM SEM NÚMERO (Mario, 06/09/2026).
+     A mensagem terminava com "1 - Sim, quero o orçamento / 2 - Corrigir algo",
+     e a lista de cima começava com "1 - Celebração". DUAS numerações brigando
+     dentro da MESMA mensagem: quem via a celebração errada digitava 1, o bot
+     lia "está tudo certo" e mandava a proposta com o dado errado, sem volta e
+     sem aviso. Era o defeito mais caro do fluxo, porque o cliente recebia um
+     PDF com preço errado achando que era o orçamento dele.
+     Agora o número existe em UM lugar só: a tela seguinte, a de correção, que
+     lista os campos numerados sem nada competindo. */
   for (const c of CAMPOS_CORRIGIVEIS) {
     const v = valorCampoResumo(orc, c.tipo);
     // Não envolve em negrito quando é e-mail/link — o WhatsApp linka e o
     // *asterisco* fica solto. Demais campos vão em negrito normalmente.
     const vFmt = String(v).includes("@") ? v : `*${v}*`;
-    txt += `*${c.id}* - ${c.label}: ${vFmt}\n`;
+    txt += `• ${c.label}: ${vFmt}\n`;
 
     /* Empresa logo abaixo da Celebração, SEM número próprio: a lista tem teto
        de 10 itens (limite do WhatsApp). Ela aparece para o cliente conferir o
        nome que vai no arquivo da proposta; para corrigir, ele escolhe a
        Celebração e o bot repergunta. (Mario, 19/08/2026.) */
     if (c.tipo === "celebracao" && orc.empresa) {
-      txt += `     Empresa: *${orc.empresa}*\n`;
+      txt += `  Empresa: *${orc.empresa}*\n`;
     }
   }
   // Botões (2026-07-15): é a RETA FINAL — o cliente já deu todos os dados e
@@ -524,8 +565,6 @@ async function pedirProximaCorrecao(chatId, session) {
     return;
   }
   const campo = fila[0];
-  session.correcaoAtual = campo;
-  session.step = "orcamento_corrigir_valor";
   const perguntas = {
     celebracao: "Qual a celebração? (*Digite o número*)\n" +
                 CELEBRACOES.map(c => `*${c.id}* ${c.label}`).join(" · "),
@@ -542,8 +581,25 @@ async function pedirProximaCorrecao(chatId, session) {
     email:      "Qual o seu *e-mail*? (ou responda *pular*)",
     nascimento: "Qual a sua *data de nascimento*? (*Ex: 01/02/1985* ou *pular*)",
   };
+  /* 🚨 O PASSO SÓ ANDA DEPOIS QUE A PERGUNTA SAI (06/09/2026).
+     Antes, `session.step` virava "orcamento_corrigir_valor" ANTES do envio. Se
+     a pergunta não saísse (Z-API fora do ar, por exemplo), o cliente ficava
+     esperando uma pergunta que nunca chegou e, pior, a próxima coisa que ele
+     digitasse seria lida como o VALOR do campo. Foi neste ponto exato que a
+     cliente de 01/09 ficou sem resposta depois de digitar "2".
+     Não entregou: o passo fica onde estava, o operador já foi avisado pelo
+     sendText, e se o cliente insistir ele recebe a lista de campos de novo,
+     que é uma saída ruim mas visível. */
   await sendTyping(chatId);
-  await sendText(chatId, perguntas[campo.tipo] || "Informe o novo valor:");
+  const entregue = await sendText(chatId, perguntas[campo.tipo] || "Informe o novo valor:");
+
+  if (entregue === false) {
+    console.error(`🚨 [Correção] Pergunta de "${campo.label}" NÃO chegou em ${chatId}. Passo não avançou.`);
+    return;
+  }
+
+  session.correcaoAtual = campo;
+  session.step = "orcamento_corrigir_valor";
 }
 
 /**
@@ -616,7 +672,7 @@ const OPERADOR_TELEFONE_ID = "5521964428172@c.us";
 // ======================================================
 function clienteQuerContratar(texto) {
   let t = String(texto || "").toLowerCase()
-    .normalize("NFD").replace(/[0300-036f]/g, ""); // tira acentos
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // tira acentos DE VERDADE
   if (!t) return false;
   // negação explícita → não é intenção ("não quero contratar", "ainda não vou fechar")
   if (/\bnao\b[^.!?]*\b(contrat|fechar)/.test(t)) return false;
@@ -979,7 +1035,7 @@ function parsearDataFlex(texto) {
 
   if (!m) {
     // Tenta formato por extenso: "9 de setembro", "09 setembro de 2026", "9 set"
-    const semAcento = t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const semAcento = t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const mn = semAcento.match(/^(\d{1,2})\s*(?:de\s+)?([a-z]+)(?:\s+(?:de\s+)?(\d{2}|\d{4}))?$/);
     if (!mn) return null;
 
@@ -1147,7 +1203,7 @@ function validarEmail(texto) {
 // ======================================================
 function interpretarSimNao(texto) {
   const t = String(texto || "").trim().toLowerCase()
-    .normalize("NFD").replace(/[0300-036f]/g, "");
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (["1", "sim", "s", "yes", "y"].includes(t)) return "1";
   if (["2", "nao", "n", "no", "nope", "nah"].includes(t)) return "2";
   return null;
@@ -3508,12 +3564,25 @@ async function handleIncomingMessage(message) {
           return;
         }
 
-        if (!comandosServicos[nomeComando]) {
-          await sendText(destinoOperador, `⚠ Comando não reconhecido: ${nomeComando}`);
+        /* 🚨 Tolera erro de digitação (Mario, 06/09/2026). Era igualdade
+           exata: "#fotocabinne" ou "#iluminação" com acento caíam no
+           "comando não reconhecido" e o cliente não recebia nada. Mesma
+           história do #orcamentomanuel de 02/09. */
+        const cmdServico = resolverComandoServico(nomeComando);
+        if (!cmdServico) {
+          await sendText(destinoOperador,
+            `⚠ Comando não reconhecido: ${nomeComando}\n\n` +
+            `Os comandos de serviço são:\n` +
+            Object.keys(comandosServicos).map(c => `• ${c}`).join("\n") +
+            `\n\n_Digite *#ajuda* para o guia completo._`);
           continue;
         }
+        if (cmdServico !== nomeComando) {
+          console.log(`⌨️ [MANUAL] "${nomeComando}" entendido como "${cmdServico}"`);
+          await sendText(destinoOperador, `⌨️ Entendi *${nomeComando}* como *${cmdServico}*.`);
+        }
 
-        const servicoId = comandosServicos[nomeComando];
+        const servicoId = comandosServicos[cmdServico];
 
         // ✅ CORRETO: Primeiro parâmetro controla envio de avaliação
         const enviarAvaliacao = Number(parametros[0]) === 1;  // 1 = sim, 0 = não
@@ -4475,7 +4544,7 @@ const resumoEucaristia =
   // ======================================================
   if (session.step === "orcamento_empresa") {
     const txt   = String(corpoMensagem || "").trim();
-    const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+    const pulou = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === "pular";
 
     /* Nome de empresa curto demais quase sempre é erro de digitação, e o nome
        vai para o ARQUIVO da proposta que o cliente recebe. Melhor perguntar de
@@ -4898,7 +4967,7 @@ const resumoEucaristia =
   if (session.step === "orcamento_salao") {
     const txtSalao = corpoMensagem.trim();
     const pulou = txtSalao.toLowerCase()
-      .normalize("NFD").replace(/[0300-036f]/g, "") === "pular";
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") === "pular";
 
     if (!pulou && txtSalao.length < 2) {
       await sendText(chatId, "*⚠ Informe o nome do salão* ou responda *pular*.");
@@ -5169,7 +5238,7 @@ const resumoEucaristia =
          corrige a "Celebração", escolhe 8 de novo e o bot repergunta - por
          isso este `case` existe, mesmo sem id na lista. */
       case "empresa": {
-        const pulou = txt.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "pular";
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === "pular";
         if (pulou) { orc.empresa = ""; ok = true; }
         else if (txt.length >= 2) { orc.empresa = capitalizarPalavras(txt); ok = true; }
         break;
@@ -5204,7 +5273,7 @@ const resumoEucaristia =
         break;
       }
       case "salao": {
-        const pulou = txt.toLowerCase().normalize("NFD").replace(/[0300-036f]/g, "") === "pular";
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === "pular";
         orc.salao = pulou ? null : capitalizarPalavras(txt);
         ok = true;
         break;
@@ -5214,7 +5283,7 @@ const resumoEucaristia =
         break;
       }
       case "detalhes": {
-        const pulou = txt.toLowerCase().normalize("NFD").replace(/[0300-036f]/g, "") === "pular";
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === "pular";
         orc.detalhes = pulou ? null : capitalizarPalavras(txt);
         ok = true;
         break;
@@ -5229,7 +5298,7 @@ const resumoEucaristia =
         break;
       }
       case "nascimento": {
-        const pulou = txt.toLowerCase().normalize("NFD").replace(/[0300-036f]/g, "") === "pular";
+        const pulou = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === "pular";
         const regexNasc = /^(0[1-9]|[12][0-9]|3[01])[\/.\-](0[1-9]|1[0-2])[\/.\-](\d{2}|\d{4})$/;
         if (pulou) { orc.dataNascimento = null; ok = true; }
         else if (regexNasc.test(txt)) { orc.dataNascimento = txt; ok = true; }
@@ -5442,12 +5511,18 @@ module.exports = {
   // Exposto para o banco de medicao do anti-loop (teste-antiloop-menu.js):
   // sem teste, a regra volta a engolir resposta de menu sem ninguem ver.
   registrarMensagemAntiLoop,
+  // para teste-acentos.js
+  interpretarSimNao,
+  clienteQuerContratar,
   // idem, para teste-local-orcamento-manual.js
   resolverLocalOrcamentoManual,
   // idem, para teste-servico-por-extenso.js
   detectarServicosNoTexto,
   // idem, para teste-comando-guia.js
   comandoBate,
+  // idem, para teste-comando-servico.js
+  resolverComandoServico,
+  comandosServicos,
   // idem, para teste-menu-opcao-invalida.js
   avisoOpcaoInvalidaMenu,
   LABELS_MENU,

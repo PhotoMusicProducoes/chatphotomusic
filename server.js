@@ -8,6 +8,8 @@ const { inicializarFollowupLeads } = require("./jobs/followupLeads");
 const { inicializarLembreteOrcamento } = require("./jobs/lembreteOrcamento");
 const { inicializarEnvioAgendado } = require("./jobs/envioAgendado");
 const { inicializarAvisosGaleria } = require("./jobs/avisosGaleria");
+// 🚨 Este estava FORA da lista e por isso nunca rodou. Ver jobs/lembreteTarefas.js.
+const { inicializarLembreteTarefas } = require("./jobs/lembreteTarefas");
 const { inicializarPausaEspecial } = require("./utils/index.js");
 const { extrairRespostaDeClique } = require("./utils/webhookPayload.js");
 
@@ -78,6 +80,7 @@ inicializarFollowupLeads();
 inicializarLembreteOrcamento();
 inicializarEnvioAgendado();
 inicializarAvisosGaleria();
+inicializarLembreteTarefas();
 
 // ================= FILA SEQUENCIAL POR USUÁRIO =================
 // Garante que duas mensagens do mesmo número nunca sejam processadas
