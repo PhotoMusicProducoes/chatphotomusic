@@ -11,7 +11,7 @@ const { inicializarAvisosGaleria } = require("./jobs/avisosGaleria");
 // 🚨 Este estava FORA da lista e por isso nunca rodou. Ver jobs/lembreteTarefas.js.
 const { inicializarLembreteTarefas } = require("./jobs/lembreteTarefas");
 const { inicializarPausaEspecial } = require("./utils/index.js");
-const { extrairRespostaDeClique } = require("./utils/webhookPayload.js");
+const { extrairRespostaDeClique, extrairPedidoDeCatalogo } = require("./utils/webhookPayload.js");
 
 const app = express();
 // Limite alto p/ o upload de documentos do batismo (foto em base64, já
@@ -123,6 +123,17 @@ async function processarWebhook(req, res) {
       console.log(`👆 [webhook] Clique recebido de ${payload.phone}: "${respostaClique}" (tratado como texto digitado)`);
     }
 
+    /* Pedido feito pelo CATÁLOGO do WhatsApp (2026-09-07). Não tem
+       `text.message`: sem isto o corpo chega vazio e o bot fica mudo.
+       Os nomes dos produtos viram o texto da mensagem — é o mesmo caminho
+       de quem escreve "quero cabine e 360" — e o pedido cru segue junto em
+       `pedidoCatalogo` para o index.js agradecer citando o que foi pedido. */
+    const pedidoCatalogo = extrairPedidoDeCatalogo(payload);
+    if (pedidoCatalogo) {
+      console.log(`🛒 [webhook] Pedido do catálogo de ${payload.phone}: ` +
+        JSON.stringify(pedidoCatalogo.itens));
+    }
+
     // Monta o objeto message no formato que o index.js espera
     const message = {
       // Número de quem enviou a mensagem
@@ -135,12 +146,19 @@ async function processarWebhook(req, res) {
       // Texto da mensagem (normalizado: corrige percent-encoding e mojibake).
       // `respostaClique` entra na frente: um clique em lista/botão é tratado
       // exatamente como se o cliente tivesse digitado aquele número.
-      body: respostaClique || normalizarTextoRecebido(payload.text?.message || payload.body || ""),
+      body: respostaClique
+        || pedidoCatalogo?.texto
+        || normalizarTextoRecebido(payload.text?.message || payload.body || ""),
       text: respostaClique
         ? { message: respostaClique }
-        : payload.text
-          ? { ...payload.text, message: normalizarTextoRecebido(payload.text.message || "") }
-          : null,
+        : pedidoCatalogo
+          ? { message: pedidoCatalogo.texto }
+          : payload.text
+            ? { ...payload.text, message: normalizarTextoRecebido(payload.text.message || "") }
+            : null,
+
+      // Pedido do catálogo (null quando a mensagem é comum).
+      pedidoCatalogo: pedidoCatalogo || null,
 
       // Indica se é grupo
       isGroup: payload.isGroup || false,

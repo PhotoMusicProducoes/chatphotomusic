@@ -65,6 +65,9 @@ const {
 
 // Atalho da foto por código (QR da cabine Lumen Capture)
 const { tratarCodigoFoto, temCodigoFoto } = require("./services/fotoCodigo");
+// Mapa id -> slug do catálogo do WordPress, usado para ler o SKU do catálogo
+// do WhatsApp. Fica num lugar só (services/orcamentoGerado.js).
+const { SLUG_POR_SERVICO } = require("./services/orcamentoGerado.js");
 
 // Ao reiniciar, resetar apenas flags de estado transitório que não fazem
 // sentido após um restart (ex: enviandoOrcamentos travado em true).
@@ -1981,6 +1984,70 @@ function linhasMenuServicos(ids) {
     .sort((a, b) => numeroExibicao(a) - numeroExibicao(b))
     .map(id => `*${numeroExibicao(id)}* - ${SERVICOS_NOMES[id]}`)
     .join("\n");
+}
+
+/* ======================================================
+   🛒 PEDIDO DO CATÁLOGO DO WHATSAPP -> SERVIÇOS (2026-09-07)
+   ======================================================
+   O cliente marca os produtos no catálogo e envia. O `server.js` já traduziu
+   isso em texto (utils/webhookPayload.js); aqui cada item vira um id de
+   serviço, em três tentativas, da mais segura para a mais frouxa:
+
+   1. SKU = SLUG do catálogo do WordPress ("foto-cabine", "totem-retro").
+      É a via robusta: renomear o produto no catálogo não quebra nada.
+   2. NOME do produto, pelo mesmo detector de quem escreve "quero a cabine".
+   3. SKU = número do MENU do bot ("0" Cabine, "1" Retrô...), por último de
+      propósito: o WhatsApp preenche SKU sozinho em alguns casos, e um "1"
+      solto virando Totem Retrô calado seria pior do que não reconhecer.
+
+   🚨 Nada aqui adivinha: item que não bate com nenhuma das três NÃO vira
+   serviço. Quem trata isso é o chamador, avisando o operador. */
+const ID_POR_SLUG_CATALOGO = Object.fromEntries(
+  Object.entries(SLUG_POR_SERVICO).map(([id, slug]) => [slug, Number(id)])
+);
+
+/** Normaliza o SKU: sem acento, minúsculo, sem prefixo "pm-", espaço vira "-". */
+function normalizarSku(sku) {
+  return String(sku || "")
+    .trim().toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/^pm[-_ ]+/, "")
+    .replace(/[_\s]+/g, "-");
+}
+
+/** SKU que é o slug do serviço ("foto-cabine") -> id interno. */
+function idPorSlugCatalogo(sku) {
+  const s = normalizarSku(sku);
+  return s && ID_POR_SLUG_CATALOGO[s] ? ID_POR_SLUG_CATALOGO[s] : null;
+}
+
+/** SKU que é o número do menu ("0" a "8") -> id interno. O 9 (TODOS) não vale
+ *  aqui: no catálogo o cliente escolhe produto, não "tudo". */
+function idPorNumeroMenu(sku) {
+  const s = normalizarSku(sku);
+  if (!/^[0-8]$/.test(s)) return null;
+  return EXIBICAO_PARA_ID[Number(s)] ?? null;
+}
+
+/**
+ * Ids dos serviços pedidos no catálogo, na ordem em que o cliente escolheu.
+ * @param {{itens: Array<{nome: string, sku: string}>}} pedido
+ * @returns {number[]} vazio quando nenhum item foi reconhecido.
+ */
+function servicosDoPedidoCatalogo(pedido) {
+  const ids = [];
+  const add = id => { if (id && !ids.includes(id)) ids.push(id); };
+
+  for (const item of pedido?.itens || []) {
+    const porSlug = idPorSlugCatalogo(item.sku);
+    if (porSlug) { add(porSlug); continue; }
+
+    const porNome = detectarServicosNoTexto(item.nome);
+    if (porNome.length) { porNome.forEach(add); continue; }
+
+    add(idPorNumeroMenu(item.sku));
+  }
+  return ids;
 }
 
 // ======================================================
@@ -4039,6 +4106,66 @@ async function handleIncomingMessage(message) {
     return;
   }
 
+  /* ======================================================
+     🛒 PEDIDO FEITO PELO CATÁLOGO DO WHATSAPP (2026-09-07)
+     ======================================================
+     O cliente marcou os produtos no catálogo e enviou. Antes disto o corpo da
+     mensagem chegava VAZIO (a Z-API manda `order`, não `text.message`) e o bot
+     ficava mudo justamente com quem já tinha escolhido o que queria.
+
+     Fica DEPOIS dos guards de pausa (pausado_followup / pausado_fluxo /
+     aguardando_retorno): pedido de catálogo não fura pausa. E fica ANTES do
+     roteamento por step de propósito: a escolha no catálogo é a ação mais
+     recente do cliente, então ela reinicia o fluxo em vez de esperar a
+     resposta de uma pergunta antiga. */
+  if (message.pedidoCatalogo) {
+    const idsCatalogo = servicosDoPedidoCatalogo(message.pedidoCatalogo);
+    const itensCatalogo = message.pedidoCatalogo.itens || [];
+    console.log(`🛒 Pedido do catálogo de ${chatId}: ` +
+      `${itensCatalogo.map(i => `${i.nome}${i.sku ? ` [${i.sku}]` : ""}`).join(" | ")} ` +
+      `-> serviços ${idsCatalogo.join(", ") || "(nenhum reconhecido)"}`);
+
+    // O cliente pode escrever um recado junto do pedido; isso não pode se perder.
+    if (message.pedidoCatalogo.observacao) {
+      try {
+        await sendText(OPERADOR_TELEFONE_ID,
+          `🛒 *Pedido pelo catálogo* — ${chatId}\n` +
+          `${itensCatalogo.map(i => `• ${i.nome}`).join("\n")}\n\n` +
+          `✍️ Recado do cliente:\n_"${message.pedidoCatalogo.observacao}"_`);
+      } catch (e) { console.warn(`⚠️ aviso do recado do catálogo: ${e.message}`); }
+    }
+
+    if (idsCatalogo.length) {
+      /* Entra no MESMO caminho de quem escreve "quero cabine e 360". O step
+         volta para o menu antes da chamada porque é dele que a retomada
+         (`lembreteRetomarStep`) parte, e não de um passo antigo pela metade. */
+      session.step = "aguardando_opcao";
+      session.menuInicialEnviado = true;
+      await enviarOrcamentoPadraoDetectado(chatId, session, idsCatalogo, { origemCatalogo: true });
+      return;
+    }
+
+    /* Nenhum item reconhecido (produto novo no catálogo, nome mudado). Não
+       adivinhamos: agradecemos, mostramos o menu e chamamos o operador. */
+    try {
+      await sendText(OPERADOR_TELEFONE_ID,
+        `⚠️ *Pedido do catálogo não reconhecido* — ${chatId}\n` +
+        `${itensCatalogo.map(i => `• ${i.nome}${i.sku ? ` [SKU ${i.sku}]` : " [sem SKU]"}`).join("\n")}\n\n` +
+        `O cliente recebeu o menu. Confira o nome e o SKU do produto no catálogo.`);
+    } catch (e) { console.warn(`⚠️ aviso de catálogo não reconhecido: ${e.message}`); }
+
+    await sendTyping(chatId);
+    await sendText(chatId,
+      `${saudacaoPorHora()}! ❤️\n\n` +
+      `Recebi o seu pedido pelo catálogo, muito obrigado! 😊\n\n` +
+      `Só para eu não errar o seu orçamento, me diz qual opção abaixo tem a ver ` +
+      `com o que você quer:`);
+    session.step = "aguardando_opcao";
+    session.menuInicialEnviado = true;
+    await mostrarMenuInicial(chatId);
+    return;
+  }
+
   // ======================================================
   // MENU INICIAL
   // ======================================================
@@ -5553,6 +5680,8 @@ module.exports = {
   resolverLocalOrcamentoManual,
   // idem, para teste-servico-por-extenso.js
   detectarServicosNoTexto,
+  // idem, para teste-pedido-catalogo.js (pedido do catálogo do WhatsApp)
+  servicosDoPedidoCatalogo,
   // idem, para teste-comando-guia.js
   comandoBate,
   // idem, para teste-comando-servico.js
@@ -5589,7 +5718,7 @@ module.exports = {
  * abertura certa para quem acabou de chegar. Ele já termina oferecendo o
  * orçamento personalizado, então o cliente não fica num beco.
  */
-async function enviarOrcamentoPadraoDetectado(chatId, session, ids) {
+async function enviarOrcamentoPadraoDetectado(chatId, session, ids, opcoes = {}) {
   // Teto de 3: quem escreve um texto citando meia dúzia de serviços quer o
   // menu, não seis apresentações seguidas.
   const lista = ids.slice(0, 3);
@@ -5602,13 +5731,30 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids) {
 
   session.orcamento = session.orcamento || { servicosEnviados: [] };
 
-  await enviarOrcamentosAutomaticos(chatId, session, lista, {
-    textoAbertura:
-      `${saudacaoPorHora()}! ❤️\n\n` +
-      `Vi que você quer saber sobre *${comE}*, já te mando o valor ` +
-      `sem você precisar esperar. 😊\n\n` +
+  /* Quem chegou pelo CATÁLOGO recebe agradecimento pelo pedido, não o
+     "vi que você quer saber sobre": ele já escolheu, não está perguntando. */
+  const textoAbertura = opcoes.origemCatalogo
+    ? `${saudacaoPorHora()}! ❤️
+
+` +
+      `Recebi o seu pedido pelo catálogo: *${comE}*. Obrigado por escolher a ` +
+      `PhotoMusic! 😊
+
+` +
+      `Já te mando o valor sem você precisar esperar.
+
+` +
       `_É o nosso orçamento base: evento de até 200 convidados, de 4h a 5h._`
-  });
+    : `${saudacaoPorHora()}! ❤️
+
+` +
+      `Vi que você quer saber sobre *${comE}*, já te mando o valor ` +
+      `sem você precisar esperar. 😊
+
+` +
+      `_É o nosso orçamento base: evento de até 200 convidados, de 4h a 5h._`;
+
+  await enviarOrcamentosAutomaticos(chatId, session, lista, { textoAbertura });
 
   /* Não precisa mexer no "de onde parou": quem chega por aqui estava no menu,
      e resolverRetomada() já manda esse caso para o começo do questionário.
