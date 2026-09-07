@@ -96,10 +96,86 @@ const DDD_PADRAO = "21";
 // IMPORTANTE: manter esta função IDÊNTICA à de utils/pausaEspecialControl.js —
 // a pausa do operador compara string exata, então qualquer divergência entre as
 // duas faz o número pausado nunca bater com o que chega do WhatsApp.
+/* ======================================================
+   NÚMERO COPIADO DO CONTATO DO WHATSAPP (Mario, 07/09/2026)
+   ======================================================
+   🚨 Caso real: "Resetar +55 21 98578-9603" resetou o número "552198578". O
+   WhatsApp NÃO usa o hífen comum quando formata um telefone: ele usa o hífen
+   NÃO SEPARÁVEL (U+2011) e ainda embrulha o número em marcas invisíveis de
+   direção de texto (U+202A, U+202C). Os parsers procuram o telefone com uma
+   classe tipo [\d\s\-()], que não conhece esse hífen: o casamento parava no
+   meio e o número saía cortado, sem ninguém perceber que estava cortado.
+
+   Copiar o número do contato é o caminho natural do operador, então tem que
+   funcionar. Aqui a pontuação "esquisita" vira a comum ANTES de qualquer
+   parser olhar. */
+const INVISIVEIS = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u00AD]/g;
+const TRACOS     = /[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g;
+const ESPACOS    = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
+
+/** Deixa o texto com pontuação comum, para os parsers de telefone enxergarem. */
+function limparPontuacaoNumero(texto) {
+  return String(texto == null ? "" : texto)
+    .replace(INVISIVEIS, "")
+    .replace(TRACOS, "-")
+    .replace(ESPACOS, " ");
+}
+
+/* Telefone dito num comando do operador ("resetar +55 21 98578-9603").
+   🚨 Estava DENTRO do handleIncomingMessage, o que impedia qualquer teste: o
+   defeito de 07/09 (número cortado pelo hífen do WhatsApp) vivia justamente
+   aqui e não dava para medir. Subiu para o topo, sem mudar o que faz. */
+function extrairNumero(msgOriginal) {
+  // Pontuação do WhatsApp vira pontuação comum antes de procurar o telefone
+  // (ver limparPontuacaoNumero). Sem isso, "+55 21 98578-9603" copiado do
+  // contato era cortado em "+55 21 98578".
+  const msg = limparPontuacaoNumero(msgOriginal);
+
+  // ✅ Detecta número internacional (começa com +) ANTES de remover não-dígitos.
+  // Ex: "resetar +1 (561) 710-1530"  →  match = "+1 (561) 710-1530"
+  // Ex: "pausar +49 30 1234-5678"    →  match = "+49 30 1234-5678"
+  // Passa pelo normalizarNumero que já trata DDI corretamente.
+  const matchIntl = msg.match(/\+\d[\d\s\-\(\)\.]{6,20}/);
+  if (matchIntl) {
+    return normalizarNumero(matchIntl[0]);
+  }
+
+  // Extrai apenas números da mensagem (comportamento original para BR)
+  const apenasNumeros = msg.replace(/\D+/g, "");
+
+  if (!apenasNumeros) return "";
+
+  // Casos BR:
+  // 1. "5521967082501" (13 dígitos com 55) → já está ok
+  // 2. "5521967082501" (12 dígitos com 55) → já está ok
+  // 3. "21967082501"   (11 dígitos com DDD)  → adicionar "55"
+  // 4. "967082501"     (10 dígitos)           → adicionar "5521"
+  // 5. "67082501"      (9 dígitos)            → adicionar "5521"
+  // 6. "55 21 96708-2501" → remove espaços/hífens, fica "5521967082501"
+
+  if (apenasNumeros.length === 13 && apenasNumeros.startsWith("55")) return apenasNumeros;
+  if (apenasNumeros.length === 12 && apenasNumeros.startsWith("55")) return apenasNumeros;
+
+  if (apenasNumeros.length === 11) {
+    // Celular BR: DDD(2) + dígito 9 + número(8) → 3º dígito (índice 2) = '9'
+    // Internacional sem '+': não adicionar 55 (já sem o '9')
+    if (apenasNumeros[2] === '9') return "55" + apenasNumeros;
+    return apenasNumeros; // internacional digitado sem '+'
+  }
+
+  if (apenasNumeros.length === 10) return "5521" + apenasNumeros;
+  if (apenasNumeros.length === 9)  return "5521" + apenasNumeros;
+
+  // Qualquer outro tamanho: adicionar "55" se não tiver
+  if (!apenasNumeros.startsWith("55")) return "55" + apenasNumeros;
+
+  return apenasNumeros;
+}
+
 function normalizarNumero(numero) {
   if (!numero) return null;
 
-  numero = String(numero); // garante string mesmo se vier número/objeto
+  numero = limparPontuacaoNumero(numero); // hífen e invisíveis do WhatsApp
   numero = numero.replace("@c.us", "");
   numero = numero.replace(/\D+/g, ""); // remove +, espaços, hífen, parênteses etc.
   numero = numero.replace(/^0+/, "");
@@ -2385,47 +2461,6 @@ async function handleIncomingMessage(message) {
     }
   }
 
-  function extrairNumero(msg) {
-    // ✅ Detecta número internacional (começa com +) ANTES de remover não-dígitos.
-    // Ex: "resetar +1 (561) 710-1530"  →  match = "+1 (561) 710-1530"
-    // Ex: "pausar +49 30 1234-5678"    →  match = "+49 30 1234-5678"
-    // Passa pelo normalizarNumero que já trata DDI corretamente.
-    const matchIntl = msg.match(/\+\d[\d\s\-\(\)\.]{6,20}/);
-    if (matchIntl) {
-      return normalizarNumero(matchIntl[0]);
-    }
-
-    // Extrai apenas números da mensagem (comportamento original para BR)
-    const apenasNumeros = msg.replace(/\D+/g, "");
-
-    if (!apenasNumeros) return "";
-
-    // Casos BR:
-    // 1. "5521967082501" (13 dígitos com 55) → já está ok
-    // 2. "5521967082501" (12 dígitos com 55) → já está ok
-    // 3. "21967082501"   (11 dígitos com DDD)  → adicionar "55"
-    // 4. "967082501"     (10 dígitos)           → adicionar "5521"
-    // 5. "67082501"      (9 dígitos)            → adicionar "5521"
-    // 6. "55 21 96708-2501" → remove espaços/hífens, fica "5521967082501"
-
-    if (apenasNumeros.length === 13 && apenasNumeros.startsWith("55")) return apenasNumeros;
-    if (apenasNumeros.length === 12 && apenasNumeros.startsWith("55")) return apenasNumeros;
-
-    if (apenasNumeros.length === 11) {
-      // Celular BR: DDD(2) + dígito 9 + número(8) → 3º dígito (índice 2) = '9'
-      // Internacional sem '+': não adicionar 55 (já sem o '9')
-      if (apenasNumeros[2] === '9') return "55" + apenasNumeros;
-      return apenasNumeros; // internacional digitado sem '+'
-    }
-
-    if (apenasNumeros.length === 10) return "5521" + apenasNumeros;
-    if (apenasNumeros.length === 9)  return "5521" + apenasNumeros;
-
-    // Qualquer outro tamanho: adicionar "55" se não tiver
-    if (!apenasNumeros.startsWith("55")) return "55" + apenasNumeros;
-
-    return apenasNumeros;
-  }
 
   // ======================================================
   // Extrai um NÚMERO com formatação livre (+55, espaços, hífen, parênteses,
@@ -2436,7 +2471,7 @@ async function handleIncomingMessage(message) {
   // qualquer formato com espaço dentro do telefone. 2026-07-11.
   // ======================================================
   function extrairNumeroComResto(texto) {
-    const t = String(texto || "").trim();
+    const t = limparPontuacaoNumero(texto).trim();
     // Telefone: começa e termina em dígito, com +, espaços, hífen, parênteses
     // ou pontos no meio (comprimento generoso p/ cobrir DDI+DDD+9 dígitos).
     // O "resto" é OBRIGATÓRIO no match (\s+([\s\S]+) sem "?"): isso força o
@@ -5523,6 +5558,10 @@ module.exports = {
   // idem, para teste-comando-servico.js
   resolverComandoServico,
   comandosServicos,
+  // idem, para teste-numero-whatsapp.js
+  limparPontuacaoNumero,
+  normalizarNumero,
+  extrairNumero,
   // idem, para teste-menu-opcao-invalida.js
   avisoOpcaoInvalidaMenu,
   LABELS_MENU,
