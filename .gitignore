@@ -54,6 +54,8 @@ build/
 # Em produção (Fly.io) as sessões ficam no volume /data
 # ============================
 sessions.json
+pausados.json
+__local_manual__.json
 
 # ============================
 # FLY.IO

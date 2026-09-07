@@ -12,6 +12,8 @@ const { inicializarAvisosGaleria } = require("./jobs/avisosGaleria");
 const { inicializarLembreteTarefas } = require("./jobs/lembreteTarefas");
 const { inicializarPausaEspecial } = require("./utils/index.js");
 const { extrairRespostaDeClique, extrairPedidoDeCatalogo } = require("./utils/webhookPayload.js");
+// Comando do operador nao pode ficar preso atras do envio de um cliente.
+const { escolherChaveFila } = require("./utils/filaWebhook.js");
 
 const app = express();
 // Limite alto p/ o upload de documentos do batismo (foto em base64, já
@@ -195,8 +197,12 @@ async function processarWebhook(req, res) {
     // O processamento real acontece de forma assíncrona na fila do usuário.
     res.sendStatus(200);
 
-    // Chave da fila: telefone do remetente (ou "desconhecido" como fallback)
-    const chaveFilai = payload.phone || payload.from || "desconhecido";
+    /* Chave da fila. 🚨 O que vem da linha do operador (fromMe) ganha fila
+       PRÓPRIA: quando o Mario digita dentro do chat do cliente, a Z-API manda
+       phone = número do CLIENTE, e o comando dele ficava atrás do envio em
+       andamento, chegando só quando não adiantava mais. Ver
+       utils/filaWebhook.js. */
+    const chaveFilai = escolherChaveFila(payload);
 
     // Enfileira o processamento desta mensagem — garante ordem FIFO por usuário
     processarComFila(chaveFilai, () => handleIncomingMessage(message));

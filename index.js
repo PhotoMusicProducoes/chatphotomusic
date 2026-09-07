@@ -3500,7 +3500,17 @@ async function handleIncomingMessage(message) {
          orçamento. A CONTAGEM continua; só o eco saiu. (Mario, 03/09/2026.) */
       controlaMsgManual += comandos.length;
 
+      let envioManualInterrompido = false;
       for (const cmd of comandos) {
+        /* Mesmo freio do envio automático: se o operador mandar "pausar" no
+           meio de um lote de vários serviços, o resto não sai. Ver
+           envioFoiInterrompido. */
+        if (envioFoiInterrompido(chatIdCliente)) {
+          envioManualInterrompido = true;
+          console.log(`⏸️ [MANUAL] Envio parado em ${chatIdCliente} (pausado no meio do lote).`);
+          break;
+        }
+
         console.log("⚙️ [MANUAL] Processando:", cmd);
 
         const nomeComando = cmd.split(" ")[0].toLowerCase();
@@ -3774,6 +3784,19 @@ async function handleIncomingMessage(message) {
          mensagem = 1 PDF com os dois). Roda depois do laço, quando a lista
          inteira já é conhecida, e depois do bloco de data/local acima, que é o
          que garante data e bairro DENTRO do PDF. */
+      /* Parou no meio: o cliente pausado não pode receber a cauda (PDF,
+         resumo, despedida, menu). O operador é avisado do que faltou e de
+         como continuar (retomar + #enviarfaltantes). */
+      if (envioManualInterrompido || envioFoiInterrompido(chatIdCliente)) {
+        await avisarEnvioInterrompido(
+          chatIdCliente,
+          session.orcamento?.servicosEnviados || [],
+          _servicosDoLote.length ? _servicosDoLote : TODOS_SERVICOS
+        );
+        session.enviandoOrcamentosManualmente = false;
+        return;
+      }
+
       if (_servicosDoLote.length > 0) {
         await enviarOrcamentoGerado(chatIdCliente, session, _servicosDoLote);
       }
@@ -5687,6 +5710,8 @@ module.exports = {
   // idem, para teste-comando-servico.js
   resolverComandoServico,
   comandosServicos,
+  // idem, para teste-parar-envio.js
+  envioFoiInterrompido,
   // idem, para teste-numero-whatsapp.js
   limparPontuacaoNumero,
   normalizarNumero,
@@ -5770,6 +5795,43 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids, opcoes = {})
  * Fallbacks: sem horário → 4h5h (horas=5); sem celebração → Outros (9) e 200
  * convidados; corporativo → avisa que o valor atende até 200 pessoas.
  */
+/* ======================================================
+   FREIO DO ENVIO DE ORÇAMENTO (Mario, 07/09/2026)
+   ======================================================
+   O operador já tinha como parar o bot (`pausar NUMERO`), e cada serviço checa
+   a pausa entre uma mensagem e outra. O que faltava era o freio no LAÇO: com o
+   número pausado no meio do envio, o laço continuava chamando os próximos
+   serviços (cada um só voltava vazio) e, no fim, ainda saíam o PDF, o resumo,
+   as mensagens de despedida e o menu. O cliente pausado recebia a cauda toda.
+
+   Agora o laço para na hora e o operador é avisado do que faltou. Para
+   continuar de onde parou: `retomar NUMERO` e depois `#enviarfaltantes`, que
+   manda só os serviços que ainda não foram.
+*/
+function envioFoiInterrompido(chatId) {
+  return estaPausado(chatId) || estaPausadoEspecial(chatId);
+}
+
+/** Avisa o operador o que faltou e como continuar. */
+async function avisarEnvioInterrompido(chatId, enviados, lista) {
+  const nome = (id) => SERVICOS_NOMES[id] || `#${id}`;
+  const faltaram = (lista || []).filter(id => !(enviados || []).includes(id));
+  try {
+    await sendText(
+      OPERADOR_TELEFONE_ID,
+      `⏸️ *Envio de orçamento interrompido*\n\n` +
+      `Número: *${chatId}*\n` +
+      `Já tinha recebido: ${enviados.length ? enviados.map(nome).join(", ") : "nada ainda"}\n` +
+      `Faltaram: ${faltaram.length ? faltaram.map(nome).join(", ") : "nenhum"}\n\n` +
+      `Para continuar de onde parou:\n` +
+      `1) *retomar ${chatId}*\n` +
+      `2) *#enviarfaltantes* no chat dele`
+    );
+  } catch (e) {
+    console.warn(`⚠️ aviso de envio interrompido falhou: ${e.message}`);
+  }
+}
+
 async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null, opcoes = {}) {
   if (!session) return;
   const passoOriginal = session.step;
@@ -5825,7 +5887,14 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
      array fixo [3,3,2], que comportava 8 e SILENCIOSAMENTE descartava o 9º
      serviço. Agora fatia a lista, seja qual for o tamanho dela. */
   const POR_LOTE = 3;
+  let interrompido = false;
   for (let i = 0; i < lista.length; i++) {
+    // Freio: o operador pausou no meio do envio (ver envioFoiInterrompido).
+    if (envioFoiInterrompido(chatId)) {
+      interrompido = true;
+      console.log(`⏸️ [Envio] Parado em ${chatId} antes do serviço ${lista[i]} (pausado).`);
+      break;
+    }
     const servico = lista[i];
     sessions[chatId]._envioMultiplo = {
       apenasOrcamento:    true,
@@ -5845,6 +5914,13 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
     if (fimDeLote && i < lista.length - 1) await new Promise(r => setTimeout(r, 15000));
   }
   delete sessions[chatId]._envioMultiplo;
+
+  /* Parou no meio: nada de PDF, resumo, despedida e menu. O cliente pausado
+     receberia a cauda inteira depois de o operador ter mandado parar. */
+  if (interrompido || envioFoiInterrompido(chatId)) {
+    await avisarEnvioInterrompido(chatId, session.orcamento.servicosEnviados || [], lista);
+    return;
+  }
 
   /* 🧾 O ORÇAMENTO EM SI (bug pego pelo Mario em 17/08/2026).
      Este envio saía SEM ARQUIVO: o laço acima manda a apresentação de cada
