@@ -18,6 +18,8 @@ const cron = require("node-cron");
 const { sendText } = require("../utils/index.js");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
 const { montarMensagemEvento } = require("../services/eventos.js");
+// 🎭 as palavras mudam com a celebração - ver services/tomDoEvento.js
+const { tomDoEvento } = require("../services/tomDoEvento.js");
 
 const TIMEZONE = "America/Sao_Paulo";
 
@@ -38,10 +40,11 @@ function horaDeBrasilia() {
 function aberturaDoInicio(evento) {
   const nome = (evento.contratante || "").trim().split(" ")[0];
   const ola = nome ? `Olá, *${nome}*!` : "Olá!";
+  const tom = tomDoEvento(evento.tipo_celebracao);
 
   return (
     `👀 *Como os seus convidados recebem as fotos*\n\n` +
-    `${ola} O seu serviço começou agora. 🥳\n\n` +
+    `${tom.inicioOla(ola)}\n\n` +
     `Abaixo está, palavra por palavra, a mensagem que cada convidado recebe da gente aqui no WhatsApp. ` +
     `Assim você já sabe o que eles vão ver.\n\n` +
     `📌 O link que vai na mensagem seguinte é o *seu*. Cada convidado recebe o dele ao falar com a gente.`
@@ -54,11 +57,12 @@ function aberturaDoInicio(evento) {
 function mensagemDeEncerramento(evento) {
   const nome = (evento.contratante || "").trim().split(" ")[0];
   const ola = nome ? `Olá, *${nome}*!` : "Olá!";
+  const tom = tomDoEvento(evento.tipo_celebracao);
 
   return (
-    `❤️ *Parabéns pelo seu evento!*\n\n` +
-    `${ola} Foi uma alegria enorme fazer parte desse dia com vocês.\n\n` +
-    `Muito obrigado pela confiança em escolher a PhotoMusic para cuidar dessas memórias. 🥳\n\n` +
+    `${tom.fimTitulo}\n\n` +
+    `${ola} ${tom.fimAlegria}\n\n` +
+    `${tom.fimObrigado}\n\n` +
     `📸🎥 *Aqui está o seu acesso, com todas as fotos e vídeos:*\n${evento.link_contratante}\n\n` +
     `💻 *Uma dica que facilita muito:* abra este link *no computador*. ` +
     `Depois de confirmar o aceite, na *primeira tela* existe uma *seta ⬇️* ` +
@@ -104,6 +108,7 @@ async function executarAvisosGaleria() {
           await sendText(ev.telefone, montarMensagemEvento({
             titulo:        ev.titulo,
             preposicao:    ev.preposicao,
+            tipoCelebracao: ev.tipo_celebracao || "",
             token:         ev.token_evento,
             instagram:     ev.instagram || "",
             instagramNome: ev.instagram_nome || "",

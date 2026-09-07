@@ -5,6 +5,8 @@
 const fetch = require("node-fetch");
 const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
+// 🎭 o tom (festa x celebração religiosa x corporativo) - ver tomDoEvento.js
+const { tomDoEvento } = require("./tomDoEvento.js");
 
 // Número do ChatBot — aparece no cabeçalho da mensagem para o cliente salvar
 const NUMERO_CHATBOT = "21964428172";
@@ -140,9 +142,13 @@ async function apresentarEvento(numeroEvento, telefone = "") {
 function montarMensagemEvento(evento, telefone = "") {
   // Cabeçalho
   const prep = evento.preposicao || 'ao';
+  /* 🎭 O TOM VEM DA CELEBRAÇÃO (06/09/2026). Numa 1ª Eucaristia não cabe
+     "🥳": os pais recebiam a mensagem com cara de festa de aniversário.
+     Sem o campo preenchido, o texto sai exatamente como sempre saiu. */
+  const tom = tomDoEvento(evento.tipoCelebracao);
   let resposta =
-    `🎉 *ATENÇÃO SALVE ESTE CONTATO ${NUMERO_CHATBOT}*\n\n` +
-    `*Bem-vindos ${prep} ${evento.titulo}* 🥳\n\n`;
+    `${tom.abre(NUMERO_CHATBOT)}\n\n` +
+    `${tom.boasVindas(prep, evento.titulo)}\n\n`;
 
   // Monta link da página de aceite com token do evento e telefone pré-preenchidos
   // Novo formato: ?t=TOKEN_EVENTO&tel=TELEFONE
@@ -193,7 +199,7 @@ function montarMensagemEvento(evento, telefone = "") {
     `já no *Iphone*, para salvar a foto clique em salvar imagem (a foto 🖼️ será salva na galeria) ` +
     `ou em salvar arquivo (a foto 🖼️ será salva em Arquivo), ` +
     `para salvar o GIF Animado 🎞️ clique em salvar vídeo.\n\n` +
-    `Muitíssimo obrigado🥳`;
+    tom.fecho;
 
   return resposta;
 }
