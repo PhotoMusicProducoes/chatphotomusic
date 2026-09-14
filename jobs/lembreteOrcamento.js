@@ -103,6 +103,29 @@ const PASSOS_QUESTIONARIO = new Set([
 const PASSO_MENU_INICIAL = "aguardando_opcao";
 PASSOS_QUESTIONARIO.add(PASSO_MENU_INICIAL);
 
+/* ======================================================
+   🚨 A LISTA DE SERVIÇOS NUNCA É ESCRITA À MÃO AQUI
+   ======================================================
+   Caso real (cliente Monique, 13/09/2026): ela parou na escolha do serviço e o
+   lembrete de 1h mandou uma lista VELHA, de antes da renumeração de 17/08. Não
+   foi só o Totem Retrô faltando: os números saíram DESLOCADOS. O lembrete dizia
+   "1 - Foto Cabine", mas quem digita 1 recebe o Totem Retrô, e a Foto Cabine,
+   que é o carro-chefe, nem aparecia na lista (ela é o 0).
+
+   Ou seja: o cliente pediria Foto Cabine e receberia outro serviço, calado.
+
+   A lista agora sai de `linhasMenuServicos(TODOS_SERVICOS)`, a mesma função do
+   menu de verdade. `require` preguiçoso porque o index.js requer este arquivo
+   de volta (é o mesmo motivo do require lá embaixo, em `enviarOrcamentosAutomaticos`). */
+function textoEscolherServico() {
+  const { linhasMenuServicos, TODOS_SERVICOS } = require("../index.js");
+  return (
+    "Falta só escolher os serviços que deseja orçamento " +
+    "(para mais de um, separe por vírgula, ex: *0,3,5*):\n\n" +
+    linhasMenuServicos(TODOS_SERVICOS)
+  );
+}
+
 // Pergunta amigável por passo (usada se a sessão não guardou o texto exato)
 const PERGUNTA_POR_PASSO = {
   "orcamento_nome": "Qual o seu nome?",
@@ -131,9 +154,8 @@ const PERGUNTA_POR_PASSO = {
   "coletar_nascimento_opcional": "Falta pouco para finalizar seu orçamento! Deseja informar sua *data de nascimento*?\n*1* - Sim\n*2* - Não",
   "coletar_nascimento_valor": "Falta pouco para finalizar seu orçamento! Sua data de nascimento (ex: 01/02/1985).",
   "orcamento_confirmar": "Faltou só revisar os dados e confirmar pra eu enviar o orçamento. Está tudo certo?\n*1* - Sim, quero o orçamento\n*2* - Corrigir algo",
-  "orcamento_escolher_servico": "Falta só escolher os serviços que deseja orçamento (para mais de um, separe por vírgula, ex: *1,3,5*):\n\n" +
-    "*1* - Foto Cabine\n*2* - Totem Fotográfico\n*3* - Plataforma 360º\n*4* - Foto Paparazzi Digital\n" +
-    "*5* - Foto Lembrança\n*6* - Cobertura Fotográfica\n*7* - Som Completo com DJ\n*8* - Iluminação para Pista de Dança"
+  // Sai da função acima, nunca escrito à mão. Ver o caso Monique (13/09/2026).
+  get "orcamento_escolher_servico"() { return textoEscolherServico(); }
 };
 
 // Descrição curta do passo para o aviso do operador
@@ -519,5 +541,7 @@ module.exports = {
   // para teste-janela-lembrete.js
   dentroDaJanela,
   JANELA_INICIO,
-  JANELA_FIM
+  JANELA_FIM,
+  // para teste-lista-servicos-unica.js (o caso Monique, 13/09/2026)
+  PERGUNTA_POR_PASSO
 };

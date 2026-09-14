@@ -32,6 +32,11 @@ const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require(".
 
 const { sessions } = require("./utils/sessions");
 const { resetSession } = require("./utils/resetSession");
+// 🤖 Camada de ENTENDIMENTO (Fase 1). Fica desligada até IA_ROTEADOR=1.
+const {
+  criarRoteador: criarRoteadorIA,
+  iaLigada: iaLigadaRoteador,
+} = require("./utils/roteadorIA.js");
 
 const {
   enviarFotoCabine,
@@ -1743,7 +1748,7 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
     /* 🧾 UM ORÇAMENTO SÓ, com todos os serviços migrados deste pedido
        (decisão do Mario, 17/08/2026). Vem DEPOIS da apresentação de todos: cada
        serviço mostrou a foto do seu equipamento, e aqui vai o preço de tudo
-       junto, com o desconto de R$ 100 por serviço a mais.
+       junto, com o desconto de R$ 200 por serviço a mais.
        Serviço ainda não migrado continua mandando o PDF pronto dele lá dentro.
        `segundaRodada`: se ele já tinha recebido orçamento antes, o PDF novo sai
        com TUDO e o texto avisa que substitui o anterior. */
@@ -1840,12 +1845,140 @@ const PALAVRAS_SERVICO = [
   { id: 8,  re: /\b(iluminacao|luz\s*da\s*pista|pista\s*de\s*danca)\b/ },
 ];
 
+/* ======================================================
+   VEIO DA PÁGINA DE SERVIÇO DO SITE (Mario, 09/09/2026)
+   ======================================================
+   Os botões das páginas de serviço abrem o WhatsApp com a mensagem já
+   escrita, e ela termina em "Vim pelo site". Quem clicou ali leu a página
+   inteira e já quer o valor: mostrar o menu de boas-vindas seria mandar
+   essa pessoa escolher de novo o que ela acabou de escolher.
+
+   🚨 É a MARCA que separa, não o serviço citado. Quem chama direto no
+   WhatsApp e diz "cabine" continua vendo o menu, porque pode querer
+   galeria, suporte ou falar de um contrato. Sem a marca, nada muda. */
+const VEIO_DO_SITE = /\bvim\s*pelo\s*site\b/;
+
 /* Quem NÃO pode receber orçamento automático: o cliente que já contratou e
    está com problema. Ele cita o serviço do mesmo jeito ("a cabine do meu
    casamento não chegou") e receber uma tabela de preços no lugar de ajuda
    seria péssimo. Nesses casos o menu continua sendo a resposta certa
    (opções 3 e 4). */
 const NAO_E_ORCAMENTO = /\b(contratei|contratado|contratada|contratamos|ja\s*fechei|suporte|problema|reclamacao|reclamar|nao\s*chegou|atras[ao]|cancelar|cancelamento|nota\s*fiscal|contrato)\b/;
+
+/* ======================================================
+   🤖 IA DE ENTENDIMENTO - FASE 1 (Mario, 11/09/2026)
+   ======================================================
+   A IA entra como ÚLTIMA tentativa, depois que o detector por palavra-chave
+   já não achou nada. Ela não escreve nada para o cliente: devolve só o
+   caminho (serviço ou opção do menu) e quem fala continua sendo o código de
+   sempre. Detalhe e chave de desligar em utils/roteadorIA.js.
+
+   🚨 O roteador é montado na PRIMEIRA chamada, não aqui: SERVICOS_NOMES e
+   LABELS_MENU são `const` declarados neste mesmo arquivo, e montar no corpo
+   do módulo dependeria da ordem das declarações. */
+let _roteadorIA = null;
+function roteadorIA() {
+  if (!_roteadorIA) {
+    _roteadorIA = criarRoteadorIA({ servicos: SERVICOS_NOMES, opcoesMenu: LABELS_MENU });
+  }
+  return _roteadorIA;
+}
+
+/**
+ * Pergunta à IA para onde vai a mensagem e EXECUTA o caminho encontrado.
+ * Devolve true quando cuidou da mensagem (o chamador deve dar `return`).
+ *
+ * 🚨 Quando a IA lê "opção do menu", ela não entra no fluxo direto: cai na
+ * mesma tela de confirmação que o cliente já vê ao digitar um número. A IA
+ * propõe, o cliente confirma, o código de sempre executa.
+ */
+async function tentarRoteadorIA(chatId, session, texto, opcoes = {}) {
+  /* Quem já contratou e está com problema nunca pode receber tabela de preço.
+     Aqui a IA ainda ajuda (mandando para suporte), mas só pelo menu. */
+  const jaECliente = NAO_E_ORCAMENTO.test(normalizarParaBusca(texto));
+
+  let r = null;
+  try {
+    r = await roteadorIA().interpretar(texto, { permitirServicos: !jaECliente });
+  } catch (e) {
+    console.warn(`⚠️ IA roteador: ${e.message}. Seguindo pelo fluxo de sempre.`);
+    return false;
+  }
+  if (!r) return false;
+
+  if (r.acao === "servicos") {
+    if (opcoes.permitirServicos === false) return false;
+    await enviarOrcamentoPadraoDetectado(chatId, session, r.servicos);
+    return true;
+  }
+
+  if (r.acao === "menu") {
+    if (opcoes.permitirMenu === false) return false;
+    await pedirConfirmacaoOpcao(chatId, session, r.opcaoMenu);
+    return true;
+  }
+
+  return false;
+}
+
+/* Acima disto, o cliente confirma quantos dias tem o evento. Ver o caso ADERJ
+   no passo `orcamento_dias`. Foto cabine de 5 dias já é feira/congresso. */
+const DIAS_SEM_CONFIRMAR = 5;
+
+/** Evento longo pede confirmação antes de virar N rodadas de data/horário. */
+function precisaConfirmarDias(n) {
+  return Number(n) > DIAS_SEM_CONFIRMAR;
+}
+
+/**
+ * O cliente colou o PEDIDO no lugar do nome?
+ * Caso ADERJ (12/09/2026): o briefing inteiro virou o campo Nome.
+ * Nome de gente é curto, numa linha só e com poucas palavras. Qualquer coisa
+ * fora disso é texto livre, não nome.
+ */
+function pareceBriefing(texto) {
+  const cru = String(texto || "").trim();
+  return cru.length > 60 || cru.includes("\n") || cru.split(/\s+/).length > 6;
+}
+
+/** Grava a quantidade de dias e segue para data/horário. Sai de um lugar só
+    porque dois caminhos chegam aqui: o normal e o que passou pela confirmação. */
+async function aplicarDiasDoEvento(chatId, session, dias) {
+  session.orcamento.dias = dias;
+
+  if (dias === 1) {
+    session.step = "orcamento_data";
+    await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/06/2026* ou *9 de setembro*)");
+    return;
+  }
+
+  session.step = "orcamento_horarios_iguais";
+  await sendTyping(chatId);
+  await sendButtonList(
+    chatId,
+    `Seu evento terá *${dias} dias*. 📅\n\n` +
+    `Os horários de início e término serão os *mesmos em todos os dias*?`,
+    [
+      { id: "1", label: "Sim, são iguais" },
+      { id: "2", label: "Variam por dia" }
+    ]
+  );
+}
+
+/** Tela de confirmação da opção do menu (evita entrar no fluxo errado). */
+async function pedirConfirmacaoOpcao(chatId, session, opcao) {
+  session.opcaoMenuPendente = opcao;
+  session.step = "confirmar_opcao_menu";
+  await sendTyping(chatId);
+  await sendButtonList(
+    chatId,
+    `Só pra confirmar 😊 você escolheu:\n\n*${LABELS_MENU[opcao]}*\n\nEstá certo?`,
+    [
+      { id: "1", label: "Sim, é isso" },
+      { id: "2", label: "Quero outra opção" }
+    ]
+  );
+}
 
 /* ======================================================
    COMANDO DO OPERADOR DIGITADO ERRADO (Mario, 02/09/2026)
@@ -2648,6 +2781,91 @@ async function handleIncomingMessage(message) {
         "Exemplo:\n#fotocabine 0,8,120,6,1"
       );
 
+      return;
+    }
+
+    /* ======================================================
+       COMANDO #ia — BANCADA DE TESTE DA IA (Mario, 12/09/2026)
+       ======================================================
+       COMANDO: #ia <frase que um cliente mandaria>
+
+       Mostra o que a IA ENTENDEU, e mais nada. Nenhum cliente é tocado,
+       nenhuma sessão é criada, nenhuma mensagem sai para ninguém além do
+       próprio operador.
+
+       🚨 Isto existe porque não dava para testar de verdade: `resetar` já
+       dispara o menu de boas-vindas e mexe na sessão real. Com o #ia dá para
+       passar cem frases em dois minutos, do próprio número.
+
+       Na Fase 2 é aqui que vai aparecer também o texto que o Rapha escreveria,
+       para o Mario aprovar ANTES de qualquer coisa chegar em cliente. */
+    if (corpoNormalizado.startsWith("#ia")) {
+      const frase = corpoMensagem.trim().slice(3).trim();
+
+      /* 🚨 A BANCADA RESPONDE A QUEM PERGUNTOU (Mario, 12/09/2026)
+         Os outros comandos respondem sempre em `destinoOperador`, que é a
+         LINHA DO BOT. O Mario testou do celular pessoal dele e a resposta foi
+         para a outra linha: ele ficou achando que o comando não funcionava.
+         Quando a mensagem vem da própria linha do bot (`fromMe`), o `chatId`
+         é a conversa do CLIENTE, e aí a resposta tem que ir para o operador
+         mesmo, senão o teste vaza para quem não devia ver. */
+      const destinoBancada = message.fromMe === true ? destinoOperador : chatId;
+
+      if (!frase) {
+        await sendText(destinoBancada,
+          "🤖 *Bancada da IA*\n\n" +
+          "Use: *#ia* seguido da frase que um cliente mandaria.\n\n" +
+          "Exemplo:\n*#ia vocês tem aquela máquina de tirar foto na hora?*");
+        return;
+      }
+
+      if (!iaLigadaRoteador()) {
+        await sendText(destinoBancada,
+          "🤖 A IA está *desligada* agora (falta `IA_ROTEADOR=1` ou a chave da API).\n\n" +
+          "Com ela desligada, o bot responde do jeito antigo.");
+        return;
+      }
+
+      // O detector por palavra-chave vem primeiro no fluxo real: se ele acha,
+      // a IA nem é chamada. O teste tem que mostrar isso, senão engana.
+      const porPalavra = detectarServicosNoTexto(frase);
+      if (porPalavra.length) {
+        await sendText(destinoBancada,
+          `🔎 *Sem IA:* o detector por palavra-chave já resolveu.\n\n` +
+          `Serviços: *${porPalavra.map(id => SERVICOS_NOMES[id]).join(", ")}*\n\n` +
+          `_Numa conversa real a IA nem seria chamada nesta frase._`);
+        return;
+      }
+
+      const jaECliente = NAO_E_ORCAMENTO.test(normalizarParaBusca(frase));
+      const inicio = Date.now();
+      let r = null;
+      try {
+        r = await roteadorIA().interpretar(frase, { permitirServicos: !jaECliente });
+      } catch (e) {
+        await sendText(destinoBancada, `🤖 A IA falhou: ${e.message}\n\n_Numa conversa real o cliente veria o menu de sempre._`);
+        return;
+      }
+      const ms = Date.now() - inicio;
+
+      if (!r) {
+        await sendText(destinoBancada,
+          `🤖 *A IA não soube dizer* (${ms}ms).\n\n` +
+          `Numa conversa real o cliente receberia o aviso de opção inválida, como hoje.` +
+          (jaECliente ? `\n\n⚠️ A frase parece de quem JÁ é cliente, então orçamento estava bloqueado de propósito.` : ""));
+        return;
+      }
+
+      const leitura = r.acao === "servicos"
+        ? `📦 Orçamento de: *${r.servicos.map(id => SERVICOS_NOMES[id]).join(", ")}*`
+        : `📋 Menu, opção *${r.opcaoMenu}* - ${LABELS_MENU[r.opcaoMenu]}\n_(o cliente ainda confirmaria antes de entrar no fluxo)_`;
+
+      await sendText(destinoBancada,
+        `🤖 *Bancada da IA* (${ms}ms)\n\n` +
+        `_"${frase}"_\n\n` +
+        `${leitura}\n\n` +
+        `Confiança: *${r.confianca}*` +
+        (jaECliente ? `\n\n⚠️ Frase de quem já é cliente: orçamento bloqueado, só menu.` : ""));
       return;
     }
 
@@ -4200,6 +4418,21 @@ async function handleIncomingMessage(message) {
   // se o menu ainda não foi enviado, a primeira mensagem do cliente SEMPRE recebe boas-vindas.
   // - Se ele mandou texto (sem número): envia menu e para.
   // - Se ele mandou "1..7": envia menu e já processa a opção na mesma mensagem (sem exigir repetir).
+  /* Atalho de quem veio da página do serviço: pula o menu de boas-vindas e
+     vai direto ao valor. Fica ANTES do mostrarMenuInicial de propósito.
+     De quebra grava a origem, que é o que o Diagnóstico do Funil precisa
+     para separar o lead do SITE do lead que chegou pelo ChatBot. */
+  if (!session.menuInicialEnviado && VEIO_DO_SITE.test(normalizarParaBusca(texto))) {
+    const _servSite = detectarServicosNoTexto(texto);
+    if (_servSite.length) {
+      session.menuInicialEnviado = true;
+      session.orcamento = session.orcamento || {};
+      if (!session.orcamento.ondeEncontrou) session.orcamento.ondeEncontrou = "Site";
+      await enviarOrcamentoPadraoDetectado(chatId, session, _servSite, { origemSite: true });
+      return;
+    }
+  }
+
   if (!session.menuInicialEnviado) {
     await mostrarMenuInicial(chatId);
 
@@ -4207,7 +4440,15 @@ async function handleIncomingMessage(message) {
     // boas-vindas e, na sequência, o valor. Ver detectarServicosNoTexto.
     if (opcaoMenu === "") {
       const _serv1 = detectarServicosNoTexto(texto);
-      if (_serv1.length) await enviarOrcamentoPadraoDetectado(chatId, session, _serv1);
+      if (_serv1.length) {
+        await enviarOrcamentoPadraoDetectado(chatId, session, _serv1);
+        return;
+      }
+      /* 🤖 O detector não achou palavra nenhuma. A IA ainda pode entender
+         ("queria algo pros convidados tirarem foto na festa"). Aqui só
+         vale serviço: o menu de boas-vindas acabou de ser mostrado, e
+         propor uma opção logo depois seria atropelar a escolha dele. */
+      await tentarRoteadorIA(chatId, session, texto, { permitirMenu: false });
       return;
     }
   }
@@ -4216,17 +4457,7 @@ async function handleIncomingMessage(message) {
   // que escolheu mesmo aquela opção (evita digitar 2 em vez de 1 e cair
   // no fluxo errado, precisando resetar a sessão).
   if (["1","2","3","4","5","6","7"].includes(opcaoMenu)) {
-    session.opcaoMenuPendente = opcaoMenu;
-    session.step = "confirmar_opcao_menu";
-    await sendTyping(chatId);
-    await sendButtonList(
-      chatId,
-      `Só pra confirmar 😊 você escolheu:\n\n*${LABELS_MENU[opcaoMenu]}*\n\nEstá certo?`,
-      [
-        { id: "1", label: "Sim, é isso" },
-        { id: "2", label: "Quero outra opção" }
-      ]
-    );
+    await pedirConfirmacaoOpcao(chatId, session, opcaoMenu);
     return;
   }
 
@@ -4241,6 +4472,13 @@ async function handleIncomingMessage(message) {
       return;
     }
   }
+
+  /* 🤖 ÚLTIMA PARADA ANTES DO "OPÇÃO INVÁLIDA".
+     É aqui que a IA ganha o seu dinheiro: a partir deste ponto, o cliente já
+     ia receber a parede de "escolha uma opção válida". É o ponto do funil
+     onde ele desiste. Se a IA entender a mensagem, ela entra no fluxo certo;
+     se não entender, cai no mesmo aviso de sempre, uma linha abaixo. */
+  if (await tentarRoteadorIA(chatId, session, texto)) return;
 
   /* Texto sem número OU número fora de 1-7: os dois são a mesma coisa para o
      cliente (ele não escolheu opção nenhuma), então recebem o mesmo aviso.
@@ -4574,7 +4812,35 @@ const resumoEucaristia =
   // ORÇAMENTO — NOME
   // ======================================================
   if (session.step === "orcamento_nome") {
-    const nome = capitalizarPalavras(corpoMensagem);
+    const cru = (corpoMensagem || "").trim();
+
+    /* 🚨 BRIEFING COLADO NO LUGAR DO NOME (caso ADERJ, 12/09/2026)
+       ======================================================
+       O cliente corporativo cola o pedido inteiro (data, local, horário,
+       serviços) e isso virava o NOME, porque a única regra aqui era ter 2
+       caracteres. No resumo do evento saía "Nome: Olá! Tudo Bem? sou Da Aderj
+       – Associação De Atacadistas...", com cada palavra capitalizada.
+
+       O texto NÃO é descartado: fica em `orcamento.textoLivre` para o operador
+       ver e para a Fase 3 da IA extrair os campos em vez de perguntar tudo de
+       novo (foi o que afundou o atendimento da ADERJ). */
+    if (pareceBriefing(cru)) {
+      session.orcamento.textoLivre = cru;
+      await sendTyping(chatId);
+      await sendText(chatId,
+        "Recebi todas as informações, obrigado! 😊 Já anotei aqui.\n\n" +
+        "Só me diga o *seu nome* (só o nome mesmo), que eu sigo com o orçamento."
+      );
+      try {
+        await sendText(OPERADOR_TELEFONE_ID,
+          `📋 *Briefing colado no orçamento* — ${chatId}\n\n` +
+          `${cru.slice(0, 500)}${cru.length > 500 ? "..." : ""}\n\n` +
+          `O bot pediu só o nome. Os dados acima NÃO entram sozinhos no orçamento ainda.`);
+      } catch (e) { console.warn(`⚠️ aviso de briefing: ${e.message}`); }
+      return;
+    }
+
+    const nome = capitalizarPalavras(cru);
 
     if (!nome || nome.length < 2) {
       await sendText(chatId, "*⚠ Informe um nome válido.*");
@@ -4802,27 +5068,63 @@ const resumoEucaristia =
       return;
     }
 
-    session.orcamento.dias = dias;
-
-    if (dias === 1) {
-      // 1 dia → fluxo normal de data/horário
-      session.step = "orcamento_data";
-      await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/06/2026* ou *9 de setembro*)");
+    /* 🚨 EVENTO DE 90 DIAS (caso ADERJ, 12/09/2026)
+       ======================================================
+       O limite era 1 a 90 e o bot ACEITAVA CALADO. Um número digitado no
+       lugar errado virava um evento de 90 dias, e o fluxo passava a pedir
+       data e horário NOVENTA vezes ("Dia 3 de 90" no atendimento real).
+       Ninguém contrata foto cabine por 90 dias: acima de DIAS_SEM_CONFIRMAR
+       o cliente confirma antes, e o operador fica sabendo. */
+    if (precisaConfirmarDias(dias)) {
+      session.orcamento.diasPendente = dias;
+      session.step = "orcamento_dias_confirmar";
+      await sendTyping(chatId);
+      await sendButtonList(
+        chatId,
+        `Só confirmando 😊 o seu evento tem mesmo *${dias} dias*?\n\n` +
+        `Se foi engano, é só escolher "Não" que eu pergunto de novo.`,
+        [
+          { id: "1", label: `Sim, são ${dias} dias` },
+          { id: "2", label: "Não, digitei errado" }
+        ]
+      );
       return;
     }
 
-    // Mais de 1 dia → verificar se horários são iguais
-    session.step = "orcamento_horarios_iguais";
-    await sendTyping(chatId);
-    await sendButtonList(
-      chatId,
-      `Seu evento terá *${dias} dias*. 📅\n\n` +
-      `Os horários de início e término serão os *mesmos em todos os dias*?`,
-      [
-        { id: "1", label: "Sim, são iguais" },
-        { id: "2", label: "Variam por dia" }
-      ]
-    );
+    await aplicarDiasDoEvento(chatId, session, dias);
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — CONFIRMAÇÃO DE EVENTO COM MUITOS DIAS
+  // ======================================================
+  if (session.step === "orcamento_dias_confirmar") {
+    const resp = interpretarSimNao(corpoMensagem);
+
+    if (!resp) {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim\n*2* - Não");
+      return;
+    }
+
+    const dias = session.orcamento.diasPendente;
+    session.orcamento.diasPendente = null;
+
+    if (resp === "2") {
+      session.step = "orcamento_dias";
+      await sendText(chatId, "Sem problema! 😊 *Quantos dias* tem o seu evento?");
+      return;
+    }
+
+    /* Confirmado mesmo assim: avisa o operador, porque evento longo de
+       verdade quase sempre precisa de proposta na mão, não da tabela. */
+    try {
+      await sendText(OPERADOR_TELEFONE_ID,
+        `📅 *Evento de ${dias} dias confirmado pelo cliente* — ${chatId}\n\n` +
+        `O fluxo automático vai pedir data e horário de cada dia. ` +
+        `Se for caso de proposta na mão, assuma a conversa.`);
+    } catch (e) { console.warn(`⚠️ aviso de evento longo: ${e.message}`); }
+
+    await aplicarDiasDoEvento(chatId, session, dias);
     return;
   }
 
@@ -5703,6 +6005,7 @@ module.exports = {
   resolverLocalOrcamentoManual,
   // idem, para teste-servico-por-extenso.js
   detectarServicosNoTexto,
+  VEIO_DO_SITE,
   // idem, para teste-pedido-catalogo.js (pedido do catálogo do WhatsApp)
   servicosDoPedidoCatalogo,
   // idem, para teste-comando-guia.js
@@ -5719,12 +6022,22 @@ module.exports = {
   // idem, para teste-menu-opcao-invalida.js
   avisoOpcaoInvalidaMenu,
   LABELS_MENU,
+  // idem, para teste-briefing-e-dias.js (o caso ADERJ de 12/09/2026)
+  pareceBriefing,
+  precisaConfirmarDias,
+  DIAS_SEM_CONFIRMAR,
   // idem, para teste-retomar-personalizado.js
   resolverRetomada,
   // 🚨 Lista canônica dos serviços do menu, na ordem do menu. Os jobs
   // (envio agendado, lembrete) precisam dela: cada cópia escrita à mão
   // envelhecia e deixava serviço novo de fora.
   TODOS_SERVICOS,
+  /* 🚨 Exportada para o lembrete montar a lista de serviços a partir da MESMA
+     fonte do menu. Cópia escrita à mão envelhece e troca o serviço do cliente
+     em silêncio: ver o caso Monique em jobs/lembreteOrcamento.js. */
+  linhasMenuServicos,
+  SERVICOS_NOMES,
+  EXIBICAO_PARA_ID,
   // usados pelo jobs/lembreteOrcamento no lembrete de 1h (entrega enxuta
   // de todos os orçamentos + captura do lead p/ o follow-up assumir).
   capturarClienteOrcamento,
@@ -5758,7 +6071,20 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids, opcoes = {})
 
   /* Quem chegou pelo CATÁLOGO recebe agradecimento pelo pedido, não o
      "vi que você quer saber sobre": ele já escolheu, não está perguntando. */
-  const textoAbertura = opcoes.origemCatalogo
+  /* Quem veio da PÁGINA DO SERVIÇO já leu tudo sobre ele. A abertura não
+     repete a apresentação, só confirma que chegou e entrega o valor. */
+  const textoAbertura = opcoes.origemSite
+    ? `${saudacaoPorHora()}! ❤️
+
+` +
+      `Que bom que você chegou pela nossa página de *${comE}*! 😊
+
+` +
+      `Já te mando o valor sem você precisar esperar.
+
+` +
+      `_É o nosso orçamento base: evento de até 200 convidados, de 4h a 5h._`
+    : opcoes.origemCatalogo
     ? `${saudacaoPorHora()}! ❤️
 
 ` +
@@ -6266,7 +6592,13 @@ async function enviarResumoCliente(chatId, session) {
 }
 
 // 🎁 Vantagem Exclusiva — enviada como mensagem própria, após o resumo, em TODOS
-// os orçamentos. R$ 100 de desconto a partir do 2º serviço (quando há 2+).
+// os orçamentos. R$ 200 de desconto a partir do 2º serviço (quando há 2+).
+//
+// 🚨 O VALOR TEM QUE SER O MESMO DO PDF. Quem manda é a constante
+// COMBO_DESCONTO do PhotoMusic Pro (includes/orcamentos/class-photomusic-
+// orcamentos.php), que passou de 100 para 200 em 14/09/2026. Este texto é
+// escrito à mão aqui: mexeu lá, mexa aqui, senão o WhatsApp promete metade do
+// que o PDF concede.
 //
 // 🐛 CORRIGIDO 2026-08 (Mario): a escada antiga oferecia "6x/9x sem juros no
 // cartão" como se fosse exclusividade de quem fechasse 2 ou 3 serviços. Desde
@@ -6283,12 +6615,12 @@ function montarVantagemExclusiva(nServicos, deslocamento) {
   let corpo;
   if (nServicos >= 2) {
     corpo =
-      "Contratando *2 ou mais serviços*, você garante *R$ 100,00 de desconto* " +
+      "Contratando *2 ou mais serviços*, você garante *R$ 200,00 de desconto* " +
       "a partir do segundo serviço";
   } else {
     // 1 serviço — isca p/ o cliente incluir mais um
     corpo =
-      "Incluindo *mais um serviço*, você garante *R$ 100,00 de desconto* a partir do segundo";
+      "Incluindo *mais um serviço*, você garante *R$ 200,00 de desconto* a partir do segundo";
   }
 
   return "🎁 *Vantagem exclusiva!*\n" + corpo + fimDesloc;

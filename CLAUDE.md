@@ -37,7 +37,40 @@ TOKEN=             # Token da instância Z-API
 WEBHOOK_URL=       # URL pública do webhook (ngrok em dev, Fly.io em prod)
 PM_API_KEY=        # Chave da API gerada pelo plugin WordPress PhotoMusic Pro
 PM_API_BASE=       # https://photomusic.com.br/wp-json/photomusic/v1
+
+# IA de entendimento (Fase 1) — opcional, desligada por padrão
+IA_ROTEADOR=       # 1 liga. Qualquer outra coisa (ou ausente) = desligado
+ANTHROPIC_API_KEY= # obrigatória quando IA_ROTEADOR=1
+IA_MODELO=         # opcional, padrão claude-opus-5
+IA_TIMEOUT_MS=     # opcional, padrão 7000
+IA_CONFIANCA_MINIMA= # opcional, padrão 0.7
 ```
+
+## IA de entendimento (`utils/roteadorIA.js`)
+
+Camada de **entendimento**, não de resposta. Ela lê a mensagem do cliente e
+devolve apenas o caminho (id de serviço ou número do menu). Quem fala com o
+cliente continua sendo o código de sempre, e preço continua vindo do motor de
+orçamento.
+
+Ordem de tentativa no passo `aguardando_opcao`, da mais barata para a mais cara:
+
+1. número do menu digitado (`1`..`7`)
+2. `detectarServicosNoTexto` (palavra-chave, instantâneo e de graça)
+3. **IA**, só se 1 e 2 não acharam nada
+4. `avisoOpcaoInvalidaMenu()`, o comportamento de antes
+
+Regras que o banco de medição (`teste-roteador-ia.js`) protege:
+
+- id de serviço ou opção de menu que não existe é descartado
+- confiança abaixo de `IA_CONFIANCA_MINIMA` é descartada
+- quem casa com `NAO_E_ORCAMENTO` (já contratou, reclamação, cancelamento)
+  nunca recebe orçamento pela IA, só caminho de menu
+- quando a IA lê opção de menu, o cliente **confirma** antes de entrar no fluxo
+- qualquer falha devolve `null` e o fluxo antigo responde. A IA nunca pode
+  deixar o bot mudo
+
+Desligar é `fly secrets unset IA_ROTEADOR`, sem subir código.
 
 ## Arquitetura geral
 

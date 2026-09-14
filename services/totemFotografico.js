@@ -408,7 +408,10 @@ async function enviarFluxoTotem(chatId, clb) {
     if (estaPausado(chatId)) return;
     await sendText(
       chatId,
-      "Ao entrar na cabine, o nosso sistema permite que os convidados escolham o modelo da foto que desejam receber, *foto tirinha* ou *foto 10x15* (*Pacote Premium e Gold*), eles fazem uma sequência de 4 fotos e ao saírem recebem a foto impressa"
+      /* 🚨 AQUI DIZIA "Ao entrar na cabine" (Mario pegou em 14/09/2026): a
+         frase estava trocada com a do fotoCabine.js. O totem nao tem
+         cabine: o convidado chega na frente dele. */
+        "Ao chegar na frente do Totem, o nosso sistema permite que os convidados escolham o modelo da foto que desejam receber, *foto tirinha* ou *foto 10x15* (*Pacote Premium e Gold*), eles fazem uma sequência de 4 fotos e ao terminarem recebem a foto impressa"
     );
 
     // Premium

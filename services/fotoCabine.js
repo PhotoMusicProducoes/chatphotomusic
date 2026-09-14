@@ -398,7 +398,14 @@ async function enviarFluxoPadrao(chatId, evento, clb) {
   await sendTyping(chatId);
   await delay(300);
   if (estaPausado(chatId)) return;
-  await sendText(chatId, "Ao chegar na frente do Totem, o nosso sistema permite que os convidados escolham o modelo da foto que desejam receber, *foto tirinha* ou *foto 10x15* (*Pacote Premium e Gold*), eles fazem uma sequência de 4 fotos e ao terminarem recebem a foto impressa");
+  await sendText(chatId, /* 🚨 AQUI DIZIA "na frente do Totem" (Mario pegou em 14/09/2026): a
+         Foto Cabine e o Totem Fotografico estavam com as frases TROCADAS
+         entre si - este arquivo falava de totem e o totemFotografico.js
+         falava de cabine. O cliente que pedia cabine ouvia o nome de
+         OUTRO produto do catalogo. Os pacotes (Tirinha/Gold/Premium) sao
+         os mesmos nos dois servicos e estavam certos; so a frase de
+         abertura estava cruzada. */
+        "Ao entrar na cabine, o nosso sistema permite que os convidados escolham o modelo da foto que desejam receber, *foto tirinha* ou *foto 10x15* (*Pacote Premium e Gold*), eles fazem uma sequência de 4 fotos e ao saírem recebem a foto impressa");
 
   // Premium
   await sendTyping(chatId);
