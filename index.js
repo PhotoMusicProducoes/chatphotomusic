@@ -1631,7 +1631,7 @@ async function enviarOrcamentoUnificado(
 // ======================================================
 // ENVIO DE MÚLTIPLOS ORÇAMENTOS — VERSÃO ATUALIZADA
 // ======================================================
-async function enviarMultiplosOrcamentos(chatId, listaServicos) {
+async function enviarMultiplosOrcamentos(chatId, listaServicos, opcoes = {}) {
   const session = sessions[chatId];
   if (!session) return true;
 
@@ -1745,8 +1745,16 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
       session.enviouAvaliacao = true;
     }
 
+    /* 📄 PEDIU TODOS OS SERVIÇOS (Mario, 07/10/2026): depois da avaliação vai
+       direto ao "💰 Segue o arquivo com o orçamento de ...", que já traz o
+       nome de todos. Nome + foto de cada um eram 9 blocos antes do preço.
+       As fotos seguem disponíveis no "Quero mais detalhes" do menu final. */
+    if (opcoes.todos) {
+      listaServicos.forEach(id => registrarServicoEnviado(session, id));
+    }
+
     // ✅ Agora enviar cada serviço (SEM avaliação novamente)
-    for (const [idx, servico] of listaServicos.entries()) {
+    for (const [idx, servico] of (opcoes.todos ? [] : listaServicos).entries()) {
 
       while (session.processandoServico) {
         await new Promise(r => setTimeout(r, 300));
@@ -1800,6 +1808,17 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos) {
     await enviarOrcamentoGerado(chatId, session, listaServicos, {
       segundaRodada: _jaTinhaOrcamento
     });
+
+    /* GuestBook: cada serviço com cabine/totem o mandava no laço acima, que
+       no "todos" não roda. Vai UMA vez, depois do arquivo (no laço ia até 3x). */
+    if (opcoes.todos && [1, 2, 13].some(id => listaServicos.includes(id))) {
+      try {
+        const { enviarGuestbook } = require("./services/guestbook.js");
+        await enviarGuestbook(chatId, session.orcamento.celebracaoId, "Foto Cabine ou Totem");
+      } catch (e) {
+        console.error("⚠️ GuestBook (todos os serviços):", e.message);
+      }
+    }
 
     // 📌 RESUMO FINAL DO EVENTO PARA O CLIENTE (UMA VEZ)
     await enviarResumoCliente(chatId, session);
@@ -2601,6 +2620,13 @@ async function enviarPerguntaESalvar(chatId, session, pergunta) {
 // ======================================================
 // HANDLE INCOMING MESSAGE — VERSÃO FINAL CORRIGIDA + #cliente
 // ======================================================
+/* Tem letra ou número? Foto, figurinha e GIF chegam sem texto, e emoji
+   sozinho não diz nada do evento: nenhum dos três libera o orçamento
+   automático (Mario, 07/10/2026 - o amigo do meme). */
+function temTextoDeVerdade(texto) {
+  return /[\p{L}\p{N}]/u.test(String(texto || ""));
+}
+
 async function handleIncomingMessage(message) {
   console.log("🔔 Nova mensagem recebida (raw):", JSON.stringify(message, null, 2));
 
@@ -4339,6 +4365,8 @@ async function handleIncomingMessage(message) {
     sessions[chatId] = {
       step: "aguardando_opcao",
       menuInicialEnviado: false,
+      // Só foto/figurinha/GIF/emoji não conta (ver jobs/lembreteOrcamento.js)
+      clienteEscreveuTexto: temTextoDeVerdade(corpoMensagem),
 
       enviouAvaliacao: false,
       enviouApresentacao: false,
@@ -4384,6 +4412,7 @@ async function handleIncomingMessage(message) {
 
   const session = sessions[chatId];
   session.ultimaInteracao = Date.now();
+  if (temTextoDeVerdade(corpoMensagem)) session.clienteEscreveuTexto = true;
 
   // ======================================================
   // FALLBACK: se step estiver vazio/inválido, reabre o menu
@@ -6014,7 +6043,10 @@ const resumoEucaristia =
 
     // Sem "aguarde": o orçamento sai na hora, o aviso só somava ruído
     // (decisão do Mario, 11/08/2026).
-    await enviarMultiplosOrcamentos(chatId, servicos);
+    // "Todos" = 9, a palavra "todos" ou cada número digitado (a Iluminação
+    // conta como pedida quando saiu por já vir no Som com DJ).
+    const pediuTodos = TODOS_SERVICOS.every(s => servicos.includes(s) || (s === 8 && servicos.includes(7)));
+    await enviarMultiplosOrcamentos(chatId, servicos, { todos: pediuTodos });
 
     session.primeiraRodadaFinalizada = true;
     // ⚠️ NÃO definir step aqui: quem manda é o perguntarPosOrcamento(), chamado
@@ -6154,6 +6186,9 @@ module.exports = {
   comandosServicos,
   // idem, para teste-parar-envio.js
   envioFoiInterrompido,
+  // para teste-envio-direto.js (07/10/2026)
+  enviarMultiplosOrcamentos,
+  temTextoDeVerdade,
   // idem, para teste-numero-whatsapp.js
   limparPontuacaoNumero,
   normalizarNumero,
@@ -6321,6 +6356,42 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
   const saud  = saudacaoPorHora();
   const ola   = nome ? `${saud}, *${nome}*!` : `${saud}!`;
 
+  /* 📄 ENVIO DIRETO (Mario, 07/10/2026). Só o lembrete de 1h usa, e só para
+     quem NÃO passou nenhuma informação do evento (ver enviarTodosOrcamentos
+     no jobs/lembreteOrcamento.js). A ordem inverte: o cliente recebe primeiro
+     o arquivo, começando no "💰 Segue o arquivo com o orçamento de ...", sem
+     abertura, sem nome e foto de cada serviço; as avaliações vêm DEPOIS.
+     Quem conversou e escolheu o serviço segue o envio normal (abaixo). */
+  if (opcoes.direto) {
+    const listaDireta = (Array.isArray(listaServicos) && listaServicos.length)
+      ? listaServicos
+      : [...TODOS_SERVICOS];
+
+    if (envioFoiInterrompido(chatId)) {
+      await avisarEnvioInterrompido(chatId, orc.servicosEnviados, listaDireta);
+      return;
+    }
+    listaDireta.forEach(id => registrarServicoEnviado(session, id));
+
+    try {
+      await enviarOrcamentoGerado(chatId, session, listaDireta);
+    } catch (e) {
+      console.error("⚠️ orçamento gerado não saiu (envio direto):", e.message);
+    }
+    if (envioFoiInterrompido(chatId)) return;
+
+    try {
+      await enviarAvaliacaoEmpresa(chatId, sessions);
+      session.enviouAvaliacao = true;
+    } catch (e) {
+      console.error("⚠️ avaliações não enviadas (envio direto):", e.message);
+    }
+    if (envioFoiInterrompido(chatId)) return;
+
+    await fecharEnvioAutomatico(chatId, session, passoOriginal);
+    return;
+  }
+
   await sendTyping(chatId);
   /* A abertura padrão é a do lembrete de 1h ("a gente não terminou"). Quem
      chama com `opcoes.textoAbertura` manda a sua — é o caso do serviço
@@ -6405,6 +6476,12 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
     console.error("⚠️ orçamento gerado não saiu:", e.message);
   }
 
+  await fecharEnvioAutomatico(chatId, session, passoOriginal);
+}
+
+/** Cauda comum do envio automático (normal e direto): resumo, captura do
+ *  lead e o convite para o orçamento personalizado. */
+async function fecharEnvioAutomatico(chatId, session, passoOriginal) {
   // Resumo final com TODOS os links (é o que amarra tudo pro cliente)
   try { await enviarResumoCliente(chatId, session); } catch (e) {
     console.error("⚠️ resumo não enviado:", e.message);

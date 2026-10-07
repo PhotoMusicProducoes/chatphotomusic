@@ -358,7 +358,17 @@ async function enviarTodosOrcamentos(chatId, s) {
   // só decide QUANDO. require tardio p/ evitar import circular no boot.
   const { enviarOrcamentosAutomaticos } = require("../index.js");
   s.lembreteRetomarPergunta = PERGUNTA_POR_PASSO[s.step] || "";
-  await enviarOrcamentosAutomaticos(chatId, s);
+  // Sem NENHUMA informação do evento: envio direto (o arquivo primeiro, sem
+  // fotos, avaliações depois). Mario, 07/10/2026. Lido ANTES do envio, que
+  // preenche os padrões (Outros, 200 convidados, 4h5h).
+  await enviarOrcamentosAutomaticos(chatId, s, null, { direto: semInfoDoEvento(s) });
+}
+
+/** O cliente não passou nada do evento (só o nome não conta). */
+function semInfoDoEvento(s) {
+  const o = s.orcamento || {};
+  return !o.celebracaoId && !o.celebracao && !o.convidados && !o.data
+      && !o.horaInicio && !o.bairro && !o.cidade && !o.salao;
 }
 
 function montarMensagemOperador(chatId, s, dEvento) {
@@ -478,6 +488,15 @@ async function executarLembreteOrcamento() {
 
       if (!acao) continue; // nada a enviar para este neste ciclo
 
+      /* 🚫 Só mandou foto, figurinha, GIF ou emoji (Mario, 07/10/2026): um
+         amigo mandou um meme, ficou no menu e 1h depois recebeu o orçamento
+         de todos os serviços. Sem nenhum texto de verdade não sai orçamento.
+         `=== false` de propósito: sessão antiga (sem o campo) segue como era. */
+      if (acao === 'orcamentos' && s.clienteEscreveuTexto === false) {
+        console.log(`   🚫 ${chatId} só mandou mídia/emoji: orçamento automático não enviado.`);
+        continue;
+      }
+
       if (acao === 'operador') {
         // Aviso ao operador — vai independentemente da pausa especial do cliente
         await sendText(OPERADOR_TELEFONE_ID, montarMensagemOperador(chatId, s, dEvento));
@@ -543,5 +562,7 @@ module.exports = {
   JANELA_INICIO,
   JANELA_FIM,
   // para teste-lista-servicos-unica.js (o caso Monique, 13/09/2026)
-  PERGUNTA_POR_PASSO
+  PERGUNTA_POR_PASSO,
+  // para teste-envio-direto.js (07/10/2026)
+  semInfoDoEvento
 };
