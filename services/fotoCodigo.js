@@ -34,10 +34,27 @@ const LINK_AVALIACAO = "https://g.page/r/CVcwPOqAtId5EBM/review";
  */
 function extrairCodigoFoto(texto) {
   if (!texto) return null;
-  // aceita "Código: ABC123", "codigo abc123", "meu codigo é: ABC123"
-  const m = String(texto).match(/c[óo]digo\s*(?:[ée]|eh|=)?\s*:?\s*([A-Za-z0-9]{6})\b/i);
-  if (!m) return null;
-  return m[1].toUpperCase();
+
+  /* 🚨 ACEITA 6 A 8 CARACTERES (consertado 29/09/2026).
+     O gerador do plugin passou a criar `PM` + 6 consoantes (8 no total) para
+     o codigo nao ter NENHUM algarismo - com o alfabeto antigo, um codigo como
+     `HL9BFL` era lido pelo menu como "opcao 9 = TODOS os servicos". Mas a
+     regex daqui capturava exatamente {6}: em `PMVQFJJW` ela pegava `PMVQFJ`,
+     esbarrava no `JW` e o `\b` falhava, entao NADA casava e o convidado caia
+     no menu. Quem mudou o formato tem de conferir os DOIS lados.
+     O {6,8} mantem os codigos ANTIGOS de 6 funcionando. */
+  const m = String(texto).match(/c[óo]digo\s*(?:[ée]|eh|=)?\s*:?\s*([A-Za-z0-9]{6,8})\b/i);
+  if (m) return m[1].toUpperCase();
+
+  /* Sem a palavra "codigo" (ideia do Mario, 29/09): o formato novo se
+     identifica sozinho pelo prefixo PM + consoantes, entao vale mesmo que a
+     pessoa apague o texto sem querer ou digite so o codigo que o operador
+     ditou. So o formato NOVO entra aqui: 6 caracteres soltos casariam com
+     palavra comum ("CABINE" tem 6 letras). */
+  const p = String(texto).match(/\b(PM[BCDFGHJKMNPQRSTVWXYZ]{6})\b/i);
+  if (p) return p[1].toUpperCase();
+
+  return null;
 }
 
 /** Chama o PhotoMusic Pro: código + telefone -> link da sessão daquele convidado */

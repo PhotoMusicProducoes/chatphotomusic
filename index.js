@@ -1316,6 +1316,50 @@ function contarMenuInicial(chatId) {
   return e.n;
 }
 
+/* 📸 CONVIDADO DE EVENTO (Mario, 07/10/2026 - Smart Fit Pavuna).
+   Quem chega pelo CODIGO da foto e convidado, nao lead. O Charles recebeu o
+   link, digitou o proprio nome e o bot devolveu o MENU e, meia hora depois, o
+   remarketing de orcamento ("nao terminou o seu orcamento"). Regra: convidado
+   so entra no funil se PEDIR (digitar "orcamento" ou "menu" e escolher a
+   opcao). Fora isso, recebe uma resposta curta sobre as fotos.
+   O marcador vale 3 dias: depois disso, a mesma pessoa voltando e tratada
+   como contato novo. Nao mexe em quem esta no MEIO de um orcamento. */
+const CONVIDADO_EVENTO_VALIDADE = 3 * 24 * 60 * 60 * 1000;
+const CONVIDADO_EVENTO_RESPOSTA_INTERVALO = 10 * 60 * 1000;
+// texto ja normalizado (sem acento, minusculo): so isto tira o convidado do modo evento
+const CONVIDADO_PEDIU_FUNIL = /\b(orcamento|orcamentos|menu)\b/;
+
+function marcarConvidadoEvento(chatId) {
+  const agora = Date.now();
+  if (!sessions[chatId]) {
+    sessions[chatId] = {
+      step: "aguardando_opcao",
+      menuInicialEnviado: false,
+      enviouAvaliacao: false,
+      enviouApresentacao: false,
+      primeiraRodadaFinalizada: false,
+      segundaRodadaFinalizada: false,
+      orcamento: { servicosEnviados: [] },
+      servicosEnviados: [],
+      enviandoAvaliacao: false,
+      processandoServico: false,
+      enviandoOrcamentos: false,
+      ultimaInteracao: agora,
+      lembreteOrcamentoEnviado: false,
+      ultimaPerguntaNaoRespondida: null
+    };
+  }
+  const s = sessions[chatId];
+  // so marca quem esta parado no menu: lead no meio do questionario segue o fluxo dele
+  if (s.step !== "aguardando_opcao") return;
+  s.convidadoEvento = agora;
+  s.menuInicialEnviado = false;   // o menu nao foi pedido: o lembrete de "nao escolheu a opcao" nao se aplica
+}
+
+function ehConvidadoEvento(s) {
+  return !!(s && s.convidadoEvento && (Date.now() - s.convidadoEvento) < CONVIDADO_EVENTO_VALIDADE);
+}
+
 async function mostrarMenuInicial(chatId) {
   const vezes = contarMenuInicial(chatId);
   if (vezes >= MENU_MAX_REPETICOES) {
@@ -1965,6 +2009,50 @@ async function aplicarDiasDoEvento(chatId, session, dias) {
   );
 }
 
+/* ======================================================
+   🚨 O CLIENTE RESPONDE COM O TÍTULO, NÃO COM O NÚMERO
+   ======================================================
+   Caso real (cliente Helena, 15/09/2026): ela respondeu "Solicitar um
+   orçamento" e depois "Quero outra opção", que são os TÍTULOS das opções. O
+   bot só sabia ler dígito (`replace(/\D+/g, "")`), então as duas viraram
+   string vazia: ela recebeu "Opção inválida" tendo dito exatamente o que
+   queria, e acabou parando num fluxo que não era o dela.
+
+   Acontece quando a lista clicável não devolve o `selectedRowId` esperado:
+   WhatsApp Web, aparelho antigo, ou quando a pessoa responde CITANDO a
+   mensagem e copiando o texto da opção. A `utils/sendOptionList.js` já avisa
+   que botão é camada e a Z-API é instável; isto é a outra metade do seguro.
+
+   Compara sem acento, sem maiúscula e sem pontuação, e aceita tanto o título
+   inteiro quanto o título com o número na frente ("1 - Solicitar um...").
+*/
+/* Os dois botões da tela de confirmação. Ficam num lugar só porque o texto
+   que a gente ENVIA tem que ser o mesmo que a gente sabe LER de volta: foi
+   justamente o "Quero outra opção" digitado que o bot não reconheceu. */
+const ROTULOS_CONFIRMACAO = {
+  "1": "Sim, é isso",
+  "2": "Quero outra opção",
+};
+
+function opcaoPorTitulo(texto, titulos) {
+  const limpar = s => normalizarParaBusca(s)
+    .replace(/[*_~`]/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const alvo = limpar(texto);
+  if (!alvo) return null;
+
+  for (const id of Object.keys(titulos)) {
+    const titulo = limpar(titulos[id]);
+    if (!titulo) continue;
+    // "solicitar um orcamento"  ou  "1 solicitar um orcamento"
+    if (alvo === titulo || alvo === `${limpar(id)} ${titulo}`) return id;
+  }
+  return null;
+}
+
 /** Tela de confirmação da opção do menu (evita entrar no fluxo errado). */
 async function pedirConfirmacaoOpcao(chatId, session, opcao) {
   session.opcaoMenuPendente = opcao;
@@ -1973,10 +2061,7 @@ async function pedirConfirmacaoOpcao(chatId, session, opcao) {
   await sendButtonList(
     chatId,
     `Só pra confirmar 😊 você escolheu:\n\n*${LABELS_MENU[opcao]}*\n\nEstá certo?`,
-    [
-      { id: "1", label: "Sim, é isso" },
-      { id: "2", label: "Quero outra opção" }
-    ]
+    Object.keys(ROTULOS_CONFIRMACAO).map(id => ({ id, label: ROTULOS_CONFIRMACAO[id] }))
   );
 }
 
@@ -4171,7 +4256,10 @@ async function handleIncomingMessage(message) {
   // com "Código: XXXXXX" e recebe o link na hora, mesmo com o menu aberto.
   // ======================================================
   try {
-    if (await tratarCodigoFoto(chatId, corpoMensagem, sessions[chatId])) return;
+    if (await tratarCodigoFoto(chatId, corpoMensagem, sessions[chatId])) {
+      marcarConvidadoEvento(chatId);
+      return;
+    }
   } catch (e) {
     console.error("❌ Falha no atalho da foto por código:", e.message);
     // A mensagem TEM código de foto: se falhar, avisa o convidado em vez de
@@ -4408,11 +4496,39 @@ async function handleIncomingMessage(message) {
   }
 
   // ======================================================
+  // 📸 CONVIDADO DE EVENTO: so entra no funil se pedir (ver marcarConvidadoEvento)
+  // ======================================================
+  if (session.step === "aguardando_opcao" && ehConvidadoEvento(session)) {
+    const pedido = normalizarParaBusca(corpoMensagem || "");
+    if (CONVIDADO_PEDIU_FUNIL.test(pedido)) {
+      // pediu: deixa de ser so convidado e recebe o menu normal (com o funil)
+      session.convidadoEvento = null;
+      await mostrarMenuInicial(chatId);
+      return;
+    }
+    const agoraConv = Date.now();
+    if (!session.convidadoEventoRespostaEm
+        || (agoraConv - session.convidadoEventoRespostaEm) >= CONVIDADO_EVENTO_RESPOSTA_INTERVALO) {
+      session.convidadoEventoRespostaEm = agoraConv;
+      await sendTyping(chatId);
+      await sendText(chatId,
+        `Suas fotos estão no link que te mandei acima 📸\n\n` +
+        `Se o link pedir para confirmar o acesso, toque nele no *mesmo celular* e no *mesmo navegador* ` +
+        `em que você abriu da primeira vez. Qualquer dúvida, fale com o nosso operador no evento 😊\n\n` +
+        `Quer um orçamento para o seu evento? É só digitar *orçamento*. ❤️`);
+    }
+    return;
+  }
+
+  // ======================================================
   // MENU INICIAL
   // ======================================================
   if (session.step === "aguardando_opcao") {
   const texto = (corpoMensagem || "").trim();
-  const opcaoMenu = texto.replace(/\D+/g, ""); // pega só números
+  /* 🚨 O TÍTULO VALE TANTO QUANTO O NÚMERO. Ver opcaoPorTitulo(): a cliente
+     Helena respondeu "Solicitar um orçamento" e o bot devolveu "Opção
+     inválida", porque só sabia ler dígito. */
+  const opcaoMenu = opcaoPorTitulo(texto, LABELS_MENU) || texto.replace(/\D+/g, "");
 
   // ✅ PRIMEIRO CONTATO REAL:
   // se o menu ainda não foi enviado, a primeira mensagem do cliente SEMPRE recebe boas-vindas.
@@ -4491,7 +4607,11 @@ async function handleIncomingMessage(message) {
   // CONFIRMAÇÃO DA OPÇÃO DO MENU
   // ======================================================
   if (session.step === "confirmar_opcao_menu") {
-    const resp = (corpoMensagem || "").replace(/\D+/g, "");
+    // 🚨 Ver opcaoPorTitulo(): "Quero outra opção" é resposta de botão e não
+    // tem dígito nenhum. Antes disso, a cliente Helena caiu no fluxo errado.
+    const resp =
+      opcaoPorTitulo(corpoMensagem, ROTULOS_CONFIRMACAO) ||
+      (corpoMensagem || "").replace(/\D+/g, "");
 
     if (resp === "1") {
       const op = session.opcaoMenuPendente;
@@ -4508,6 +4628,21 @@ async function handleIncomingMessage(message) {
       await sendText(chatId, "Sem problema! 😊 Escolha a opção desejada:");
       await sendTyping(chatId);
       await sendText(chatId, mensagemBoasVindas3);
+      return;
+    }
+
+    /* 🚨 ELA DISSE O QUE QUERIA, O BOT SÓ NÃO PERGUNTOU DIREITO.
+       A Helena, presa nesta tela, escreveu "Orçamento para 3h". Repetir
+       "responda 1 ou 2" é o pior que o bot pode fazer: o cliente falou.
+       Antes do aviso seco, tentamos entender e REDIRECIONAR. */
+    const _servConf = detectarServicosNoTexto(corpoMensagem || "");
+    if (_servConf.length) {
+      session.opcaoMenuPendente = null;
+      await enviarOrcamentoPadraoDetectado(chatId, session, _servConf);
+      return;
+    }
+    if (await tentarRoteadorIA(chatId, session, corpoMensagem || "")) {
+      session.opcaoMenuPendente = null;
       return;
     }
 
@@ -5995,6 +6130,10 @@ const resumoEucaristia =
 // ======================================================
 module.exports = {
   handleIncomingMessage,
+  // para teste-convidado-evento.js (Smart Fit Pavuna, 07/10/2026)
+  marcarConvidadoEvento,
+  ehConvidadoEvento,
+  CONVIDADO_PEDIU_FUNIL,
   // Exposto para o banco de medicao do anti-loop (teste-antiloop-menu.js):
   // sem teste, a regra volta a engolir resposta de menu sem ninguem ver.
   registrarMensagemAntiLoop,
@@ -6026,6 +6165,9 @@ module.exports = {
   pareceBriefing,
   precisaConfirmarDias,
   DIAS_SEM_CONFIRMAR,
+  // idem, para teste-resposta-por-titulo.js (o caso Helena de 15/09/2026)
+  opcaoPorTitulo,
+  ROTULOS_CONFIRMACAO,
   // idem, para teste-retomar-personalizado.js
   resolverRetomada,
   // 🚨 Lista canônica dos serviços do menu, na ordem do menu. Os jobs

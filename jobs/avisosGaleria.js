@@ -17,7 +17,7 @@ const axios = require("axios");
 const cron = require("node-cron");
 const { sendText } = require("../utils/index.js");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
-const { montarMensagemEvento } = require("../services/eventos.js");
+const { montarMensagemEvento, marcaDoTelefone } = require("../services/eventos.js");
 // 🎭 as palavras mudam com a celebração - ver services/tomDoEvento.js
 const { tomDoEvento } = require("../services/tomDoEvento.js");
 
@@ -113,7 +113,7 @@ async function executarAvisosGaleria() {
             instagram:     ev.instagram || "",
             instagramNome: ev.instagram_nome || "",
             googleReview:  ev.google_review || "",
-          }, ev.telefone));
+          }, ev.telefone, await marcaDoTelefone(ev.telefone)));
 
           await marcarEnviado(ev.id, "inicio");
           console.log(`   ✅ Aviso de INÍCIO enviado -> ${ev.nome} (${ev.telefone})`);

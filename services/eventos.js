@@ -5,6 +5,8 @@
 const fetch = require("node-fetch");
 const { sendText, sendTyping, sendOptionList } = require("../utils/index.js");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
+// as rotas /capture/* conferem esta chave (a mesma que fotoCodigo.js usa)
+const PM_CAPTURE_KEY = process.env.PM_CAPTURE_KEY || "";
 // 🎭 o tom (festa x celebração religiosa x corporativo) - ver tomDoEvento.js
 const { tomDoEvento } = require("./tomDoEvento.js");
 
@@ -117,6 +119,39 @@ async function buscarEventos() {
 // URL base da página de aceite
 const ACEITE_BASE_URL = "https://photomusic.com.br/aceite-de-fotos-e-videos/";
 
+/* 🚨 O TELEFONE NAO VIAJA MAIS NO LINK (Mario, 29/09/2026).
+   O link ia com `&tel=21996708250` LEGIVEL - e ele e encaminhado de mao em
+   mao no WhatsApp, entao quem recebia lia o numero de quem mandou. Agora vai
+   a MARCA (`k=`), um hash que so serve para o site CONFERIR quem e. O numero
+   que fica guardado passa a ser o que a pessoa DIGITA no formulario.
+
+   📌 POR QUE PEDIR AO SITE EM VEZ DE CALCULAR AQUI: o segredo do hash mora
+   la, e escrever a normalizacao do telefone (DDD, +55, nono digito) uma
+   segunda vez em JS seria a armadilha das funcoes gemeas deste projeto -
+   duas regras para a mesma pergunta, divergindo na primeira alteracao.
+
+   🚨 Se o site nao responder, o link sai como antes (com `tel=`): num evento
+   ao vivo, convidado sem foto e pior do que numero exposto. O site aceita os
+   dois de proposito. */
+async function marcaDoTelefone(telefone) {
+  const tel = String(telefone || "").replace(/\D/g, "");
+  if (tel.length < 8) return "";
+  try {
+    const r = await fetch(`${PM_API_BASE}/capture/marca`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-PM-Capture-Key": PM_CAPTURE_KEY },
+      body: JSON.stringify({ telefone: tel }),
+      timeout: 8000,
+    });
+    if (!r.ok) return "";
+    const d = await r.json();
+    return d && d.k ? String(d.k) : "";
+  } catch (e) {
+    console.error("marca do telefone falhou, link sai com tel=:", e.message);
+    return "";
+  }
+}
+
 async function apresentarEvento(numeroEvento, telefone = "") {
   const eventos = await buscarEventos();
   const evento = eventos.find((e) => e.numero === String(numeroEvento));
@@ -125,7 +160,7 @@ async function apresentarEvento(numeroEvento, telefone = "") {
     return "Evento não encontrado. Verifique o número digitado!";
   }
 
-  return montarMensagemEvento(evento, telefone);
+  return montarMensagemEvento(evento, telefone, await marcaDoTelefone(telefone));
 }
 
 /**
@@ -139,7 +174,7 @@ async function apresentarEvento(numeroEvento, telefone = "") {
  * `evento` precisa de: titulo, preposicao, token (ou links), instagram,
  * instagramNome, googleReview.
  */
-function montarMensagemEvento(evento, telefone = "") {
+function montarMensagemEvento(evento, telefone = "", marca = "") {
   // Cabeçalho
   const prep = evento.preposicao || 'ao';
   /* 🎭 O TOM VEM DA CELEBRAÇÃO (06/09/2026). Numa 1ª Eucaristia não cabe
@@ -153,8 +188,10 @@ function montarMensagemEvento(evento, telefone = "") {
   // Monta link da página de aceite com token do evento e telefone pré-preenchidos
   // Novo formato: ?t=TOKEN_EVENTO&tel=TELEFONE
   const telLimpo = (telefone || "").replace(/\D/g, "");
+  // com a marca, o numero nao vai no link; sem ela, mantem o formato antigo
+  const identifica = marca ? `k=${encodeURIComponent(marca)}` : `tel=${telLimpo}`;
   const urlAceite = evento.token
-    ? `${ACEITE_BASE_URL}?t=${evento.token}&tel=${telLimpo}`
+    ? `${ACEITE_BASE_URL}?t=${evento.token}&${identifica}`
     : (evento.link_aceite || "");
 
   if (urlAceite) {
@@ -259,5 +296,6 @@ module.exports = {
   buscarEventos,
   apresentarEvento,
   montarMensagemEvento,
+  marcaDoTelefone,
   fluxoEventos,
 };
