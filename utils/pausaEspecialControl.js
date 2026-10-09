@@ -5,6 +5,7 @@ const path = require("path");
 const axios = require("axios");
 
 const { PM_API_BASE, PM_API_KEY } = require("./config");
+const { ehEstrangeiroConhecido, lembrarEstrangeiro } = require("./numeroEstrangeiro");
 
 const URL_PAUSA_ESPECIAL = "https://photomusic.com.br/wp-content/dados/pausaEspecial.json";
 
@@ -60,9 +61,15 @@ function normalizarNumero(numero) {
 
   numero = String(numero);
   numero = numero.replace("@c.us", "");
+  const _tinhaMais = /^\s*\+/.test(numero);
   numero = numero.replace(/\D+/g, "");
   numero = numero.replace(/^0+/, "");
   if (!numero) return null;
+
+  // 🌍 IDÊNTICO ao index.js: número de outro país não leva palpite de 55/DDD
+  // (ver utils/numeroEstrangeiro.js).
+  if (ehEstrangeiroConhecido(numero)) return numero;
+  if (_tinhaMais && !numero.startsWith("55")) return lembrarEstrangeiro(numero);
 
   // Já vem com DDI 55: 13 = celular, 12 = FIXO. Ambos válidos como estão.
   if (numero.startsWith("55") && (numero.length === 12 || numero.length === 13))

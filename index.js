@@ -31,6 +31,7 @@ const {
 const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require("./utils/pauseControl.js");
 
 const { sessions } = require("./utils/sessions");
+const { ehEstrangeiroConhecido, lembrarEstrangeiro, numeroDeEntrada } = require("./utils/numeroEstrangeiro.js");
 const { resetSession } = require("./utils/resetSession");
 // 🤖 Camada de ENTENDIMENTO (Fase 1). Fica desligada até IA_ROTEADOR=1.
 const {
@@ -185,9 +186,16 @@ function normalizarNumero(numero) {
 
   numero = limparPontuacaoNumero(numero); // hífen e invisíveis do WhatsApp
   numero = numero.replace("@c.us", "");
+  const _tinhaMais = /^\s*\+/.test(numero);
   numero = numero.replace(/\D+/g, ""); // remove +, espaços, hífen, parênteses etc.
   numero = numero.replace(/^0+/, "");
   if (!numero) return null;
+
+  // 🌍 Número de OUTRO PAÍS não leva palpite de 55/DDD (09/10/2026, ver
+  // utils/numeroEstrangeiro.js): o que chegou do WhatsApp completo, ou foi
+  // digitado com "+" e código de país que não é 55, vale como está.
+  if (ehEstrangeiroConhecido(numero)) return numero;
+  if (_tinhaMais && !numero.startsWith("55")) return lembrarEstrangeiro(numero);
 
   // Já vem com DDI 55: 13 = celular, 12 = FIXO. Ambos válidos como estão.
   if (numero.startsWith("55") && (numero.length === 12 || numero.length === 13))
@@ -2675,7 +2683,10 @@ async function handleIncomingMessage(message) {
   console.log("🔔 chatId detectado (raw):", chatIdRaw);
 
   // Normaliza o número
-  let chatIdNormalizado = normalizarNumero(chatIdRaw);
+  // 🌍 Quem ESCREVE chega do WhatsApp já com o código do país: número de fora
+  // vale como veio (normalizarNumero adulterava Argentina, México, Peru,
+  // Chile e Alemanha com um "55" na frente - o bot respondia para ninguém).
+  let chatIdNormalizado = numeroDeEntrada(chatIdRaw) || normalizarNumero(chatIdRaw);
 
   // 🔥 CORREÇÃO ESSENCIAL — DEFINIR chatId
   const chatId = chatIdNormalizado;
