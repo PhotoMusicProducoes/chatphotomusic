@@ -199,6 +199,20 @@ async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
   } catch (erro) {
     console.error(`🚨 [orcamentoGerado] Falhou para ${chatId} [${slugs.join(", ")}]: ${erro.codigo} — ${erro.message}`);
 
+    /* 📷 Foto Lembrança é por QUANTIDADE de fotos: o PhotoMusic Pro recusa quando
+       o público passa do maior pacote (13/10/2026). É resposta esperada, não
+       falha: o cliente recebe a explicação, não o "estou finalizando". */
+    if (erro.codigo === "nao_atende") {
+      if (estaPausado(chatId)) return false;
+      await sendTyping(chatId);
+      await sendText(
+        chatId,
+        `📷 Para o seu evento, *${nomes}* não atende bem: ele é vendido por *quantidade de fotos* e o seu público é maior do que os pacotes comportam.\n\n` +
+        `Para esse tamanho de evento, a *Foto Cabine* e os *Totens* funcionam melhor, porque as fotos são *ilimitadas*. Quer que eu monte o orçamento com eles? 😊`
+      );
+      return false;
+    }
+
     // O operador precisa saber o motivo; sem isso a falha só vivia no log do Fly.
     try {
       await sendText(
@@ -253,6 +267,18 @@ async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
   if (session.orcamento) {
     session.orcamento.linksOrcamento = session.orcamento.linksOrcamento || {};
     idsPdf.forEach(id => { session.orcamento.linksOrcamento[id] = dados.url; });
+  }
+
+  /* 📷 Serviço que ficou FORA da proposta porque não atende o público (Foto
+     Lembrança com mais convidados que o maior pacote). Sem esta frase o cliente
+     que pediu 4 serviços recebe um PDF de 3 e não sabe por quê. (13/10/2026.) */
+  if (Array.isArray(dados.nao_atende) && dados.nao_atende.length && !estaPausado(chatId)) {
+    await sendTyping(chatId);
+    await sendText(
+      chatId,
+      `📷 Um aviso: *${dados.nao_atende.join(", ")}* ficou de fora da proposta. Ele é vendido por *quantidade de fotos* e não atende bem o seu público. ` +
+      `A Foto Cabine e os Totens, com *fotos ilimitadas*, atendem melhor esse tamanho de evento. 😊`
+    );
   }
 
   console.log(`✅ [orcamentoGerado] ${dados.id} enviado a ${chatId}: R$ ${dados.total} [${slugs.join(", ")}]`);

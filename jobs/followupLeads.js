@@ -231,7 +231,12 @@ function montarMensagemFollowup(lead) {
         ? ` de *${Number(lead.dias)} dias* (a partir de *${lead.dataEvento}*)`
         : ` no dia *${lead.dataEvento}*`)
     : "";
-  const servicos   = lead.servicos || "nossos serviços";
+  /* Serviço que o motor deixou de fora (ex.: Foto Lembrança para um público que
+     o maior pacote não atende) não pode aparecer no "orçamento de ...". */
+  const foraDoOrc  = (lead.precos && Array.isArray(lead.precos.nao_atende)) ? lead.precos.nao_atende : [];
+  const servicos   = (foraDoOrc.length && lead.servicos
+    ? String(lead.servicos).split(/\s*,\s*/).filter(n => !foraDoOrc.includes(n)).join(", ")
+    : lead.servicos) || "nossos serviços";
   const tipo       = tipoDoLead(lead);
 
   // Lembrete do desconto de 2+ serviços (acumula com o do follow-up)
