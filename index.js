@@ -172,8 +172,14 @@ function extrairNumero(msgOriginal) {
     return apenasNumeros; // internacional digitado sem '+'
   }
 
-  if (apenasNumeros.length === 10) return "5521" + apenasNumeros;
+  /* 🚨 10 dígitos = DDD + FIXO de 8 dígitos, de QUALQUER estado (13/10/2026).
+     Antes virava "5521" + 10 dígitos: "pausar 11 3672-6022" pausava o número
+     55211136726022, que não existe, e o bot seguia respondendo. Mesma regra do
+     normalizarNumero(). */
+  if (apenasNumeros.length === 10) return "55" + apenasNumeros;
   if (apenasNumeros.length === 9)  return "5521" + apenasNumeros;
+  // FIXO local, 8 dígitos sem DDD: o normalizarNumero já sabe (DDD padrão, sem o 9)
+  if (apenasNumeros.length === 8)  return normalizarNumero(apenasNumeros);
 
   // Qualquer outro tamanho: adicionar "55" se não tiver
   if (!apenasNumeros.startsWith("55")) return "55" + apenasNumeros;
