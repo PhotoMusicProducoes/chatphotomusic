@@ -1,7 +1,7 @@
 // services/fotoLembranca.js — VERSÃO FINAL CORRIGIDA E OTIMIZADA
 
 const { sendText, sendTyping, sendFileByUrl, enviarPdfComLink, sendFileFromUrl } = require("../utils/index.js");
-const { urlBase, urlBase2, urlBase3 } = require("../utils/config.js");
+const { urlBase, urlBase2, urlBase3, urlBase4 } = require("../utils/config.js");
 const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
 // Serviço migrado para o orçamento GERADO não manda mais o PDF estático dele.
@@ -154,6 +154,12 @@ async function enviarFluxoFotoLembranca(chatId, clb) {
   await sendTyping(chatId); await delay(300);
   if (sessions[chatId]?.pausado) return;
   await sendText(chatId, mensagemPacoteUltraRapido);
+
+  /* 📸 O pacote Totem Retrô da Foto Lembrança é impresso pela máquina do Totem
+     Retrô: a foto do equipamento vai logo depois do texto (Mario, 13/10/2026). */
+  if (sessions[chatId]?.pausado) return;
+  await sendFileByUrl(chatId, urlBase4 + "totemretro1.jpg", "IMAGE", "");
+  await delay(500);
 
   // Diferença entre os pacotes
   await sendTyping(chatId); await delay(300);
