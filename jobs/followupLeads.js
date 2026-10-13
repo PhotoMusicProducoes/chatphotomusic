@@ -112,12 +112,19 @@ function blocoPreco(lead, tipo) {
     ? " Pacote *" + col.titulo + "*"
     : " Seu orçamento";
 
-  var txt = "💰" + titulo + ": *" + brl(col.total) + "*" + NL +
+  /* Cabine/Totem/Totem Retrô juntos são OPÇÕES: o total é o da opção mais
+     barata, então diz "a partir de". Deslocamento não calculado não está no
+     valor, e o cliente precisa saber disso. (12/10/2026.) */
+  var aPartir = p.alternativas ? " (a partir de)" : "";
+  var txt = "💰" + titulo + aPartir + ": *" + brl(col.total) + "*" + NL +
             "💳 ou *" + nParc + "x de " + brl(col.total / nParc) + "* sem juros no cartão";
 
   // PIX parcelado so existe com 3 meses ou mais ate a festa (npix = 0 abaixo disso)
   if (p.npix >= (p.pix_min || 3)) {
     txt += NL + "💠 ou *PIX em até " + p.npix + "x* até a data do seu evento";
+  }
+  if (p.desloc_estado === "pendente") {
+    txt += NL + "📍 Deslocamento da equipe a calcular (ainda não incluído no valor)";
   }
   return txt + NL + NL;   // linha em branco: separa o preco do texto seguinte
 }
@@ -215,8 +222,13 @@ function montarMensagemFollowup(lead) {
      motor aplica o combo antes de devolver o total). Prometer "ainda
      garante" seria prometer o mesmo desconto duas vezes, e o cliente
      cobraria isso na hora de fechar. Agora a frase so INFORMA. */
+  /* 12/10/2026: o valor vem do PhotoMusic Pro (`combo_desconto`). O texto
+     dizia R$ 100 com o sistema cobrando R$ 200. Lead antigo, sem o dado,
+     cai em 200, que é o valor vigente. */
+  const descCombo = (lead.precos && Number(lead.precos.combo_desconto) > 0)
+    ? Number(lead.precos.combo_desconto) : 200;
   const linhaMulti = lead.multiServicos
-    ? "Esse valor já vem com o *desconto de R$ 100,00* por contratar mais de um serviço. 🤩\n"
+    ? `Esse valor já vem com o *desconto de ${brl(descCombo)}* por contratar mais de um serviço. 🤩\n`
     : "";
 
   switch (tipo) {
