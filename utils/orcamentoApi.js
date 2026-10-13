@@ -20,6 +20,21 @@ function telefoneDoChatId(chatId) {
 }
 
 /**
+ * Evento de vários dias: o motor recebe só a 1ª data (`data_evento`) e o nº de
+ * dias, então as datas todas vão em "particularidades" e saem no PDF. Sem isso o
+ * cliente de 08 e 09/12 lia uma proposta com uma data só. (13/10/2026.)
+ */
+function datasDoEvento(orc) {
+  if (Array.isArray(orc.datasCorporativo) && orc.datasCorporativo.length > 1) {
+    return "Datas do evento: " + orc.datasCorporativo.join(", ") + ".";
+  }
+  if (Array.isArray(orc.diasDetalhes) && orc.diasDetalhes.length > 1) {
+    return "Datas do evento: " + orc.diasDetalhes.map(d => d.data).filter(Boolean).join(", ") + ".";
+  }
+  return "";
+}
+
+/**
  * Gera um orçamento no PhotoMusic Pro a partir dos dados que o bot já coletou.
  *
  * @param {object}   session  sessão do cliente (usa session.orcamento)
@@ -53,7 +68,7 @@ async function gerarOrcamento(session, chatId, slugs) {
     cidade:           orc.cidade || "",
     estado:           "RJ",
     local_evento:     orc.salao || "",
-    particularidades: orc.detalhes || ""
+    particularidades: [datasDoEvento(orc), orc.detalhes || ""].filter(Boolean).join("\n")
   };
 
   console.log(`🧾 [orcamentoApi] Pedindo orçamento de [${slugs.join(", ")}] para ${chatId}`);

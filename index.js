@@ -1639,6 +1639,38 @@ async function enviarOrcamentoUnificado(
 // ======================================================
 // ENVIO DE MÚLTIPLOS ORÇAMENTOS — VERSÃO ATUALIZADA
 // ======================================================
+
+/** Evento multi-dia em que TODOS os dias têm o mesmo horário (o motor de
+ *  orçamento só sabe orçar assim). `datasCorporativo` = mesmos horários por
+ *  construção; `diasDetalhes` = cada dia com o seu, então confere um a um. */
+function diasComMesmoHorario(orc) {
+  if (!orc || !orc.horaInicio || !orc.horaFim) return false;
+  if (orc.datasCorporativo?.length) return true;
+  const dias = orc.diasDetalhes || [];
+  if (!dias.length) return false;
+  return dias.every(d => d && d.horaInicio === dias[0].horaInicio && d.horaFim === dias[0].horaFim);
+}
+
+/** Orçamento multi-dia que NÃO saiu sozinho (horários diferentes por dia, ou a
+ *  geração falhou): sem este aviso o cliente ficava esperando e ninguém sabia. */
+async function avisarOperadorOrcamentoManual(chatId, session, listaServicos) {
+  try {
+    const orc = session.orcamento || {};
+    const dias = (orc.diasDetalhes?.length)
+      ? orc.diasDetalhes.map((d, i) => `Dia ${i + 1}: ${d.data} ${d.horaInicio} às ${d.horaFim}`).join("\n")
+      : `Datas: ${(orc.datasCorporativo || []).join(", ")}`;
+    await sendText(
+      OPERADOR_TELEFONE_ID,
+      `📋 *Orçamento MULTI-DIA para montar à mão*\n` +
+      `Cliente: ${String(chatId).replace(/\D+/g, "")} (${orc.nome || "sem nome"})\n` +
+      `Serviços: ${(listaServicos || []).join(", ")}\n${dias}\n` +
+      `O cliente foi avisado que a equipe envia em até 24h úteis.`
+    );
+  } catch (e) {
+    console.error("⚠️ Não consegui avisar o operador do multi-dia:", e.message);
+  }
+}
+
 async function enviarMultiplosOrcamentos(chatId, listaServicos, opcoes = {}) {
   const session = sessions[chatId];
   if (!session) return true;
@@ -1703,7 +1735,30 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos, opcoes = {}) {
 
     delete sessions[chatId]._envioMultiplo;
 
-    // Resumo unificado (inclui cronograma + nota "orçamento em preparo")
+    /* 🧾 ORÇAMENTO AUTOMÁTICO TAMBÉM NO MULTI-DIA (Mario, 13/10/2026).
+       O caso: cliente corporativo de 2 dias (08 e 09/12, mesmo horário 11h às
+       18h) deu TODOS os dados e não recebeu orçamento nenhum: só a apresentação
+       e "nossa equipe vai analisar", com o follow-up cobrando depois. O motor do
+       PhotoMusic Pro já orça N dias do mesmo horário (dias x preço, com o
+       desconto de vários dias), então quando todos os dias têm o MESMO horário o
+       PDF sai na hora. Horários DIFERENTES por dia o motor não sabe orçar: aí
+       segue o caminho manual de sempre, mas AGORA o operador é avisado. */
+    orc.orcamentoAutomatico = false;
+    if (diasComMesmoHorario(orc)) {
+      const _jaTinha = Object.keys(orc.linksOrcamento || {}).length > 0;
+      try {
+        orc.orcamentoAutomatico = await enviarOrcamentoGerado(chatId, session, listaServicos, {
+          segundaRodada: _jaTinha
+        });
+      } catch (e) {
+        console.error("⚠️ [Multi-dia] orçamento gerado não saiu:", e.message);
+      }
+    }
+    if (!orc.orcamentoAutomatico) {
+      await avisarOperadorOrcamentoManual(chatId, session, listaServicos);
+    }
+
+    // Resumo unificado (cronograma; só diz "orçamento em preparo" se o PDF não saiu)
     await enviarResumoCliente(chatId, session);
 
     await sendTyping(chatId);
@@ -6742,10 +6797,17 @@ async function enviarResumoCliente(chatId, session) {
     } else if (orc.deslocamento?.valor != null && !isNaN(orc.deslocamento.valor) && orc.deslocamento.valor > 0) {
       const valorFmt = Number(orc.deslocamento.valor)
         .toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      /* Vários dias: a equipe vai e volta TODO dia (sem hospedagem), então o
+         deslocamento se repete. O orçamento gerado já cobra assim (13/10/2026). */
+      const _diasDesl = Number(orc.dias) || 1;
+      const _totalDesl = Number(orc.deslocamento.valor) * _diasDesl;
+      const _porDia = _diasDesl > 1
+        ? ` por dia (*${_diasDesl} dias* = *R$ ${_totalDesl.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}*, ida e volta em cada dia)`
+        : "";
       linhas.push(
         "\n🚗 *Deslocamento*\n" +
         `Deslocamento para *${orc.deslocamento.bairro} — ${orc.deslocamento.cidade}*: ` +
-        `Custo do Pacote Escolhido + *R$ ${valorFmt}*`
+        `Custo do Pacote Escolhido + *R$ ${valorFmt}*${_porDia}`
       );
     } else {
       linhas.push(
@@ -6759,7 +6821,7 @@ async function enviarResumoCliente(chatId, session) {
     // logo depois do resumo, e em TODOS os orçamentos (ver mais abaixo).
 
     // Multi-dia: nota de orçamento personalizado em preparo
-    if ((orc.dias || 1) > 1 && (orc.diasDetalhes?.length || orc.datasCorporativo?.length)) {
+    if ((orc.dias || 1) > 1 && (orc.diasDetalhes?.length || orc.datasCorporativo?.length) && !orc.orcamentoAutomatico) {
       linhas.push(
         "\n📋 *Orçamento:*\n" +
         "Nossa equipe está analisando os detalhes de cada dia e enviará o orçamento *personalizado e completo* em breve.\n" +

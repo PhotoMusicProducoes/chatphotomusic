@@ -115,7 +115,8 @@ function blocoPreco(lead, tipo) {
   /* Cabine/Totem/Totem Retrô juntos são OPÇÕES: o total é o da opção mais
      barata, então diz "a partir de". Deslocamento não calculado não está no
      valor, e o cliente precisa saber disso. (12/10/2026.) */
-  var aPartir = p.alternativas ? " (a partir de)" : "";
+  var aPartir = (p.alternativas ? " (a partir de)" : "") +
+                (Number(lead.dias) > 1 ? " (" + Number(lead.dias) + " dias)" : "");
   var txt = "💰" + titulo + aPartir + ": *" + brl(col.total) + "*" + NL +
             "💳 ou *" + nParc + "x de " + brl(col.total / nParc) + "* sem juros no cartão";
 
@@ -165,9 +166,20 @@ function blocoCardapio(lead, tipo) {
   var combos   = tier.linhas.filter(function (l) { return l.tipo !== "servico"; }).slice(0, MAX_COMBOS);
 
   var txt = "💎 *Pacote " + tier.titulo + "*" + NL;
+  /* Evento de vários dias: o valor é o do evento INTEIRO. Sem dizer, o cliente
+     lê R$ de 1 dia (13/10/2026). */
+  if (Number(lead.dias) > 1) {
+    var descDias = (p.desc_multidia > 0) ? ", já com *" + p.desc_multidia + "% de desconto* por vários dias" : "";
+    txt += "_Valores para os *" + Number(lead.dias) + " dias* de evento" + descDias + "_" + NL;
+  }
 
   servicos.concat(combos).forEach(function (l) {
-    txt += NL + (EMOJI_LINHA[l.tipo] || "✨") + " *" + l.nome + "*" + NL;
+    /* Diz QUAL pacote do serviço está sendo mostrado ("Foto Cabine - Premium"):
+       antes só vinha o nome e o cliente não sabia o que estava comparando.
+       Não repete quando o pacote tem o mesmo nome do serviço (Plataforma 360). */
+    var rotPacote = (l.tipo === "servico" && l.pacote && String(l.pacote).trim().toLowerCase() !== String(l.nome).trim().toLowerCase())
+      ? " - " + l.pacote : "";
+    txt += NL + (EMOJI_LINHA[l.tipo] || "✨") + " *" + l.nome + rotPacote + "*" + NL;
     // Duração menor primeiro: a leitura sobe do mais barato para o mais caro.
     if (l.valor_menos !== null && l.valor_menos !== undefined && hMenos > 0) {
       txt += linhaValor(hMenos, l.valor_menos) + NL;
@@ -213,7 +225,12 @@ function tipoDoLead(lead) {
 function montarMensagemFollowup(lead) {
   const nome       = (lead.nome || "").split(" ")[0] || "Cliente";
   const celebracao = lead.celebracao || "o seu evento";
-  const dataTxt    = lead.dataEvento ? ` no dia *${lead.dataEvento}*` : "";
+  /* Multi-dia: "no dia X" mentia (o valor é de N dias). 13/10/2026. */
+  const dataTxt    = lead.dataEvento
+    ? (Number(lead.dias) > 1
+        ? ` de *${Number(lead.dias)} dias* (a partir de *${lead.dataEvento}*)`
+        : ` no dia *${lead.dataEvento}*`)
+    : "";
   const servicos   = lead.servicos || "nossos serviços";
   const tipo       = tipoDoLead(lead);
 
