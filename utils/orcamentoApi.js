@@ -55,9 +55,19 @@ async function gerarOrcamento(session, chatId, slugs) {
   const corpo = {
     celebracao:       orc.celebracaoId,
     data_evento:      orc.data || "",
-    hora_inicio:      orc.horaInicio || "",
-    hora_termino:     orc.horaFim || "",
-    horas:            Number.parseInt(orc.horas, 10) || Number.parseInt(orc.duracao, 10) || 0,
+    /* 🚨 DOIS PERIODOS NO MESMO DIA (13/10/2026). Com periodos o par
+       inicio/termino SAI: era ele que fazia o gerador cobrar as horas
+       CORRIDAS entre o comeco da manha e o fim da noite - um evento de 4h30
+       de trabalho virava 14h de conta. O motor ja aceitava `periodos`; quem
+       nao perguntava era este bot. */
+    hora_inicio:      orc.periodos && orc.periodos.length >= 2 ? "" : (orc.horaInicio || ""),
+    hora_termino:     orc.periodos && orc.periodos.length >= 2 ? "" : (orc.horaFim || ""),
+    periodos:         (orc.periodos && orc.periodos.length >= 2) ? orc.periodos : [],
+    /* Com periodos a duracao vem deles; mandar `horas` aqui faria o motor
+       usar a conta corrida de novo, desfazendo o ganho acima. */
+    horas:            (orc.periodos && orc.periodos.length >= 2)
+                        ? 0
+                        : (Number.parseInt(orc.horas, 10) || Number.parseInt(orc.duracao, 10) || 0),
     publico:          Number.parseInt(orc.convidados, 10) || 0,
     dias:             Number.parseInt(orc.dias, 10) || 1,
     servicos:         slugs,

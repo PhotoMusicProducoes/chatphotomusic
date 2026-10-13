@@ -5637,8 +5637,82 @@ const resumoEucaristia =
     // FIX: garantir horas numéricas para os serviços
     session.orcamento.horas = Number.parseInt(session.orcamento.duracao, 10) || 2;
 
+    /* 🚨 DOIS HORARIOS NO MESMO DIA - SO CORPORATIVO (Mario, 13/10/2026).
+       Caso real: a equipe atende de manha, para, e volta a noite. Sem esta
+       pergunta o gerador cobrava as horas CORRIDAS entre o comeco da manha e
+       o fim da noite - um evento de 4h30 de trabalho virava 14h de conta, e o
+       cliente recebia um valor que nao tem como fechar.
+       📌 So no corporativo porque festa social acontece num bloco so;
+       perguntar numa festa de 15 anos e campo a mais sem motivo.
+       📌 O que a equipe faz no intervalo NAO se pergunta: o motor aplica
+       `vai_volta`, que e o que acontece, e ja soma alimentacao e
+       estacionamento (ver resolver_estacionamento no plugin). */
+    if (Number(session.orcamento.celebracaoId) === 8) {
+      session.step = "orcamento_2_periodos";
+      await enviarPerguntaESalvar(chatId, session,
+        "O evento tem *dois horários no mesmo dia* (ex: manhã e noite)?\n\n*1* - Sim\n*2* - Não");
+      return;
+    }
+
     session.step = "orcamento_bairro";
 
+    await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — DOIS PERÍODOS NO MESMO DIA (corporativo)
+  // ======================================================
+  if (session.step === "orcamento_2_periodos") {
+    const resp = (corpoMensagem || "").trim().toLowerCase();
+    const sim  = resp === "1" || resp.startsWith("sim");
+    const nao  = resp === "2" || resp.startsWith("nao") || resp.startsWith("não");
+
+    if (!sim && !nao) {
+      await sendText(chatId, "*⚠ Responda* *1* para Sim ou *2* para Não.");
+      return;
+    }
+
+    if (nao) {
+      session.step = "orcamento_bairro";
+      await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+      return;
+    }
+
+    session.step = "orcamento_periodo2_inicio";
+    await enviarPerguntaESalvar(chatId, session,
+      `Certo. O primeiro horário é das *${session.orcamento.horaInicio}* às *${session.orcamento.horaFim}*.\n\nQue horas começa o *segundo horário*? (ex: *20:00*)`);
+    return;
+  }
+
+  if (session.step === "orcamento_periodo2_inicio") {
+    const h = normalizarHorario(corpoMensagem);
+    if (!h) {
+      await sendText(chatId, "*⚠ Horário inválido!* Use o formato *20:00*");
+      return;
+    }
+    session.orcamento.horaInicio2 = h;
+    session.step = "orcamento_periodo2_fim";
+    await enviarPerguntaESalvar(chatId, session, "E que horas *termina* o segundo horário? (ex: *23:00*)");
+    return;
+  }
+
+  if (session.step === "orcamento_periodo2_fim") {
+    const h = normalizarHorario(corpoMensagem);
+    if (!h) {
+      await sendText(chatId, "*⚠ Horário inválido!* Use o formato *23:00*");
+      return;
+    }
+
+    session.orcamento.horaFim2 = h;
+    /* 🚨 Os DOIS periodos juntos, na ordem. Guardar so o segundo faria o
+       motor perder o primeiro e cobrar um evento menor do que o real. */
+    session.orcamento.periodos = [
+      { inicio: session.orcamento.horaInicio,  fim: session.orcamento.horaFim },
+      { inicio: session.orcamento.horaInicio2, fim: session.orcamento.horaFim2 }
+    ];
+
+    session.step = "orcamento_bairro";
     await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
     return;
   }

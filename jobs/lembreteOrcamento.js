@@ -75,6 +75,11 @@ const PASSOS_QUESTIONARIO = new Set([
   "orcamento_horarios_iguais", "orcamento_datas_multiplas",
   "orcamento_dia_data", "orcamento_dia_hora_inicio", "orcamento_dia_hora_fim",
   "orcamento_data", "orcamento_hora_inicio", "orcamento_hora_fim",
+  // 🚨 Passos novos (13/10/2026), so no corporativo: dois horarios no
+  // mesmo dia. Entram AQUI na mesma hora em que nascem - foi esquecer
+  // isto que deixou 2 clientes reais sem lembrete e sem orcamento em
+  // 15/08, e o passo `orcamento_empresa` repetiu o erro depois.
+  "orcamento_2_periodos", "orcamento_periodo2_inicio", "orcamento_periodo2_fim",
   "orcamento_bairro", "orcamento_cidade", "orcamento_salao",
   "orcamento_onde_encontrou", "orcamento_detalhes", "orcamento_detalhes_texto",
   // Etapas opcionais finais (e-mail/nascimento): o orçamento só é ENTREGUE depois
