@@ -56,8 +56,8 @@ const mensagemPacoteTradicional =
   "• Entrega das fotos ao convidado durante o evento";
 
 const mensagemPacoteUltraRapido = 
-  "*Pacote Ultra Rápido — Foto Lembrança*\n\n" +
-  "No modelo Ultra Rápido, o fotógrafo tira a foto e o sistema aplica " +
+  "*Pacote Totem Retrô - Foto Lembrança*\n\n" +
+  "No modelo Totem Retrô, o fotógrafo tira a foto e o sistema aplica " +
   "automaticamente a moldura personalizada, revelando a imagem em até 10 " +
   "segundos. O convidado recebe sua lembrança na hora e pode baixar a versão " +
   "digital pelo QR Code\n\n" +
