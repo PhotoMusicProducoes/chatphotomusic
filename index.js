@@ -578,9 +578,33 @@ function valorCampoResumo(orc, tipo) {
     // senão a tela de confirmação também dizia só "Outros".
     case "celebracao": return orc.celebracaoId ? textoCelebracao(orc) : (orc.celebracao || "(não informado)");
     case "numero":     return orc.convidados || "(não informado)";
-    case "data":       return orc.data       || "(não informado)";
-    case "hora_ini":   return orc.horaInicio || "(não informado)";
-    case "hora_fim":   return orc.horaFim     || "(não informado)";
+    /* 🚨 EVENTO DE VARIOS DIAS MOSTRA TODAS AS DATAS (Mario, 14/10/2026).
+       A tela de conferencia exibia so `orc.data`, a primeira - o cliente de 3
+       dias confirmava vendo UMA data e so descobria o resto no PDF. O resumo
+       do OPERADOR ja mostrava todas; quem ficou para tras foi justamente a
+       tela que o CLIENTE usa para dizer "esta tudo certo". */
+    case "data": {
+      const dts = Array.isArray(orc.datasCorporativo) ? orc.datasCorporativo : [];
+      if (dts.length > 1) return dts.join(", ");
+      const dd = Array.isArray(orc.diasDetalhes) ? orc.diasDetalhes : [];
+      if (dd.length > 1) return dd.map(d => d && d.data).filter(Boolean).join(", ");
+      return orc.data || "(não informado)";
+    }
+    /* Com horario POR DIA nao existe um inicio unico: mostrar so o do 1o dia
+       faria o cliente confirmar um horario que nao e o dele nos outros dias. */
+    case "hora_ini": {
+      const dd = Array.isArray(orc.diasDetalhes) ? orc.diasDetalhes : [];
+      if (dd.length > 1 && dd.some(d => d && d.horaInicio)) {
+        return dd.map((d, i) => `${i + 1}º ${d.data || ""} ${d.horaInicio || "?"} às ${d.horaFim || "?"}`)
+                 .join(" | ");
+      }
+      return orc.horaInicio || "(não informado)";
+    }
+    case "hora_fim": {
+      const dd = Array.isArray(orc.diasDetalhes) ? orc.diasDetalhes : [];
+      if (dd.length > 1 && dd.some(d => d && d.horaInicio)) return "(por dia, acima)";
+      return orc.horaFim || "(não informado)";
+    }
     case "bairro":     return orc.bairro      || "(não informado)";
     case "cidade":     return orc.cidade      || "(não informado)";
     case "salao":      return orc.salao       || "(não informado)";
@@ -5672,9 +5696,21 @@ const resumoEucaristia =
        `vai_volta`, que e o que acontece, e ja soma alimentacao e
        estacionamento (ver resolver_estacionamento no plugin). */
     if (Number(session.orcamento.celebracaoId) === 8) {
+      /* 🚨 BOTAO, nao texto (Mario, 14/10/2026). Toda pergunta de sim/nao
+         deste fluxo usa `sendButtonList`; esta tinha nascido como texto
+         solto e obrigava o cliente a digitar. O proprio sendButtonList
+         repete o "1 - / 2 -" no corpo, entao quem nao ve o botao digita
+         como sempre. */
       session.step = "orcamento_2_periodos";
-      await enviarPerguntaESalvar(chatId, session,
-        "O evento tem *dois horários no mesmo dia* (ex: manhã e noite)?\n\n*1* - Sim\n*2* - Não");
+      await sendTyping(chatId);
+      await sendButtonList(
+        chatId,
+        "O evento tem *dois horários no mesmo dia* (ex: manhã e noite)?",
+        [
+          { id: "1", label: "Sim" },
+          { id: "2", label: "Não" }
+        ]
+      );
       return;
     }
 
@@ -6832,7 +6868,12 @@ async function enviarResumoCliente(chatId, session) {
     const servicosIds = orc.servicosEnviados || [];
 
     if (servicosIds.length > 0) {
-      linhas.push(`\n${index++}. Serviço(s) Contratado(s):`);
+      /* 🚨 "ORCADO", nao "CONTRATADO" (Mario, 14/10/2026). Este resumo sai
+         quando o cliente PEDE o orcamento - nada foi fechado ainda. Dizer
+         "contratado" num resumo que vai para o operador faz parecer venda
+         fechada, e e a diferenca entre um lead em negociacao e um evento
+         confirmado na agenda. */
+      linhas.push(`\n${index++}. Serviço(s) orçado(s):`);
       /* 🚨 AGRUPA OS SERVIÇOS QUE DIVIDEM O MESMO PDF (18/08/2026).
          Desde que o orçamento virou 1 PDF para N serviços, o MESMO link fica
          gravado em `linksOrcamento` para cada id, e o resumo repetia o arquivo
