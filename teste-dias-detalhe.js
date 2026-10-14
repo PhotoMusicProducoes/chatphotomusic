@@ -73,6 +73,43 @@ checa(/function diasDetalhe\(orc\)/.test(api), "a funcao existe no arquivo real"
 checa(api.indexOf("dias_detalhe:") > api.indexOf("periodos:"),
       "vai junto com os demais campos do evento");
 
+
+/* ---------- UMA DATA SO VIRA N DIAS SEGUIDOS ----------
+   🚨 Mario, 13/10/2026: "data seguidas e so digitar a 1a data", igual ao
+   formulario do site e a tela do operador. Antes o cliente tinha de digitar o
+   intervalo inteiro - informacao que o bot JA TEM, porque perguntou o numero
+   de dias antes. */
+function expandir(primeira, dias) {
+  const out = [primeira];
+  const [dd, mm, aaaa] = primeira.split("/").map(Number);
+  const base = new Date(aaaa, mm - 1, dd, 12, 0, 0);
+  for (let i = 1; i < dias; i++) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i);
+    out.push(String(d.getDate()).padStart(2, "0") + "/" +
+             String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear());
+  }
+  return out;
+}
+
+console.log("\n--- uma data vira N dias seguidos ---");
+checa(expandir("01/08/2026", 3).join(",") === "01/08/2026,02/08/2026,03/08/2026",
+      "3 dias a partir de 01/08");
+checa(expandir("30/08/2026", 3).join(",") === "30/08/2026,31/08/2026,01/09/2026",
+      "vira o MES certo",
+      "somar 1 ao dia sem usar Date daria 32/08");
+checa(expandir("30/12/2026", 3).join(",") === "30/12/2026,31/12/2026,01/01/2027",
+      "vira o ANO certo");
+checa(expandir("27/02/2028", 3).join(",") === "27/02/2028,28/02/2028,29/02/2028",
+      "ano bissexto: 29 de fevereiro existe em 2028");
+
+const src = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
+checa(/datas\.length === 1 && Number\(session\.orcamento\.dias\) > 1/.test(src),
+      "o fluxo expande quando vem UMA data e ha varios dias");
+checa(/return Number\(n\) > 1;/.test(src),
+      "o numero de dias e CONFIRMADO a partir de 2",
+      "sem isto, quem digita o numero errado leva um interrogatorio e desiste");
+
 console.log("");
 if (falhas) { console.log(`RESULTADO: ${falhas} falha(s).`); process.exit(1); }
 console.log("RESULTADO: tudo OK.");

@@ -2059,7 +2059,12 @@ const DIAS_SEM_CONFIRMAR = 5;
 
 /** Evento longo pede confirmação antes de virar N rodadas de data/horário. */
 function precisaConfirmarDias(n) {
-  return Number(n) > DIAS_SEM_CONFIRMAR;
+  /* 🚨 CONFIRMA A PARTIR DE 2 DIAS (Mario, 13/10/2026). Antes so acima de
+     DIAS_SEM_CONFIRMAR. Mas e o NUMERO DE DIAS que define quantas datas o bot
+     vai pedir: quem digita 3 sem querer leva um interrogatorio de 3 datas e
+     DESISTE do orcamento - o Mario perdeu cliente assim. Perguntar uma vez
+     custa uma mensagem; errar custa o lead inteiro. */
+  return Number(n) > 1;
 }
 
 /**
@@ -5383,12 +5388,14 @@ const resumoEucaristia =
       await sendTyping(chatId);
       await sendText(
         chatId,
+        /* 🚨 DATAS SEGUIDAS = UMA DATA SO (Mario, 13/10/2026), igual ao
+           formulario do site e a tela do operador. O numero de dias ja foi
+           informado, entao a primeira data basta: o resto o sistema conta.
+           Pedir o intervalo inteiro era pedir de novo o que ele ja sabe. */
         `📅 Seu evento tem *${session.orcamento.dias} dias*. Você *não precisa digitar data por data* 😊\n\n` +
-        `Pode me mandar de um jeito só:\n\n` +
-        `• *Datas seguidas (intervalo):*\n   01/08/2026 a 08/08/2026\n` +
-        `• *Datas separadas:*\n   01/08/2026, 03/08/2026, 05/08/2026\n` +
-        `• *Misturando as duas:*\n   01 a 03/08/2026, 07/08/2026\n\n` +
-        `Pode abreviar também: *30/8 a 6/9/26*.`
+        `• *Dias seguidos:* me mande só a *primeira data*\n   Ex: *01/08/2026* (eu conto os ${session.orcamento.dias} dias)\n` +
+        `• *Datas separadas:* mande todas, por vírgula\n   Ex: *01/08/2026, 03/08/2026, 05/08/2026*\n\n` +
+        `Pode abreviar: *30/8/26*.`
       );
       return;
     }
@@ -5410,7 +5417,7 @@ const resumoEucaristia =
   // ORÇAMENTO — DATAS MÚLTIPLAS (mesmos horários)
   // ======================================================
   if (session.step === "orcamento_datas_multiplas") {
-    const datas = extrairDatasCorporativas(corpoMensagem);
+    const datas = extrairDatasCorporativas(corpoMensagem);   // pode crescer abaixo
 
     if (!datas.length) {
       await sendText(chatId,
@@ -5420,6 +5427,23 @@ const resumoEucaristia =
         "ou *misturar* (ex: *01 a 03/08/2026, 07/08/2026*)."
       );
       return;
+    }
+
+    /* 🚨 UMA DATA SO = DIAS SEGUIDOS (Mario, 13/10/2026). O cliente manda a
+       primeira e o bot conta os dias, igual ao formulario do site e a tela do
+       operador. Antes ele tinha de digitar o intervalo inteiro - informacao
+       que o sistema JA TEM, porque o numero de dias foi perguntado antes. */
+    if (datas.length === 1 && Number(session.orcamento.dias) > 1) {
+      const [dd, mm, aaaa] = datas[0].split("/").map(Number);
+      const base = new Date(aaaa, mm - 1, dd, 12, 0, 0);
+      for (let i = 1; i < Number(session.orcamento.dias); i++) {
+        const d = new Date(base);
+        d.setDate(d.getDate() + i);
+        datas.push(
+          String(d.getDate()).padStart(2, "0") + "/" +
+          String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear()
+        );
+      }
     }
 
     session.orcamento.datasCorporativo = datas;
