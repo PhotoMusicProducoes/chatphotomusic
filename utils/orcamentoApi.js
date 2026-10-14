@@ -24,6 +24,35 @@ function telefoneDoChatId(chatId) {
  * dias, então as datas todas vão em "particularidades" e saem no PDF. Sem isso o
  * cliente de 08 e 09/12 lia uma proposta com uma data só. (13/10/2026.)
  */
+/* 🚨 UM DIA DE CADA JEITO (13/10/2026). O bot JA perguntava data e horario
+   de cada dia (`orcamento_dia_data`, `_hora_inicio`, `_hora_fim`) e guardava
+   tudo em `diasDetalhes` - mas mandava para o gerador so as DATAS, como texto
+   solto dentro de `particularidades`. O calculo saia por UMA duracao
+   multiplicada pelos dias, entao um corporativo com um dia de 4h e outro de
+   12h era cobrado como se todos fossem do maior periodo.
+   Agora vai estruturado, no mesmo formato que o formulario do site usa, e o
+   gerador soma dia a dia (`preco_todos_os_dias`).
+   📌 `datasCorporativo` e o caso "mesmo horario todos os dias": sao so as
+   datas, sem hora. Vao assim mesmo - o motor completa cada dia com a duracao
+   do evento, que e justamente o que "mesmo horario" quer dizer. */
+function diasDetalhe(orc) {
+  if (Array.isArray(orc.diasDetalhes) && orc.diasDetalhes.length) {
+    return orc.diasDetalhes
+      .filter(d => d && (d.data || d.horaInicio))
+      .map(d => ({
+        data:   d.data || "",
+        inicio: d.horaInicio || "",
+        fim:    d.horaFim || ""
+      }));
+  }
+  if (Array.isArray(orc.datasCorporativo) && orc.datasCorporativo.length > 1) {
+    return orc.datasCorporativo
+      .filter(Boolean)
+      .map(data => ({ data, inicio: "", fim: "" }));
+  }
+  return [];
+}
+
 function datasDoEvento(orc) {
   if (Array.isArray(orc.datasCorporativo) && orc.datasCorporativo.length > 1) {
     return "Datas do evento: " + orc.datasCorporativo.join(", ") + ".";
@@ -63,6 +92,7 @@ async function gerarOrcamento(session, chatId, slugs) {
     hora_inicio:      orc.periodos && orc.periodos.length >= 2 ? "" : (orc.horaInicio || ""),
     hora_termino:     orc.periodos && orc.periodos.length >= 2 ? "" : (orc.horaFim || ""),
     periodos:         (orc.periodos && orc.periodos.length >= 2) ? orc.periodos : [],
+    dias_detalhe:     diasDetalhe(orc),
     /* Com periodos a duracao vem deles; mandar `horas` aqui faria o motor
        usar a conta corrida de novo, desfazendo o ganho acima. */
     horas:            (orc.periodos && orc.periodos.length >= 2)
