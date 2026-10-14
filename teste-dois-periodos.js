@@ -38,7 +38,13 @@ for (const p of passos) {
 
 /* ---------- 2) SO CORPORATIVO ---------- */
 console.log("\n--- so corporativo ---");
-checa(/celebracaoId\)\s*===\s*8[\s\S]{0,200}orcamento_2_periodos/.test(idx),
+/* 🚨 Medir a ESTRUTURA, nao a distancia em caracteres (14/10/2026). A versao
+   antiga exigia o passo a menos de 200 caracteres do `if`, e um COMENTARIO de
+   5 linhas inserido no meio fez o teste acusar falha com o codigo correto.
+   Teste que quebra por formatacao treina a gente a ignorar teste. */
+const blocoCorp = idx.split("celebracaoId) === 8")[1] || "";
+const fimBloco  = blocoCorp.indexOf("session.step = \"orcamento_bairro\"");
+checa(fimBloco > 0 && blocoCorp.slice(0, fimBloco).includes("orcamento_2_periodos"),
       "a pergunta so aparece na celebracao 8 (Evento Corporativo)",
       "festa social acontece num bloco so");
 
