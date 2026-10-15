@@ -62,7 +62,23 @@ checa(regras.automatico("me-conta", 8),
       "`automatico` vazio = automatico onde atende",
       "senao todo servico sem a coluna preenchida viraria proposta a mao");
 
+console.log("\n--- 🚨 servico DESCONTINUADO (Foto Maluca) ---");
+/* Mario, 15/10/2026: "a foto maluca nao e utilizada, ela esta ali para
+   servicos antigos pq estamos digitalizando os contratos antigos e antes da
+   cabine existia o servico de foto maluca, ele nao existe mais". */
+regras._definirCache({
+  "foto-maluca": { nome: "Foto Maluca", celebracoes: [], automatico: [], addon: false, no_site: false, descontinuado: true },
+  "foto-cabine": { nome: "Foto Cabine", celebracoes: [], automatico: [], addon: false, no_site: true, descontinuado: false },
+});
+checa(regras.descontinuado("foto-maluca"), "o bot sabe que a Foto Maluca saiu de linha");
+[1, 3, 8, 9].forEach(cel => checa(regras.atende("foto-maluca", cel) === false,
+  `celebracao ${cel}: Foto Maluca NAO e vendida`,
+  "lista de celebracoes vazia quer dizer TODAS - sem o campo proprio ela seria oferecida em tudo"));
+checa(regras.automatico("foto-maluca", 3) === false, "e nao sai com preco");
+checa(regras.atende("foto-cabine", 1), "o vizinho continua normal");
+
 console.log("\n--- servico que o plugin nao conhece ---");
+regras._definirCache({});
 checa(regras.atende("servico-novo-qualquer", 1), "servico sem regra nao e barrado");
 checa(regras.automatico("servico-novo-qualquer", 1), "e sai com preco");
 

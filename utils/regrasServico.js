@@ -104,14 +104,29 @@ function valeNaLista(lista, celebracao) {
 function atende(slug, celebracao) {
   const r = regrasDe(slug);
   if (!r) return true;
+  /* 🚨 DESCONTINUADO (Mario, 15/10/2026): serviço que não se vende mais e só
+     continua no catálogo porque CONTRATOS ANTIGOS apontam para ele - a Foto
+     Maluca existia antes da Foto Cabine. Não dá para deduzir pelos outros
+     campos: lista de celebrações vazia quer dizer TODAS. */
+  if (r.descontinuado) return false;
   return valeNaLista(r.celebracoes, celebracao);
+}
+
+/** Não se vende mais (só existe para contrato antigo). */
+function descontinuado(slug) {
+  const r = regrasDe(slug);
+  return !!(r && r.descontinuado);
 }
 
 /** Sai preço na hora? (atende, mas fora de `automatico` = proposta à mão) */
 function automatico(slug, celebracao) {
   const r = regrasDe(slug);
   if (!r) return true;
-  if (!valeNaLista(r.celebracoes, celebracao)) return false;
+  /* 🚨 PASSA POR `atende` (banco pegou em 15/10): antes esta funcao olhava a
+     lista de celebracoes direto e NAO via o `descontinuado` - um servico fora
+     de linha continuaria saindo com preco no PDF. Toda trava nova entra em
+     `atende`, e quem precisa dela pergunta por ali. */
+  if (!atende(slug, celebracao)) return false;
   return valeNaLista(r.automatico, celebracao);
 }
 
@@ -143,6 +158,6 @@ function _definirCache(servicos, fonte = "teste") {
 }
 
 module.exports = {
-  iniciar, atualizar, regrasDe, atende, automatico, aMao, ehAddon, estado,
+  iniciar, atualizar, regrasDe, atende, automatico, aMao, ehAddon, descontinuado, estado,
   _definirCache, SEMENTE, MINUTOS_CACHE,
 };
