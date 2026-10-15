@@ -209,6 +209,40 @@ function montarMensagemAniversarioPessoalParaCelebrado(registro) {
   );
 }
 
+// ================= MENSAGEM: ANIVERSÁRIO DO CONVIDADO (quem baixou foto/vídeo) =================
+/* 15/10/2026 (Mario): o convidado recebe uma mensagem DIFERENTE da do cliente,
+   que lembra a experiência dele com a gente (evento, local e serviço). Curta de
+   propósito: tem que caber na tela do WhatsApp sem o "Ler mais". Se faltar o
+   evento, o serviço ou o local, a frase encurta sem deixar buraco. */
+function montarMensagemAniversarioConvidado(registro) {
+  const evento  = String(registro.nomeEvento  || "").trim();
+  let   local   = String(registro.localEvento || "").trim();
+  const servico = String(registro.servico     || "").trim();
+  // Local igual ao nome do evento ("Smart Fit Pavuna, em Smart Fit Pavuna") não repete
+  if (local && local.toLowerCase() === evento.toLowerCase()) local = "";
+
+  let lembranca;
+  if (evento) {
+    lembranca =
+      `Lembra de nós? 📸 Registramos seus sorrisos no evento *${evento}*` +
+      `${local ? `, em ${local}` : ""}${servico ? `, com ${servico}` : ""}. ` +
+      `Foi uma alegria fazer parte desse momento! ❤️`;
+  } else {
+    lembranca = `Lembra de nós? 📸 Foi uma alegria registrar seus sorrisos! ❤️`;
+  }
+
+  return (
+    `Bom dia, *${registro.nomeCelebrado}*! 🥳🎂\n\n` +
+    `Feliz aniversário! Que Deus abençoe sua vida com saúde, paz e muitos motivos para sorrir. 🙏✨\n\n` +
+    `${lembranca}\n\n` +
+    `Um grande abraço,\n` +
+    `*Adriana e Mario*\n` +
+    `*PhotoMusic Produções*\n` +
+    `instagram.com/photomusicproducoes\n` +
+    `photomusic.com.br`
+  );
+}
+
 // ================= MENSAGEM 3: ANIVERSÁRIO DE CASAMENTO - CASAL =================
 function montarMensagemAniversarioCasamentoParaCasal(registro) {
   return (
@@ -637,6 +671,15 @@ async function executarEnvioComemoracoes() {
           tipoMensagem = "Aniversário Pessoal (Responsável)";
         }
       } 
+      else if (registro.tipo === "aniversario_convidado") {
+        if (!registro.nomeCelebrado) {
+          console.log(`   ❌ Falta 'nomeCelebrado'`);
+          erros++;
+          continue;
+        }
+        mensagem = montarMensagemAniversarioConvidado(registro);
+        tipoMensagem = "Aniversário do Convidado";
+      }
       else if (registro.tipo === "aniversario_casamento") {
         const destinatario = (registro.destinatario || "responsavel").toLowerCase();
 
