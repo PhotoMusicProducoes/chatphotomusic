@@ -55,6 +55,7 @@ build/
 # ============================
 sessions.json
 pausados.json
+comemorativas-enviadas.json
 __local_manual__.json
 
 # ============================

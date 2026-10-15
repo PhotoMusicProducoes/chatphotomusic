@@ -11,6 +11,9 @@ const { fluxoEventos, apresentarEvento } = require("./services/eventos.js");
 // 🔧 Bancada de teste NOVA (mesmo padrão): Oficina do Narciso, gatilho "#oficina".
 const { handleOficina } = require("./services/oficinaNarciso.js");
 const { INSTANCE_ID, TOKEN, API_URL, PM_API_BASE, PM_API_KEY } = require("./utils/config.js");
+/* ❤️ Quem agradece (inclusive quem responde a uma comemoração nossa) não entra
+   no funil de orçamento. Ver utils/carinho.js. */
+const { ehAgradecimento, recebeuComemorativa, respostaAoCarinho } = require("./utils/carinho.js");
 /* As REGRAS DE VENDA do serviço (celebrações que a empresa atende, onde sai
    preço na hora) moram em `pm_servicos` e são editadas pelo Mario na tela
    Catálogo de Serviços. O bot lê na subida e renova sozinho a cada 10 min. */
@@ -1022,6 +1025,22 @@ function resolverRetomada(session) {
   }
 
   return { passo, pergunta, doZero: false, abertura: ABERTURA_CONTINUAR };
+}
+
+/**
+ * Responde ao carinho e NÃO empurra funil. Uma vez a cada 6h, para o caso de
+ * a pessoa mandar três corações seguidos.
+ */
+async function responderCarinho(chatId, session, motivo) {
+  const agora = Date.now();
+  if (session.carinhoRespondidoEm && (agora - session.carinhoRespondidoEm) < 6 * 3600 * 1000) {
+    console.log(`❤️ [carinho] ${chatId}: ${motivo} - já agradeci há pouco, fico quieto.`);
+    return;
+  }
+  session.carinhoRespondidoEm = agora;
+  console.log(`❤️ [carinho] ${chatId}: ${motivo} - agradeço sem abrir o menu.`);
+  await sendTyping(chatId);
+  await sendText(chatId, respostaAoCarinho());
 }
 
 function avisoOpcaoInvalidaMenu() {
@@ -4664,6 +4683,24 @@ async function handleIncomingMessage(message) {
      Helena respondeu "Solicitar um orçamento" e o bot devolveu "Opção
      inválida", porque só sabia ler dígito. */
   const opcaoMenu = opcaoPorTitulo(texto, LABELS_MENU) || texto.replace(/\D+/g, "");
+
+  /* ❤️ AGRADECIMENTO NÃO ABRE MENU (Mario, 15/10/2026).
+     A Patrícia respondeu ao "feliz aniversário" com "💖💖💖💖" e recebeu o menu
+     de boas-vindas, depois "Opção inválida" e, 2h depois, "Vamos montar o seu
+     orçamento?". Mario: *"quando for essas msg de comemoração, mesmo que a
+     pessoa envie uma msg, será na maioria das vezes agradecimento - não é para
+     enviar orçamento"*.
+     📌 `ehAgradecimento` já deixa passar quem PEDE alguma coisa ("obrigada!
+     quanto custa a cabine?"), senão o conserto viraria um bot mudo para quem
+     quer comprar - erro pior.
+     📌 Não marca `menuInicialEnviado`: sem essa marca o lembrete de 2h também
+     não dispara (ver jobs/lembreteOrcamento.js), que era a terceira mensagem
+     errada que ela recebeu. */
+  if (opcaoMenu === "" && ehAgradecimento(texto, chatId)) {
+    await responderCarinho(chatId, session,
+      recebeuComemorativa(chatId) ? "respondeu à nossa comemoração" : "mensagem só de carinho");
+    return;
+  }
 
   // ✅ PRIMEIRO CONTATO REAL:
   // se o menu ainda não foi enviado, a primeira mensagem do cliente SEMPRE recebe boas-vindas.

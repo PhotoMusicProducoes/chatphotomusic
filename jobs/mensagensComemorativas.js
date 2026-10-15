@@ -4,6 +4,10 @@ const axios = require("axios");
 const cron = require("node-cron");
 const { esperaEntreEnvios } = require("../utils/intervaloEnvio.js");
 const { sendText } = require("../utils/index.js");
+/* 🚨 Quem recebe carinho nosso não é lead frio (Mario, 15/10/2026): o número
+   fica marcado, e a resposta dele NÃO entra no funil de orçamento.
+   Ver utils/carinho.js. */
+const { marcarComemorativa } = require("../utils/carinho.js");
 
 // ================= NORMALIZAÇÃO DE NÚMEROS (VERSÃO COMPLETA DO CHATBOT) =================
 function normalizarNumero(numero) {
@@ -612,6 +616,7 @@ async function executarEnvioComemoracoes() {
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
         await sendText(telefone, mensagem);
+        marcarComemorativa(telefone);   // a resposta dela é agradecimento, não pedido
         console.log(`   ✅ Mensagem enviada com sucesso! (${tipoMensagem})`);
         
         marcarComoEnviada(chaveUnica);
@@ -735,6 +740,7 @@ async function executarEnvioComemoracoes() {
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
         await sendText(telefone, mensagem);
+        marcarComemorativa(telefone);   // a resposta dela é agradecimento, não pedido
         console.log(`   ✅ Mensagem enviada com sucesso! (${tipoMensagem})`);
         
         marcarComoEnviada(chaveUnica);

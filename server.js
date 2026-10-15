@@ -110,6 +110,26 @@ function processarComFila(telefone, fn) {
   return proxima;
 }
 
+/**
+ * A pessoa REAGIU à mensagem (o coração que fica colado na bolha).
+ *
+ * 🚨 CASO REAL, 15/10/2026: a Patrícia recebeu o "feliz aniversário", reagiu
+ * com um ❤️ - e o bot abriu o MENU DE BOAS-VINDAS, depois disse "Opção
+ * inválida" e, duas horas depois, cobrou "Vamos montar o seu orçamento?".
+ * Ela só agradeceu um carinho. Mario: *"não era para acontecer"*.
+ *
+ * O porquê: reação não tem `text.message`. O corpo chegava VAZIO, o bot via
+ * conversa nova e fazia o que faz com conversa nova.
+ *
+ * 📌 Reação NÃO é pergunta: o bot não responde nada a ela.
+ */
+function extrairReacao(payload) {
+  const r = payload?.reaction || payload?.reactionMessage || payload?.message?.reaction || null;
+  if (!r) return null;
+  const valor = typeof r === "string" ? r : (r.value || r.emoji || r.reaction || r.text || "");
+  return { valor: String(valor || "") };
+}
+
 // Função central de processamento do webhook Z-API
 async function processarWebhook(req, res) {
   try {
@@ -117,6 +137,15 @@ async function processarWebhook(req, res) {
     console.log("📩 Payload recebido da Z-API:", JSON.stringify(req.body, null, 2));
 
     const payload = req.body;
+
+    /* ❤️ REAÇÃO NÃO É MENSAGEM. Para aqui, antes de fila e de sessão: sem isto
+       o bot abre o menu de boas-vindas para quem só mandou um coração. */
+    const reacao = extrairReacao(payload);
+    if (reacao) {
+      console.log(`❤️ [webhook] Reação de ${payload.phone}: "${reacao.valor}" - o bot não responde a reação.`);
+      res.sendStatus(200);
+      return;
+    }
 
     // Clique em lista/botão vira o mesmo texto que a digitação produziria.
     // Null quando a mensagem é comum (aí segue o caminho de sempre).
