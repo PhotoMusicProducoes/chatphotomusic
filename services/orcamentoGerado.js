@@ -37,6 +37,10 @@ const SERVICOS_GERADOS = [13, 1, 3, 2, 4, 5, 6, 7, 8];
 /* id do serviço -> slug do catálogo do WordPress.
    🚨 SEMPRE POR SLUG: o endpoint lê número como dígito do menu do bot, então o
    id 13 do Totem Retrô seria lido como 1 e 3 (Cabine + Plataforma). */
+/* As regras de venda (quem a empresa atende, onde sai preço na hora) vêm do
+   PhotoMusic Pro, não deste arquivo. Ver o comentário em usaOrcamentoGerado. */
+const regrasServico = require("../utils/regrasServico.js");
+
 const SLUG_POR_SERVICO = {
   1:  "foto-cabine",
   2:  "totem",
@@ -61,37 +65,40 @@ const NOME_POR_SERVICO = {
   13: "Totem Retrô",
 };
 
-/* 🚨 SERVIÇO QUE NÃO VALE PARA TODA CELEBRAÇÃO.
-   Só entra aqui quem tem restrição; quem não está na lista serve para as 9.
+/* ✅ 15/10/2026: A LISTA DE CELEBRAÇÕES SAIU DAQUI.
+   Era `const CELEBRACOES_POR_SERVICO = { 6: [3,4,5] }` - uma CÓPIA da mesma
+   decisão que o plugin também guardava. Enquanto foram duas cópias, mudar numa
+   valia só de um lado: em 13/10 o gerador ofereceu Cobertura Fotográfica numa
+   festa de 15 anos, serviço que a empresa não vende, porque ele não conhecia a
+   regra que estava AQUI.
 
-   6 = Cobertura Fotográfica: a PhotoMusic **não atende** 15 anos (1) nem
-   casamento (2), e o `fotografia.js` recusa esses dois com uma mensagem
-   própria. Nas demais só existia PDF pronto para infantil (3), adolescente (4)
-   e adulto (5); bodas, formatura, corporativo e outros (6,7,8,9) continuam
-   recebendo "estamos preparando um orçamento especial", como sempre foi.
-   ⏳ Estender 6,7,8,9 para automático é decisão do Mario: o endpoint já
-   devolve preço para todas (R$ 1.797 medido em 18/08, igual em todas), mas
-   corporativo costuma pedir proposta a dedo.
+   Agora a regra é DADO em `pm_servicos`, o Mario edita na tela Catálogo de
+   Serviços, e o bot lê pela rota `/servicos-regras` (cache de 10 minutos, ver
+   `utils/regrasServico.js`). Mudança de negócio é na TELA.
 
-   🚨 SEM ESTA TRAVA o cliente de 15 anos que pedisse Cobertura receberia no
-   PDF um serviço que a empresa recusa vender: o endpoint gera preço para as 9
-   celebrações e não conhece essa regra de negócio. */
-const CELEBRACOES_POR_SERVICO = {
-  6: [3, 4, 5],
-};
+   🚨 A TRAVA CONTINUA EXISTINDO, e é o que importa: sem ela o cliente de 15
+   anos que pedisse Cobertura receberia no PDF um serviço que a empresa recusa
+   vender - o endpoint de preço gera valor para as 9 celebrações. */
 
 /** O serviço já usa o orçamento gerado? Os services consultam para saber se
  *  ainda devem mandar o PDF estático deles.
  *  `celebracao` é opcional: sem ela responde só pela migração, que é o que os
- *  services precisam saber (cada um só chama isso no ramo em que já atende). */
+ *  services precisam saber (cada um só chama isso no ramo em que já atende).
+ *  🚨 SÍNCRONA de propósito: é chamada de seis pontos do fluxo. Quem guarda as
+ *  regras é o cache do `regrasServico`, que se renova em segundo plano. */
 function usaOrcamentoGerado(servicoId, celebracao = null) {
   const id = Number(servicoId);
   if (!SERVICOS_GERADOS.includes(id)) return false;
 
-  const permitidas = CELEBRACOES_POR_SERVICO[id];
-  if (permitidas && celebracao != null) return permitidas.includes(Number(celebracao));
+  if (celebracao == null) return true;
+  const slug = SLUG_POR_SERVICO[id];
+  if (!slug) return true;
 
-  return true;
+  /* "Automático" = o sistema pode mandar preço na hora. Celebração que a
+     empresa atende mas com proposta À MÃO cai aqui como `false`, e o service
+     manda a mensagem de "orçamento especial" - era o comportamento de antes,
+     agora vindo do banco. */
+  return regrasServico.automatico(slug, celebracao);
 }
 
 /** Dos ids pedidos, só os que já foram migrados E que valem para a celebração

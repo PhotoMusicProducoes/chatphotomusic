@@ -6,6 +6,13 @@ const { sessions } = require("../utils/sessions");
 const { estaPausado } = require("../utils/pauseControl.js");
 // Serviço migrado para o orçamento GERADO não manda mais o PDF estático dele.
 const { usaOrcamentoGerado } = require("./orcamentoGerado.js");
+/* 🚨 15/10/2026: quais celebrações a empresa atende, e em quais sai preço na
+   hora, viraram DADO em `pm_servicos` (tela Catálogo de Serviços). Este arquivo
+   tinha a regra escrita em três `if` com os números na mão: marcar Bodas como
+   automática na tela não mudava nada aqui, e o cliente continuava recebendo a
+   mensagem de "orçamento a preparar". */
+const regrasServico = require("../utils/regrasServico.js");
+const SLUG_COBERTURA = "fotografia";
 
 // ======================================================
 // MENSAGEM DE ABERTURA POR TIPO DE EVENTO
@@ -149,8 +156,9 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
 
   try {
 
-    // 1) NÃO prestamos serviço para 15 anos e casamento
-    if (clb === 1 || clb === 2) {
+    // 1) NÃO prestamos serviço para esta celebração (o Mario marca na tela;
+    //    em 15/10/2026 eram 15 anos e casamento)
+    if (!regrasServico.atende(SLUG_COBERTURA, clb)) {
 
       await sendTyping(chatId);
       if (estaPausado(chatId)) return;
@@ -158,7 +166,10 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
 
       await sendTyping(chatId);
       if (estaPausado(chatId)) return;
-      await sendText(chatId, `📸 Obrigado pelo interesse na *Cobertura Fotográfica* para *${clb === 1 ? "15 anos" : "Casamento"}*!`);
+      /* O nome da celebração vem da abertura, que já tem o texto de todas:
+         com a regra no banco, a recusa pode cair em qualquer uma, e um
+         `clb === 1 ? "15 anos" : "Casamento"` passaria a mentir. */
+      await sendText(chatId, mensagemAberturaFotografia(clb));
 
       await sendTyping(chatId);
       if (estaPausado(chatId)) return;
@@ -171,8 +182,8 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
       return;
     }
 
-    // 2) Eventos com orçamento pronto
-    if (clb === 3 || clb === 4 || clb === 5) {
+    // 2) Eventos com orçamento AUTOMÁTICO (sai preço na hora)
+    if (regrasServico.automatico(SLUG_COBERTURA, clb)) {
 
       // apenasOrcamento = espelho do apenasFluxo: só o preço, sem a
       // apresentação (fluxo novo 2026-07-15).
@@ -230,8 +241,8 @@ async function enviarFotografia(chatId, clb, convidados, sessionsRef, operatorPa
       return;
     }
 
-    // 3) Eventos sem orçamento pronto
-    if ([6, 7, 8, 9].includes(clb)) {
+    // 3) A empresa atende, mas a proposta é preparada À MÃO
+    if (regrasServico.aMao(SLUG_COBERTURA, clb)) {
 
       await sendTyping(chatId);
       if (estaPausado(chatId)) return;

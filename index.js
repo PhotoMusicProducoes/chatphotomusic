@@ -11,6 +11,11 @@ const { fluxoEventos, apresentarEvento } = require("./services/eventos.js");
 // 🔧 Bancada de teste NOVA (mesmo padrão): Oficina do Narciso, gatilho "#oficina".
 const { handleOficina } = require("./services/oficinaNarciso.js");
 const { INSTANCE_ID, TOKEN, API_URL, PM_API_BASE, PM_API_KEY } = require("./utils/config.js");
+/* As REGRAS DE VENDA do serviço (celebrações que a empresa atende, onde sai
+   preço na hora) moram em `pm_servicos` e são editadas pelo Mario na tela
+   Catálogo de Serviços. O bot lê na subida e renova sozinho a cada 10 min. */
+const regrasServico = require("./utils/regrasServico.js");
+regrasServico.iniciar();
 const axios = require("axios");
 
 const {

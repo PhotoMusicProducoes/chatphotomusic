@@ -52,10 +52,17 @@ nome("um dois tres quatro cinco seis sete", true, "7 palavras já é texto");
 nome("", false, "vazio cai na validação de nome curto, não aqui");
 
 console.log("\n— OS DIAS DO EVENTO —");
+/* 🚨 A REGRA MUDOU EM 13/10/2026 e este banco media a ANTIGA (so acima de
+   DIAS_SEM_CONFIRMAR = 5). Mario: quem digita 3 dias sem querer leva um
+   interrogatorio de 3 datas e DESISTE do orcamento - ele perdeu cliente assim.
+   Agora **confirma a partir de 2 dias**: perguntar uma vez custa uma mensagem,
+   errar custa o lead inteiro. Corrigido em 15/10, com o banco vermelho achado
+   ao rodar a bateria pelo codigo de saida. */
 checar("1 dia não pergunta nada", precisaConfirmarDias(1) === false, "pediu confirmação");
-checar("2 dias não pergunta nada", precisaConfirmarDias(2) === false, "pediu confirmação");
-checar(`${DIAS_SEM_CONFIRMAR} dias ainda passa direto`,
-  precisaConfirmarDias(DIAS_SEM_CONFIRMAR) === false, "pediu confirmação");
+checar("2 dias JA PEDE confirmação", precisaConfirmarDias(2) === true,
+  "passou calado - e o caso de quem digita 3 sem querer e desiste");
+checar(`${DIAS_SEM_CONFIRMAR} dias PEDE confirmação`,
+  precisaConfirmarDias(DIAS_SEM_CONFIRMAR) === true, "passou calado");
 checar(`${DIAS_SEM_CONFIRMAR + 1} dias PEDE confirmação`,
   precisaConfirmarDias(DIAS_SEM_CONFIRMAR + 1) === true, "passou calado");
 checar("🚨 90 dias PEDE confirmação (o defeito da ADERJ)",
