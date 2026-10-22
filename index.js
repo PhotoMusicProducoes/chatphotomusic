@@ -953,7 +953,20 @@ async function inferirCidadePorBairro(bairro) {
       if (digitado !== norm(d.bairro)) return null;
       // Nomes que existem em muitas cidades: nunca dá para deduzir.
       if (BAIRROS_AMBIGUOS.has(digitado)) return null;
-      return { bairro: String(d.bairro), cidade: String(d.cidade) };
+
+      /* O plugin diz em quantas cidades o bairro existe (campo
+         `cidades_do_bairro`, 22/10/2026). Mais de uma: não dá para deduzir,
+         pergunta a cidade. Exatamente uma: `unico`, segue sem perguntar.
+         Campo ausente (plugin antigo no servidor): `unico` fica false e o bot
+         cai na confirmação de 1 toque, que é segura. */
+      if (Array.isArray(d.cidades_do_bairro)) {
+        if (d.cidades_do_bairro.length > 1) return null;
+        return {
+          bairro: String(d.bairro), cidade: String(d.cidade),
+          unico: d.cidades_do_bairro.length === 1 && norm(d.cidades_do_bairro[0]) === norm(d.cidade)
+        };
+      }
+      return { bairro: String(d.bairro), cidade: String(d.cidade), unico: false };
     }
   } catch (e) {
     console.warn(`⚠️ inferirCidadePorBairro: ${e.message}`);
@@ -6112,6 +6125,23 @@ const resumoEucaristia =
        o bot só CONFIRMA a cidade (1 toque) em vez de perguntar. Confirma, e não
        assume, porque "Centro" existe em várias cidades. */
     const palpite = await inferirCidadePorBairro(session.orcamento.bairro);
+
+    /* Bairro que só existe em UMA cidade (ex.: Ipanema, só no Rio): segue direto
+       para o salão, sem perguntar nada. A cidade fica gravada e aparece na tela
+       de conferência (campo "Cidade", que o cliente ainda pode corrigir) e no
+       resumo do orçamento; o deslocamento é calculado com ela. */
+    if (palpite && palpite.unico) {
+      session.orcamento.bairro = palpite.bairro;
+      session.orcamento.cidade = palpite.cidade;
+      session.step = "orcamento_salao";
+      await enviarPerguntaESalvar(
+        chatId,
+        session,
+        "Qual o nome do *salão/local* do evento?\nSe ainda não tiver definido, responda *pular*."
+      );
+      return;
+    }
+
     if (palpite) {
       session.orcamento._palpiteLocal = palpite;
       session.step = "orcamento_cidade_confirmar";

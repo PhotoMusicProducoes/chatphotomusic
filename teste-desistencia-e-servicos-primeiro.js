@@ -107,13 +107,21 @@ console.log("\n— 4. CIDADE DEDUZIDA PELO BAIRRO É CONFIRMADA —");
 checar("existe o passo de confirmação da cidade", /session\.step === "orcamento_cidade_confirmar"/.test(fonte), "");
 checar("só bairro MAPEADO vale (nada de estimativa do Google)",
   /d\.status === "encontrado" && d\.cidade && d\.bairro/.test(fonte), "");
+checar("bairro único grava a cidade e vai direto ao salão",
+  /palpite && palpite\.unico\)[\s\S]{0,300}session\.orcamento\.cidade = palpite\.cidade;[\s\S]{0,120}orcamento_salao/.test(fonte), "");
+checar("a cidade gravada vai no resumo (orc.local) e no PDF",
+  /orc\.local = \[orc\.salao, orc\.bairro, orc\.cidade\]/.test(fonte) && /session\.orcamento\.local = \[[\s\S]{0,120}session\.orcamento\.cidade/.test(fonte), "");
 checar("\"É em outra cidade\" cai na pergunta aberta",
   /Sem problema! Qual a \*cidade\* do evento\?/.test(fonte), "");
 
 // Respostas REAIS do endpoint, medidas no ar em 22/10/2026 (a busca é aproximada).
 const axios = require("axios");
 const RESP = {
-  "Ipanema": { status: "encontrado", bairro: "Ipanema", cidade: "Rio de Janeiro", corrigido: false },
+  "Ipanema": { status: "encontrado", bairro: "Ipanema", cidade: "Rio de Janeiro", corrigido: false, cidades_do_bairro: ["Rio de Janeiro"] },
+  // Bairro de mesmo nome em duas cidades (22/10/2026: o plugin passou a listar)
+  "Fonseca": { status: "encontrado", bairro: "Fonseca", cidade: "Rio de Janeiro", corrigido: false, cidades_do_bairro: ["Rio de Janeiro", "Niterói"] },
+  // Plugin ANTIGO no servidor: sem o campo, o bot confirma em vez de assumir
+  "Tijuca":  { status: "encontrado", bairro: "Tijuca", cidade: "Rio de Janeiro", corrigido: false },
   "ipanem":  { status: "encontrado", bairro: "Ipanema", cidade: "Rio de Janeiro", corrigido: true },
   "Icarai":  { status: "encontrado", bairro: "Acari",   cidade: "Rio de Janeiro", corrigido: true },
   "Centro":  { status: "encontrado", bairro: "Centro",  cidade: "Cachoeiras de Macacu", corrigido: false },
@@ -125,6 +133,10 @@ axios.get = async (url, cfg) => ({ data: RESP[cfg.params.bairro] || { status: "n
   console.log("\n— 4b. A CIDADE SÓ É DEDUZIDA QUANDO TEM CERTEZA —");
   const ipa = await inferirCidadePorBairro("Ipanema");
   checar("Ipanema -> Rio de Janeiro (exato)", !!ipa && ipa.cidade === "Rio de Janeiro" && ipa.bairro === "Ipanema", JSON.stringify(ipa));
+  checar("Ipanema só existe numa cidade: segue SEM perguntar (unico)", !!ipa && ipa.unico === true, JSON.stringify(ipa));
+  checar("bairro em 2 cidades: NÃO deduz, pergunta a cidade", (await inferirCidadePorBairro("Fonseca")) === null, "");
+  const tij = await inferirCidadePorBairro("Tijuca");
+  checar("plugin antigo (sem o campo): só CONFIRMA, não assume", !!tij && tij.unico === false, JSON.stringify(tij));
   checar('"ipanem" (corrigido pela busca) NÃO deduz, pergunta a cidade', (await inferirCidadePorBairro("ipanem")) === null, "");
   checar('"Icarai" virou Acari na busca: NÃO deduz', (await inferirCidadePorBairro("Icarai")) === null, "o bot diria que Icaraí fica no Rio");
   checar('"Centro" existe em várias cidades: NÃO deduz', (await inferirCidadePorBairro("Centro")) === null, "");
