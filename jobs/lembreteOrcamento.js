@@ -66,6 +66,11 @@ const ANTECIPA_DIAS_ANTES = 3; // a <=3 dias do evento, dispara a última chamad
 // aqui e ficou em silêncio é um abandono recuperável.
 const PASSOS_QUESTIONARIO = new Set([
   "orcamento_nome", "orcamento_nome_confirmar",
+  // 🚨 Passos novos (22/10/2026): os serviços agora são escolhidos LOGO DEPOIS
+  // do nome, e a cidade ganhou uma confirmação. Entram aqui na mesma hora em
+  // que nascem (a lição de 15/08).
+  "orcamento_servicos_previa", "orcamento_servicos_confirmar",
+  "orcamento_cidade_confirmar",
   "orcamento_celebracao", "orcamento_celebracao_outros",
   // 🚨 Passo novo (19/08/2026): só aparece no corporativo, mas quem para nele
   // abandona o orçamento igual. Ver a lição de 15/08, quando 2 clientes reais
@@ -135,6 +140,8 @@ function textoEscolherServico() {
 const PERGUNTA_POR_PASSO = {
   "orcamento_nome": "Qual o seu nome?",
   "orcamento_nome_confirmar": "Só confirmando: o seu nome está correto? (1 - Sim / 2 - Não)",
+  "orcamento_servicos_confirmar": "Os serviços que você escolheu estão certos? (1 - Sim, é isso / 2 - Quero mudar)",
+  "orcamento_cidade_confirmar": "A cidade do evento está certa? (1 - Sim, é isso / 2 - É em outra cidade)",
   "orcamento_celebracao": "O que você vai celebrar?",
   "orcamento_celebracao_outros": "O que você vai celebrar?",
   "orcamento_empresa": "Qual o nome da empresa?",
@@ -160,12 +167,16 @@ const PERGUNTA_POR_PASSO = {
   "coletar_nascimento_valor": "Falta pouco para finalizar seu orçamento! Sua data de nascimento (ex: 01/02/1985).",
   "orcamento_confirmar": "Faltou só revisar os dados e confirmar pra eu enviar o orçamento. Está tudo certo?\n*1* - Sim, quero o orçamento\n*2* - Corrigir algo",
   // Sai da função acima, nunca escrito à mão. Ver o caso Monique (13/09/2026).
-  get "orcamento_escolher_servico"() { return textoEscolherServico(); }
+  get "orcamento_escolher_servico"() { return textoEscolherServico(); },
+  get "orcamento_servicos_previa"() { return textoEscolherServico(); }
 };
 
 // Descrição curta do passo para o aviso do operador
 const DESCRICAO_PASSO = {
   "orcamento_nome": "nome", "orcamento_nome_confirmar": "confirmar nome",
+  "orcamento_servicos_previa": "escolher os serviços de interesse",
+  "orcamento_servicos_confirmar": "confirmar os serviços escolhidos",
+  "orcamento_cidade_confirmar": "confirmar a cidade",
   "orcamento_celebracao": "tipo de celebração", "orcamento_celebracao_outros": "tipo de celebração",
   "orcamento_convidados": "nº de convidados", "orcamento_dias": "nº de dias",
   "orcamento_horarios_iguais": "horários iguais?", "orcamento_datas_multiplas": "datas",
@@ -241,6 +252,8 @@ function perguntaPendente(s) {
 const ORDEM_PASSOS = [
   "orcamento_nome",
   "orcamento_nome_confirmar",
+  "orcamento_servicos_previa",
+  "orcamento_servicos_confirmar",
   "orcamento_celebracao",
   "orcamento_celebracao_outros",
   "orcamento_convidados",
@@ -255,6 +268,7 @@ const ORDEM_PASSOS = [
   "orcamento_hora_fim",
   "orcamento_bairro",
   "orcamento_cidade",
+  "orcamento_cidade_confirmar",
   "orcamento_salao",
   "orcamento_onde_encontrou",
   "orcamento_detalhes",
@@ -366,7 +380,10 @@ async function enviarTodosOrcamentos(chatId, s) {
   // Sem NENHUMA informação do evento: envio direto (o arquivo primeiro, sem
   // fotos, avaliações depois). Mario, 07/10/2026. Lido ANTES do envio, que
   // preenche os padrões (Outros, 200 convidados, 4h5h).
-  await enviarOrcamentosAutomaticos(chatId, s, null, { direto: semInfoDoEvento(s) });
+  // Quem já escolheu os serviços no começo recebe SÓ eles (22/10/2026).
+  const previos = s.orcamento && Array.isArray(s.orcamento.servicosPrevios) && s.orcamento.servicosPrevios.length
+    ? [...s.orcamento.servicosPrevios] : null;
+  await enviarOrcamentosAutomaticos(chatId, s, previos, { direto: semInfoDoEvento(s) });
 }
 
 /** O cliente não passou nada do evento (só o nome não conta). */
@@ -434,6 +451,10 @@ async function executarLembreteOrcamento() {
 
       if (!s || !PASSOS_QUESTIONARIO.has(s.step)) continue;
       if (!s.ultimaInteracao) continue;
+
+      // 🚪 Quem DISSE que não quer mais atendimento nunca recebe lembrete nem
+      // orçamento automático (caso Carlos, 22/10/2026: levou o lembrete e bloqueou).
+      if (s.optOutLembretes) continue;
 
       // O passo "escolher serviço" é reaproveitado no "deseja mais serviços?":
       // se o cliente JÁ recebeu algum orçamento, não é abandono — não incomoda.

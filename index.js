@@ -624,6 +624,142 @@ function valorCampoResumo(orc, tipo) {
   }
 }
 
+/* ======================================================
+   🚪 DESISTÊNCIA NO MEIO DO ORÇAMENTO (Mario, 22/10/2026)
+   ======================================================
+   Caso real: o cliente Carlos (corporativo, 90 convidados) respondeu "Ipanema"
+   e o bot perguntou a CIDADE. Ele escreveu "não quero mais atendimento" e o bot
+   aceitou isso como a cidade ("Não Quero Mais Atendimento") e seguiu perguntando
+   o salão. Às 17:30 o lembrete de abandono ainda mandou "paramos no meio do
+   caminho". Ele bloqueou o número.
+
+   Agora, em qualquer pergunta do orçamento, uma frase de desistência encerra o
+   fluxo UMA vez, com educação, e desliga os lembretes automáticos dessa pessoa.
+   Se ela voltar a escrever, recebe o menu de boas-vindas como num primeiro
+   contato.
+
+   🚨 Duas réguas, de propósito: nas perguntas OPCIONAIS (e-mail, nascimento,
+   detalhes, onde nos encontrou) "não quero" quer dizer "pular esta pergunta",
+   então só as frases FORTES valem ali. */
+const PASSOS_OPCIONAIS_ORCAMENTO = new Set([
+  "orcamento_onde_encontrou", "orcamento_detalhes", "orcamento_detalhes_texto",
+  "coletar_email_opcional", "coletar_email_valor",
+  "coletar_nascimento_opcional", "coletar_nascimento_valor"
+]);
+
+// Passos do orçamento que NÃO são coleta (já recebeu o orçamento): ali "não
+// quero mais" significa "chega de orçamentos" e já tem tratamento próprio.
+const PASSOS_POS_ORCAMENTO = new Set([
+  "orcamento_pos", "orcamento_mais_servicos", "orcamento_escolher_detalhe"
+]);
+
+function passoDeColetaDoOrcamento(session) {
+  const step = session && session.step;
+  if (!step) return false;
+  if (/^coletar_/.test(step)) return true;
+  if (!/^orcamento_/.test(step)) return false;
+  if (PASSOS_POS_ORCAMENTO.has(step)) return false;
+  // "escolher serviço" também é reaproveitado no "deseja mais serviços?"
+  if (step === "orcamento_escolher_servico") {
+    const enviados = session.orcamento && session.orcamento.servicosEnviados;
+    return !(Array.isArray(enviados) && enviados.length > 0);
+  }
+  return true;
+}
+
+const DESISTENCIA_FORTE = [
+  /\b(desisti|desisto|desistir|desistencia)\b/,
+  /\bcancel(ar|a|e|o)\b/,
+  /\bnao (quero|preciso|tenho|vou querer) (mais )?(atendimento|orcamento|continuar|conversar|interesse|saber)\b/,
+  /\bnao tenho (mais )?interesse\b/,
+  /^(pare|parar|chega|stop|sair)$/,
+  /\bme (tira|tire|remove|remova|exclui|exclua|esquece|esqueca)\b/,
+  /\bnao me (chame|chama|mande|manda|envie|envia|incomode)\b/
+];
+
+const DESISTENCIA_FRACA = [
+  /\bnao (quero|preciso|vou querer) mais\b/,
+  /\bnao quero continuar\b/,
+  /\b(deixa|deixe) (pra|para) la\b/,
+  /\besquece\b/
+];
+
+function ehDesistencia(texto, step) {
+  const t = String(texto || "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  // Mensagem longa quase nunca é desistência: é briefing ou detalhe do evento.
+  if (!t || t.length > 60) return false;
+  if (DESISTENCIA_FORTE.some(r => r.test(t))) return true;
+  if (PASSOS_OPCIONAIS_ORCAMENTO.has(step)) return false;
+  return DESISTENCIA_FRACA.some(r => r.test(t));
+}
+
+async function tratarDesistenciaOrcamento(chatId, session) {
+  const nome = ((session.orcamento && session.orcamento.nome) || "").split(" ")[0];
+  console.log(`🚪 ${chatId} desistiu do orçamento em "${session.step}".`);
+
+  session.desistiuEm = session.step;
+  session.desistiuTs = Date.now();
+  // Lembrete e envio automático olham esta marca (jobs/lembreteOrcamento.js).
+  session.optOutLembretes = true;
+  // Volta ao menu SEM marcar que ele foi enviado: se a pessoa voltar a
+  // escrever, recebe as boas-vindas como num primeiro contato.
+  session.step = "aguardando_opcao";
+  session.menuInicialEnviado = false;
+  session.ultimaPerguntaNaoRespondida = "";
+
+  await sendTyping(chatId);
+  await sendText(chatId,
+    `Tudo bem${nome ? ", *" + nome + "*" : ""}! Peço desculpa se o atendimento ficou cansativo. 🙏\n\n` +
+    `Não vou mais te incomodar por aqui. Se mudar de ideia, é só mandar um *oi* ` +
+    `que eu retomo com todo carinho. ❤️`
+  );
+}
+
+/* ======================================================
+   🙏 SERVIÇOS PRIMEIRO, EVENTO DEPOIS (Mario, 22/10/2026)
+   ======================================================
+   O cliente escolhe os serviços logo depois do nome, ainda animado, e só então
+   responde as perguntas do evento. Quem desiste no meio das perguntas já deixou
+   dito o que queria (e o lembrete de 1h entrega SÓ esses serviços). A escolha
+   fica em `orcamento.servicosPrevios` e a tela de conferência final usa ela
+   no lugar de mostrar o menu de novo. */
+function listaNomesServicos(ids) {
+  return ids
+    .filter(id => SERVICOS_NOMES[id])
+    .sort((a, b) => (numeroExibicao(a) ?? 99) - (numeroExibicao(b) ?? 99))
+    .map(id => `• *${SERVICOS_NOMES[id]}*`)
+    .join("\n");
+}
+
+function textoMenuServicosPrevia() {
+  return "Para começar, me conta: *quais serviços você tem interesse?* " +
+    "(para mais de um, digite os números separados por vírgula, ex: *0,3,5 ou 124*)\n\n" +
+    linhasMenuServicos(TODOS_SERVICOS) + "\n" +
+    "*9* - *TODOS os serviços*";
+}
+
+/* Bênção por celebração. Social leva a bênção; corporativo e "Outros" ficam
+   neutros, porque não sabemos quem é a pessoa e a mensagem não pode soar
+   estranha para uma empresa. Nunca "sua festa" (muita gente é convidada). */
+function msgAbencoarEvento(celebracaoId) {
+  const id = Number(celebracaoId);
+  if (id === 8) return "Que seja um evento de sucesso, com toda a preparação correndo muito bem! 🙌";
+  if (id === 9) return "Que toda a preparação corra muito bem! 🙌";
+  return "Deus abençoe toda a preparação deste momento tão especial! ❤️";
+}
+
+async function abrirColetaDoEvento(chatId, session) {
+  await sendTyping(chatId);
+  await sendText(chatId, msgAbencoarEvento(session.orcamento && session.orcamento.celebracaoId));
+  await sendTyping(chatId);
+  await sendText(chatId,
+    "Agora preciso das informações do seu evento para montar o seu orçamento. " +
+    "São perguntas rápidas! 😊"
+  );
+}
+
 function textoMenuServicos() {
   // A lista sai do EXIBICAO_PARA_ID, então menu e parser nunca discordam.
   return "Agora escolha os serviços que deseja orçamento (para mais de um, digite os números separados por vírgula, ex: *0,3,5 ou 124*):\n\n" +
@@ -782,6 +918,47 @@ async function consultarDeslocamento(session) {
   } catch (e) {
     console.warn(`⚠️ consultarDeslocamento: ${e.message}`);
   }
+}
+
+/**
+ * Descobre a cidade a partir SÓ do bairro, na mesma tabela do deslocamento.
+ * Devolve { bairro, cidade } (nome oficial) ou null quando não há certeza.
+ * Só aceita bairro MAPEADO (status "encontrado" com cidade): o "estimado" é o
+ * Google chutando por distância e não prova em que cidade o bairro fica.
+ */
+const BAIRROS_AMBIGUOS = new Set([
+  "centro", "jardim", "vila", "parque", "praia", "cidade nova", "bairro", "zona sul", "zona norte"
+]);
+
+async function inferirCidadePorBairro(bairro) {
+  try {
+    if (!bairro) return null;
+    const resp = await axios.get(`${PM_API_BASE}/deslocamento-consultar`, {
+      params:  { bairro, cidade: "" },
+      headers: { "X-PM-Api-Key": PM_API_KEY },
+      timeout: 6000
+    });
+    const d = resp.data || {};
+    if (d.status === "encontrado" && d.cidade && d.bairro) {
+      /* 🚨 SÓ CORRESPONDÊNCIA EXATA (medido no ar em 22/10/2026). A busca do
+         WordPress é aproximada: "Icaraí" (Niterói, não cadastrado) voltou como
+         "Acari, Rio de Janeiro", e "Centro" como "Cachoeiras de Macacu".
+         Perguntar "Acari fica em Rio de Janeiro?" para quem digitou Icaraí é
+         pior do que perguntar a cidade. Se o nome oficial não for IGUAL ao que
+         o cliente digitou, o bot cai na pergunta aberta de sempre. */
+      const norm = s => String(s || "").toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+      const digitado = norm(bairro);
+      if (digitado !== norm(d.bairro)) return null;
+      // Nomes que existem em muitas cidades: nunca dá para deduzir.
+      if (BAIRROS_AMBIGUOS.has(digitado)) return null;
+      return { bairro: String(d.bairro), cidade: String(d.cidade) };
+    }
+  } catch (e) {
+    console.warn(`⚠️ inferirCidadePorBairro: ${e.message}`);
+  }
+  return null;
 }
 
 // ======================================================
@@ -1491,6 +1668,8 @@ async function executarOpcaoMenu(chatId, session, opcaoMenu, chatIdNormalizado) 
       session.orcamento = { servicosEnviados: [] };
       session.servicosEnviados = [];
       session.lembreteOrcamentoEnviado = false;
+      // Quem pediu orçamento de novo voltou por vontade própria: lembretes liberados.
+      session.optOutLembretes = false;
 
       /* 💳 O CARTÃO 10x LOGO NA ABERTURA (Mario, 24/08/2026): o cliente
          responde ~10 perguntas antes de ver qualquer preço, e saber que dá
@@ -4589,6 +4768,14 @@ async function handleIncomingMessage(message) {
     return;
   }
 
+  // 🚪 Desistiu no meio do orçamento: encerra com educação e não insiste
+  // (caso Carlos, 22/10/2026 - ver ehDesistencia). Fica DEPOIS dos guards de
+  // pausa, para nunca falar por cima de um atendimento manual.
+  if (passoDeColetaDoOrcamento(session) && ehDesistencia(corpoMensagem, session.step)) {
+    await tratarDesistenciaOrcamento(chatId, session);
+    return;
+  }
+
   /* ======================================================
      🛒 PEDIDO FEITO PELO CATÁLOGO DO WHATSAPP (2026-09-07)
      ======================================================
@@ -5225,7 +5412,8 @@ const resumoEucaristia =
       return;
     }
 
-    session.step = "orcamento_celebracao";
+    // Serviços ANTES do evento (Mario, 22/10/2026): ver textoMenuServicosPrevia.
+    session.step = "orcamento_servicos_previa";
 
     // Apresentação da empresa (2026-08-05, pedido do Mario): saiu da abertura
     // (que virou 1 msg só com o menu) e passou p/ DEPOIS da confirmação do nome,
@@ -5239,15 +5427,94 @@ const resumoEucaristia =
     await sendTyping(chatId);
     await sendText(chatId, "A *PhotoMusic Produções* está há 15 anos transformando eventos em memórias inesquecíveis.");
 
-    await sendTyping(chatId);
-    await sendText(chatId, "Agora, me fale um pouco sobre o seu evento");
+    await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+    return;
+  }
 
+  // ======================================================
+  // ORÇAMENTO — SERVIÇOS DE INTERESSE (antes do evento)
+  // ======================================================
+  if (session.step === "orcamento_servicos_previa") {
+    const servicos = extrairServicosDaMensagem(corpoMensagem);
+
+    if (servicos.length === 0) {
+      session.tentativasInvalidasEscolher = (session.tentativasInvalidasEscolher || 0) + 1;
+      if (session.tentativasInvalidasEscolher >= 3) {
+        await autoPausarFluxo(chatId, session, "respostas inválidas na escolha de serviços");
+        return;
+      }
+      await sendText(chatId, "*⚠ Digite pelo menos um número válido entre 0 e 8* (9 = todos os serviços).");
+      return;
+    }
+    session.tentativasInvalidasEscolher = 0;
+
+    // Mesma regra do passo de entrega: Iluminação não é vendida sozinha, e o
+    // Som Completo com DJ já a inclui.
+    if (!session.primeiraRodadaFinalizada && servicos.includes(8)) {
+      if (servicos.length === 1) {
+        await sendTyping(chatId);
+        await sendText(chatId,
+          "⚠️ A *Iluminação de Pista de Dança* não pode ser contratada sozinha.\n\n" +
+          "Ela só pode ser contratada junto com outro serviço da PhotoMusic.\n\n" +
+          "👉 *Exceto quando você contrata o Som Completo com DJ*, pois nesse caso a iluminação já está inclusa."
+        );
+        await sendTyping(chatId);
+        await sendText(chatId, "Escolha novamente os serviços desejados (ex: 0,3,5):\n\n" + linhasMenuServicos(TODOS_SERVICOS));
+        return;
+      }
+      if (servicos.includes(7)) {
+        await sendTyping(chatId);
+        await sendText(chatId,
+          "✨ A Iluminação de Pista de Dança já está *inclusa* no serviço de Som Completo com DJ.\n" +
+          "Não é necessário contratar separadamente."
+        );
+        const semLuz = servicos.filter(s => s !== 8);
+        servicos.length = 0;
+        servicos.push(...semLuz);
+      }
+    }
+
+    // A escolha só vale depois do "são esses mesmo?": o cliente pode querer mudar.
+    session.orcamento.servicosPrevios = servicos;
+    session.step = "orcamento_servicos_confirmar";
+    await sendTyping(chatId);
+    await sendButtonList(
+      chatId,
+      `Você escolheu:\n\n${listaNomesServicos(servicos)}\n\nÉ isso mesmo?`,
+      [
+        { id: "1", label: "Sim, é isso" },
+        { id: "2", label: "Quero mudar" }
+      ]
+    );
+    session.ultimaPerguntaNaoRespondida =
+      `Você escolheu:\n\n${listaNomesServicos(servicos)}\n\nÉ isso mesmo?\n*1* - Sim, é isso\n*2* - Quero mudar`;
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — CONFIRMAR OS SERVIÇOS ESCOLHIDOS
+  // ======================================================
+  if (session.step === "orcamento_servicos_confirmar") {
+    const r = (corpoMensagem || "").trim();
+    if (r !== "1" && r !== "2") {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim, é isso\n*2* - Quero mudar");
+      return;
+    }
+
+    if (r === "2") {
+      session.orcamento.servicosPrevios = null;
+      session.step = "orcamento_servicos_previa";
+      await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+      return;
+    }
+
+    session.step = "orcamento_celebracao";
     await sendTyping(chatId);
     // 9 opções: cabe na lista (limite 10). O menu numerado vai no corpo pelo
     // sendOptionList, então quem não vê a lista digita como sempre.
     await sendOptionList(
       chatId,
-      "O que vai celebrar?",
+      "Perfeito! Agora me conta: o que vai celebrar?",
       CELEBRACOES.map(c => ({ id: String(c.id), title: c.label })),
       { title: "Celebrações", buttonLabel: "Ver opções" }
     );
@@ -5274,6 +5541,8 @@ const resumoEucaristia =
 
     session.orcamento.celebracao = celebracoes[opcao];
     session.orcamento.celebracaoId = opcao;
+
+    await abrirColetaDoEvento(chatId, session);
 
     /* 🚨 CORPORATIVO PERGUNTA O NOME DA EMPRESA (Mario, 19/08/2026).
        Sem isso a proposta de evento de empresa saía no nome da PESSOA que
@@ -5324,6 +5593,7 @@ const resumoEucaristia =
     session.orcamento.celebracaoId = 9;
     session.step = "orcamento_convidados";
 
+    await abrirColetaDoEvento(chatId, session);
     await enviarPerguntaESalvar(chatId, session, "Quantos convidados? (*Digite somente número*)");
     return;
   }
@@ -5835,8 +6105,59 @@ const resumoEucaristia =
     // Marca a ORIGEM: local dito pelo cliente nunca pode ser apagado pelo
     // orcamento manual (ver o bloco de #local no comando manual).
     session.orcamento._localOrigem = "cliente";
+
+    /* 🏙️ A CIDADE QUE O BAIRRO JÁ DIZ (Mario, 22/10/2026). O cliente que
+       acabou de escrever "Ipanema" achou que o bot devia saber que é no Rio e
+       parou de responder. Quando a tabela de deslocamento reconhece o bairro,
+       o bot só CONFIRMA a cidade (1 toque) em vez de perguntar. Confirma, e não
+       assume, porque "Centro" existe em várias cidades. */
+    const palpite = await inferirCidadePorBairro(session.orcamento.bairro);
+    if (palpite) {
+      session.orcamento._palpiteLocal = palpite;
+      session.step = "orcamento_cidade_confirmar";
+      const perg = `O bairro *${palpite.bairro}* fica em *${palpite.cidade}*, certo?`;
+      await sendTyping(chatId);
+      await sendButtonList(chatId, perg, [
+        { id: "1", label: "Sim, é isso" },
+        { id: "2", label: "É em outra cidade" }
+      ]);
+      session.ultimaPerguntaNaoRespondida = `${perg}\n*1* - Sim, é isso\n*2* - É em outra cidade`;
+      return;
+    }
+
     session.step = "orcamento_cidade";
     await enviarPerguntaESalvar(chatId, session, "Qual a *cidade* do evento?");
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — CONFIRMAR A CIDADE DEDUZIDA PELO BAIRRO
+  // ======================================================
+  if (session.step === "orcamento_cidade_confirmar") {
+    const r = (corpoMensagem || "").trim();
+    if (r !== "1" && r !== "2") {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim, é isso\n*2* - É em outra cidade");
+      return;
+    }
+
+    const palpite = session.orcamento._palpiteLocal;
+    session.orcamento._palpiteLocal = null;
+
+    if (r === "2" || !palpite) {
+      session.step = "orcamento_cidade";
+      await enviarPerguntaESalvar(chatId, session, "Sem problema! Qual a *cidade* do evento?");
+      return;
+    }
+
+    // O nome oficial do bairro corrige digitação ("ipanem" vira "Ipanema").
+    session.orcamento.bairro = palpite.bairro;
+    session.orcamento.cidade = palpite.cidade;
+    session.step = "orcamento_salao";
+    await enviarPerguntaESalvar(
+      chatId,
+      session,
+      "Qual o nome do *salão/local* do evento?\nSe ainda não tiver definido, responda *pular*."
+    );
     return;
   }
 
@@ -6079,6 +6400,20 @@ const resumoEucaristia =
       // Confirmado → segue para escolher serviços
       session.correcaoFila = null;
       session.correcaoAtual = null;
+
+      /* Serviços já escolhidos no começo (orcamento_servicos_previa): entrega
+         direto, sem perguntar de novo. Quem entrou por outro caminho (retomada
+         do lembrete, orçamento manual) não tem a escolha e vê o menu como antes. */
+      const previos = session.orcamento && session.orcamento.servicosPrevios;
+      if (Array.isArray(previos) && previos.length > 0) {
+        session.tentativasInvalidasEscolher = 0;
+        const pediuTodosPrev = TODOS_SERVICOS.every(s => previos.includes(s) || (s === 8 && previos.includes(7)));
+        await enviarMultiplosOrcamentos(chatId, [...previos], { todos: pediuTodosPrev });
+        session.primeiraRodadaFinalizada = true;
+        // Como no passo de escolha: quem define o step é o perguntarPosOrcamento().
+        return;
+      }
+
       session.step = "orcamento_escolher_servico";
       await enviarPerguntaESalvar(chatId, session, textoMenuServicos());
       return;
@@ -6414,6 +6749,12 @@ module.exports = {
   marcarConvidadoEvento,
   ehConvidadoEvento,
   CONVIDADO_PEDIU_FUNIL,
+  // para teste-desistencia-e-servicos-primeiro.js (22/10/2026)
+  ehDesistencia,
+  passoDeColetaDoOrcamento,
+  msgAbencoarEvento,
+  listaNomesServicos,
+  inferirCidadePorBairro,
   // Exposto para o banco de medicao do anti-loop (teste-antiloop-menu.js):
   // sem teste, a regra volta a engolir resposta de menu sem ninguem ver.
   registrarMensagemAntiLoop,
