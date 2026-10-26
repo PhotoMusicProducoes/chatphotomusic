@@ -68,6 +68,18 @@ checar("escolher serviço JÁ com orçamento enviado NÃO é coleta",
 checar("escolher serviço SEM orçamento enviado é coleta",
   passoDeColetaDoOrcamento({ step: "orcamento_escolher_servico", orcamento: { servicosEnviados: [] } }) === true, "");
 
+console.log("\n— 1e. \"NÃO\" AO MENU / AO LEMBRETE (caso Elza, 26/10/2026) —");
+const { ehRecusaAoMenu } = require("./index.js");
+for (const t of ["Não", "não", "Não, obrigada", "agora não", "Não quero", "talvez depois", "sem interesse", "não quero mais atendimento"]) {
+  checar(`recusa: "${t}"`, ehRecusaAoMenu(t) === true, "o bot responderia 'opção inválida'");
+}
+for (const t of ["1", "Sim", "quanto custa a cabine?", "não sei", "Não entendi", "oi", "quero orçamento", "obrigada", ""]) {
+  checar(`NÃO é recusa: "${t}"`, ehRecusaAoMenu(t) === false, "calaria quem quer atendimento");
+}
+checar("recusa só vale com o menu já enviado e sem número válido",
+  /opcaoMenu === "" && session\.menuInicialEnviado && ehRecusaAoMenu\(texto\)/.test(fonte), "");
+checar("recusa desliga os lembretes", /async function tratarRecusaAoMenu[\s\S]{0,300}session\.optOutLembretes = true/.test(fonte), "");
+
 console.log("\n— 2. QUEM DESISTIU NÃO RECEBE LEMBRETE —");
 checar("o job ignora optOutLembretes", /if \(s\.optOutLembretes\) continue;/.test(lembrete), "falta a guarda no job");
 checar("a desistência marca optOutLembretes", /session\.optOutLembretes = true;/.test(fonte), "");

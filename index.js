@@ -695,6 +695,40 @@ function ehDesistencia(texto, step) {
   return DESISTENCIA_FRACA.some(r => r.test(t));
 }
 
+/* 🚫 "NÃO" AO MENU OU AO LEMBRETE (Mario, 26/10/2026). A Elza respondeu "Não" ao
+   "Vamos montar o seu orçamento?" e o bot não entendeu: no menu isso cai em
+   "Opção inválida", e os lembretes de 24h e 72h continuariam saindo. Um "não"
+   seco a quem já viu o menu é recusa: agradece, para os lembretes e fica
+   quieto. Só vale com o menu JÁ enviado (o "não" a uma pergunta do orçamento
+   tem tratamento próprio, ver ehDesistencia). */
+const RECUSAS_SECAS = new Set([
+  "nao", "nao obrigado", "nao obrigada", "nao, obrigado", "agora nao", "no momento nao",
+  "nao quero", "nao preciso", "nao precisa", "nao no momento", "talvez depois",
+  "depois eu vejo", "nao por enquanto", "por enquanto nao", "sem interesse",
+  "nao tenho interesse", "nao obrigado!", "nao, obrigada"
+]);
+
+function ehRecusaAoMenu(texto) {
+  const t = String(texto || "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return false;
+  return RECUSAS_SECAS.has(t) || ehDesistencia(texto, "aguardando_opcao");
+}
+
+async function tratarRecusaAoMenu(chatId, session) {
+  console.log(`🚫 ${chatId} recusou no menu ("${session.step}"): lembretes desligados.`);
+  session.optOutLembretes = true;
+  session.desistiuEm = session.step;
+  session.desistiuTs = Date.now();
+  session.ultimaPerguntaNaoRespondida = "";
+  await sendTyping(chatId);
+  await sendText(chatId,
+    "Tudo bem! Obrigado pela atenção. 😊\n\n" +
+    "Não vou mais te incomodar por aqui. Quando precisar, é só me chamar. ❤️"
+  );
+}
+
 async function tratarDesistenciaOrcamento(chatId, session) {
   const nome = ((session.orcamento && session.orcamento.nome) || "").split(" ")[0];
   console.log(`🚪 ${chatId} desistiu do orçamento em "${session.step}".`);
@@ -4911,9 +4945,25 @@ async function handleIncomingMessage(message) {
      📌 Não marca `menuInicialEnviado`: sem essa marca o lembrete de 2h também
      não dispara (ver jobs/lembreteOrcamento.js), que era a terceira mensagem
      errada que ela recebeu. */
+  // Um "não" logo depois da nossa comemoração também desliga os lembretes,
+  // mas a resposta continua sendo só o carinho (sem "não vou mais incomodar").
+  if (opcaoMenu === "" && recebeuComemorativa(chatId) && ehRecusaAoMenu(texto)) {
+    session.optOutLembretes = true;
+  }
   if (opcaoMenu === "" && ehAgradecimento(texto, chatId)) {
     await responderCarinho(chatId, session,
       recebeuComemorativa(chatId) ? "respondeu à nossa comemoração" : "mensagem só de carinho");
+    return;
+  }
+
+  // 🚫 Recusou o menu/lembrete: agradece, desliga os lembretes e não repete
+  // o aviso de "opção inválida" (só com o menu já enviado e sem número válido).
+  if (opcaoMenu === "" && session.menuInicialEnviado && ehRecusaAoMenu(texto)) {
+    if (!session.optOutLembretes) {
+      await tratarRecusaAoMenu(chatId, session);
+    } else {
+      console.log(`🚫 ${chatId} já recusou antes: fico quieto.`);
+    }
     return;
   }
 
@@ -6796,6 +6846,7 @@ module.exports = {
   CONVIDADO_PEDIU_FUNIL,
   // para teste-desistencia-e-servicos-primeiro.js (22/10/2026)
   ehDesistencia,
+  ehRecusaAoMenu,
   passoDeColetaDoOrcamento,
   msgAbencoarEvento,
   listaNomesServicos,
