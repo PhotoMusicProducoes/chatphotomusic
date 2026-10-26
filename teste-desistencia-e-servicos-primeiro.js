@@ -164,6 +164,19 @@ for (const p of ["orcamento_servicos_previa", "orcamento_servicos_confirmar", "o
   checar(`${p} aparece nas listas (conjunto, pergunta, descrição, ordem)`, n >= 3, `só ${n} ocorrência(s)`);
 }
 
+console.log("\n— 6. COMANDO liberar (SÓ TIRA A PAUSA, NÃO ENVIA NADA) —");
+const iLib = fonte.indexOf('corpoNormalizado.startsWith("liberar")) {');
+const blocoLib = fonte.slice(iLib, fonte.indexOf('corpoNormalizado.startsWith("retomar")) {', iLib));
+checar("o comando liberar existe", iLib > 0 && blocoLib.length > 100, "");
+checar("liberar tira a pausa", /retomarCliente\(normalizado\)/.test(blocoLib), "");
+checar("liberar NUNCA escreve ao cliente (só ao operador)",
+  !/sendText\(normalizado|sendTyping\(normalizado|mostrarMenuInicial\(/.test(blocoLib), "o retomar é que envia; o liberar é silencioso");
+checar("liberar é reconhecido como comando do operador (2 listas)",
+  /\|liberar\|/.test(fonte) && /corpoNormalizado\.startsWith\("liberar"\)/.test(fonte), "");
+checar("liberar está no guia #ajuda", /\*liberar 21 99999-8888\*/.test(fonte), "");
+checar("liberar está no CLAUDE.md",
+  /`liberar 5521999999999`/.test(fs.readFileSync(path.join(__dirname, "CLAUDE.md"), "utf8")), "");
+
 console.log("\n— ESTILO —");
 const novos = fonte.slice(fonte.indexOf("DESISTÊNCIA NO MEIO DO ORÇAMENTO"), fonte.indexOf("function textoMenuServicos()"));
 checar("sem travessão longo nos textos novos", !/[—–]/.test(novos), "regra 4");

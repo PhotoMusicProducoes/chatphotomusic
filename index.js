@@ -3043,7 +3043,7 @@ async function handleIncomingMessage(message) {
   const _corpoCmd = (corpoMensagem || "").trim().toLowerCase();
   const pareceComandoOperador =
     _corpoCmd.startsWith("#") ||
-    /^(pausarespecial|retomarespecial|pausar|retomar|resetar|respondercliente|responder|listarpausas)\b/.test(_corpoCmd);
+    /^(pausarespecial|retomarespecial|pausar|retomar|liberar|resetar|respondercliente|responder|listarpausas)\b/.test(_corpoCmd);
 
   // Operador:
   //  - a própria linha do bot (fromMe) — atendimento manual, sempre operador;
@@ -3156,6 +3156,7 @@ async function handleIncomingMessage(message) {
       corpoNormalizado.startsWith("retomarespecial") ||
       corpoNormalizado.startsWith("pausar") ||
       corpoNormalizado.startsWith("retomar") ||
+      corpoNormalizado.startsWith("liberar") ||
       corpoNormalizado.startsWith("resetar") ||
       corpoNormalizado.startsWith("respondercliente") ||
       corpoNormalizado.startsWith("responder") ||
@@ -3408,6 +3409,30 @@ async function handleIncomingMessage(message) {
       const normalizado = normalizarNumero(numero);
       pausarCliente(normalizado);
       await sendText(destinoOperador, `⏸ Atendimento pausado para ${normalizado}`);
+      return;
+    }
+
+    // ======================================================
+    // LIBERAR (26/10/2026, pedido do Mario)
+    // COMANDO: liberar 21 99999-8888
+    // Tira a pausa normal SEM mandar nada ao cliente. O `retomar` manda
+    // "Vamos continuar?" e reenvia a última pergunta (ou o menu), o que é
+    // ruim para quem foi pausado "na dúvida" e nem está esperando resposta.
+    // ======================================================
+    if (corpoNormalizado.startsWith("liberar")) {
+      const normalizado = normalizarNumero(numero);
+      if (!normalizado) {
+        await sendText(destinoOperador, `❌ Não entendi o número. Use: *liberar 21 99999-8888*`);
+        return;
+      }
+      const estava = estaPausado(normalizado);
+      retomarCliente(normalizado);
+      const aindaEspecial = estaPausadoEspecial(normalizado)
+        ? `\n⚠️ Ele continua em *pausa especial* (use *retomarespecial* para tirar).`
+        : "";
+      await sendText(destinoOperador, estava
+        ? `🔓 Liberado: ${normalizado}. O bot volta a responder se ele escrever. *Nada foi enviado ao cliente.*${aindaEspecial}`
+        : `ℹ️ ${normalizado} não estava pausado. *Nada foi enviado ao cliente.*${aindaEspecial}`);
       return;
     }
 
@@ -3861,8 +3886,27 @@ async function handleIncomingMessage(message) {
           "_Sem o #local vale o local que o CLIENTE informou._\n\n" +
           "⚠️ *Não funciona em grupo* — mande daqui ou no chat do cliente.";
 
+        // Comandos de ATENDIMENTO (pausa e retomada), 26/10/2026: o guia só
+        // listava os de orçamento e o operador não tinha onde ver o resto.
+        const guia3 =
+          "📋 *COMANDOS DE ATENDIMENTO*\n\n" +
+          "Todos com o telefone do cliente no fim (ou respondendo a mensagem dele).\n\n" +
+          "*pausar 21 99999-8888*\n" +
+          "_O bot fica mudo com esse cliente (atendimento manual)._\n\n" +
+          "*liberar 21 99999-8888*\n" +
+          "_Tira a pausa SEM enviar nada ao cliente. Use quando pausou na dúvida._\n\n" +
+          "*retomar 21 99999-8888*\n" +
+          "_Tira a pausa e MANDA \"Vamos continuar?\" com a última pergunta (ou o menu)._\n\n" +
+          "*resetar 21 99999-8888*\n" +
+          "_Apaga a sessão e manda o menu de boas-vindas._\n\n" +
+          "*pausarespecial* / *retomarespecial 21 99999-8888*\n" +
+          "_Pausa que sobrevive a reinício (amigos, fornecedores, outros robôs)._\n\n" +
+          "*listarpausas*\n" +
+          "_Lista as pausas especiais no console._";
+
         await sendText(destinoOperador, guia1);
         await sendText(destinoOperador, guia2);
+        await sendText(destinoOperador, guia3);
         return;
       }
 

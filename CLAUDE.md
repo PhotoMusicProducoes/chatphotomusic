@@ -168,7 +168,8 @@ O telefone do operador está hardcoded: `5521964428172` (em `index.js` e `servic
 | `#fotocabine ..., #somdj ...` | Múltiplos orçamentos de uma vez |
 | `#cliente 5521999999999` | Define o cliente-alvo para próximos envios |
 | `pausar 5521999999999` | Pausa cliente normal |
-| `retomar 5521999999999` | Retoma cliente normal |
+| `retomar 5521999999999` | Retoma cliente normal e **envia** "Vamos continuar?" + última pergunta (ou menu) |
+| `liberar 5521999999999` | Tira a pausa normal **sem enviar nada** ao cliente |
 | `pausarespecial 5521999999999` | Pausa especial persistente |
 | `retomarespecial 5521999999999` | Remove pausa especial |
 | `resetar 5521999999999` | Reseta sessão do cliente |
