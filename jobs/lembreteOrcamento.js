@@ -29,6 +29,7 @@ const cron = require("node-cron");
 const { esperaEntreEnvios } = require("../utils/intervaloEnvio.js");
 const { sendText, sendButtonList, estaPausadoEspecial, estaPausado } = require("../utils/index.js");
 const { sessions } = require("../utils/sessions");
+const { recebeuComemorativa } = require("../utils/carinho.js");
 
 const TIMEZONE = "America/Sao_Paulo";
 
@@ -466,6 +467,14 @@ async function executarLembreteOrcamento() {
       // convidado/eucaristia, voltando ao hub). Só é abandono de verdade quando
       // o menu de boas-vindas FOI mesmo mostrado nesta rodada e o cliente sumiu.
       if (s.step === PASSO_MENU_INICIAL && !s.menuInicialEnviado) continue;
+
+      /* ❤️ Quem acabou de receber o nosso "feliz aniversário" e respondeu (texto,
+         áudio, figurinha) está AGRADECENDO, não abrindo atendimento: nenhum
+         lembrete de "vamos montar o seu orçamento?" (caso Elza, 26/10/2026,
+         que recebeu o lembrete das 11:00 depois de mandar um áudio). A janela
+         é a mesma do filtro de carinho (72h). Só vale para quem parou no MENU:
+         quem já está respondendo o orçamento pediu orçamento de verdade. */
+      if (s.step === PASSO_MENU_INICIAL && recebeuComemorativa(chatId)) continue;
 
       const inativo = agora - s.ultimaInteracao;
       if (inativo < H30M) continue;     // ainda cedo

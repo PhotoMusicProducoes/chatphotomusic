@@ -4699,6 +4699,21 @@ async function handleIncomingMessage(message) {
       ultimaPerguntaNaoRespondida: null
     };
 
+    /* ❤️ A PRIMEIRA MENSAGEM TAMBÉM PODE SER CARINHO (Mario, 26/10/2026).
+       A Elza recebeu o "feliz aniversário" e respondeu com um ÁUDIO e uma
+       FIGURINHA. Como ela não tinha sessão, o áudio (sem texto) criou a sessão
+       e abriu o MENU DE BOAS-VINDAS aqui, antes de o filtro de agradecimento
+       (mais abaixo, no passo do menu) ter chance de rodar. O menu armou o
+       lembrete e, às 11:00, ela recebeu "Vamos montar o seu orçamento?".
+       Resposta a comemoração (ou carinho puro) responde com carinho e NÃO abre
+       menu; a sessão fica com `menuInicialEnviado: false`, que o lembrete já
+       trata como "ainda não houve menu". Quem PEDE algo passa direto. */
+    if (ehAgradecimento(corpoMensagem, chatId)) {
+      await responderCarinho(chatId, sessions[chatId],
+        recebeuComemorativa(chatId) ? "respondeu à nossa comemoração (1ª mensagem)" : "mensagem só de carinho (1ª mensagem)");
+      return;
+    }
+
     await mostrarMenuInicial(chatId);
     return;
   }

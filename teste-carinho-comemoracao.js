@@ -130,6 +130,31 @@ checa((job.match(/marcarComemorativa\(telefone\)/g) || []).length === 2,
       "marca nos DOIS envios do job (responsavel e celebrado)",
       "marcar so num deles deixa metade das pessoas no funil");
 
+/* ============================================================
+   4) A PRIMEIRA MENSAGEM TAMBEM (caso Elza, 26/10/2026)
+   ============================================================ */
+console.log("--- primeira mensagem sem sessao ---");
+const FONE_ELZA = "5521980223312";
+carinho._enviadas()[FONE_ELZA] = Date.now();   // sem gravar o arquivo
+checa(carinho.ehAgradecimento("", FONE_ELZA + "@c.us"),
+      "audio/figurinha (corpo vazio) logo apos a comemoracao e carinho",
+      "o audio da Elza abria o menu de boas-vindas");
+checa(carinho.ehAgradecimento("", "5521911112222@c.us") === false,
+      "audio de quem NAO recebeu comemoracao segue o fluxo normal (menu)");
+delete carinho._enviadas()[FONE_ELZA];
+
+const iCriacao = idx.indexOf("Criando sessão para cliente");
+const blocoCriacao = idx.slice(iCriacao, idx.indexOf('sessions[chatId]?.step === "finalizado"', iCriacao));
+checa(iCriacao > 0 && blocoCriacao.length > 100, "achei o bloco de criacao de sessao no codigo");
+checa(blocoCriacao.includes("ehAgradecimento(corpoMensagem, chatId)")
+      && blocoCriacao.indexOf("ehAgradecimento(corpoMensagem, chatId)") < blocoCriacao.indexOf("mostrarMenuInicial(chatId)"),
+      "a criacao de sessao testa o carinho ANTES de abrir o menu",
+      "sem isso o 1o audio abre o menu e arma o lembrete de orcamento");
+const jobLembrete = fs.readFileSync(path.join(__dirname, "jobs/lembreteOrcamento.js"), "utf8");
+checa(/PASSO_MENU_INICIAL && recebeuComemorativa\(chatId\)\) continue/.test(jobLembrete),
+      "o lembrete do menu pula quem acabou de receber comemoracao",
+      "a Elza recebeu o 'Vamos montar o seu orcamento?' as 11:00");
+
 console.log("");
 if (falhas) { console.log(`RESULTADO: ${falhas} falha(s).`); process.exit(1); }
 console.log("RESULTADO: tudo OK - quem agradece recebe carinho, nao funil.");
