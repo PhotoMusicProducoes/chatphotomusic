@@ -616,7 +616,7 @@ async function executarEnvioComemoracoes() {
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
         await sendText(telefone, mensagem);
-        marcarComemorativa(telefone);   // a resposta dela é agradecimento, não pedido
+        marcarComemorativa(telefone, mensagem);   // a resposta dela é agradecimento, não pedido; a mensagem dá o nome
         console.log(`   ✅ Mensagem enviada com sucesso! (${tipoMensagem})`);
         
         marcarComoEnviada(chaveUnica);
@@ -740,7 +740,7 @@ async function executarEnvioComemoracoes() {
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
         await sendText(telefone, mensagem);
-        marcarComemorativa(telefone);   // a resposta dela é agradecimento, não pedido
+        marcarComemorativa(telefone, mensagem);   // a resposta dela é agradecimento, não pedido; a mensagem dá o nome
         console.log(`   ✅ Mensagem enviada com sucesso! (${tipoMensagem})`);
         
         marcarComoEnviada(chaveUnica);

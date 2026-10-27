@@ -126,13 +126,30 @@ checa(trechoCarinho.includes("menuInicialEnviado = true") === false,
       "com a marca, o lembrete de 2h cobraria orcamento - a 3a mensagem errada que ela recebeu");
 
 checa(job.includes('require("../utils/carinho.js")'), "3) o job de comemoracoes marca o numero");
-checa((job.match(/marcarComemorativa\(telefone\)/g) || []).length === 2,
+checa((job.match(/marcarComemorativa\(telefone(, mensagem)?\)/g) || []).length === 2,
       "marca nos DOIS envios do job (responsavel e celebrado)",
       "marcar so num deles deixa metade das pessoas no funil");
 
 /* ============================================================
    4) A PRIMEIRA MENSAGEM TAMBEM (caso Elza, 26/10/2026)
    ============================================================ */
+console.log("--- resposta ao carinho com o NOME (27/10/2026) ---");
+checa(carinho.nomeNaSaudacao("Bom dia, Karla! 🥳🎂\n\nFeliz aniversário!") === "Karla", "pega o nome da saudacao da comemoracao");
+checa(carinho.nomeNaSaudacao("Boa noite, Maria Clara! x") === "Maria", "so o primeiro nome");
+checa(carinho.nomeNaSaudacao("Feliz aniversário!") === "", "sem saudacao com nome, fica vazio");
+const respNome = carinho.respostaAoCarinho("Karla");
+checa(respNome.startsWith("Nós é que agradecemos pelo carinho, Karla! 🥰❤️"), "a resposta chama a pessoa pelo nome");
+checa(carinho.respostaAoCarinho("").startsWith("Nós é que agradecemos pelo carinho! 🥰❤️"), "sem nome, a frase continua certa");
+checa(/\*Adriana e Mario\*\n\*PhotoMusic Produções\* ❤️$/.test(respNome), "assinatura em negrito, coracao vermelho no fim");
+checa(!/[—–]/.test(respNome), "sem travessao longo");
+carinho._enviadas()["5521981775333"] = { t: Date.now(), nome: "Karla" };
+checa(carinho.nomeDaComemorativa("5521981775333@c.us") === "Karla", "o bot lembra o nome de quem recebeu a comemoracao");
+checa(carinho.recebeuComemorativa("5521981775333@c.us") === true, "formato novo { t, nome } conta como recebeu comemoracao");
+carinho._enviadas()["5521981775334"] = Date.now();
+checa(carinho.recebeuComemorativa("5521981775334") === true && carinho.nomeDaComemorativa("5521981775334") === "", "formato antigo (so timestamp) continua valendo, sem nome");
+delete carinho._enviadas()["5521981775333"]; delete carinho._enviadas()["5521981775334"];
+checa(job.includes("marcarComemorativa(telefone, mensagem)"), "o job passa a mensagem enviada, de onde sai o nome");
+
 console.log("--- primeira mensagem sem sessao ---");
 const FONE_ELZA = "5521980223312";
 carinho._enviadas()[FONE_ELZA] = Date.now();   // sem gravar o arquivo

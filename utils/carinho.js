@@ -34,7 +34,12 @@ const ARQUIVO = path.join(__dirname, "..", "comemorativas-enviadas.json");
    3 dias: tem gente que só abre o WhatsApp no fim de semana. */
 const HORAS_JANELA = 72;
 
-let enviadas = {};   // telefone -> timestamp do envio
+let enviadas = {};   // telefone -> timestamp do envio, ou { t, nome } (desde 27/10/2026)
+
+/* O valor guardado era só o timestamp. Passou a poder ser { t, nome }, para a
+   resposta chamar a pessoa pelo nome (27/10/2026). Os dois formatos convivem:
+   o arquivo antigo no disco continua valendo. */
+function _quando(v) { return (v && typeof v === "object") ? Number(v.t) || 0 : Number(v) || 0; }
 
 try {
   if (fs.existsSync(ARQUIVO)) enviadas = JSON.parse(fs.readFileSync(ARQUIVO, "utf8")) || {};
@@ -57,10 +62,12 @@ function soDigitos(telefone) {
 }
 
 /** O job de comemorações chama isto depois de enviar. */
-function marcarComemorativa(telefone) {
+function marcarComemorativa(telefone, mensagem) {
   const n = soDigitos(telefone);
   if (!n) return;
-  enviadas[n] = Date.now();
+  // O primeiro nome vem da própria mensagem enviada ("Bom dia, Karla! 🥳🎂").
+  const nome = nomeNaSaudacao(mensagem);
+  enviadas[n] = nome ? { t: Date.now(), nome } : Date.now();
   limpar();
   salvar();
 }
@@ -69,14 +76,30 @@ function marcarComemorativa(telefone) {
 function recebeuComemorativa(telefone) {
   const n = soDigitos(telefone);
   if (!n || !enviadas[n]) return false;
-  return (Date.now() - enviadas[n]) <= HORAS_JANELA * 3600 * 1000;
+  return (Date.now() - _quando(enviadas[n])) <= HORAS_JANELA * 3600 * 1000;
+}
+
+/** Primeiro nome de quem recebeu a comemoração (ou "" se não souber). */
+function nomeDaComemorativa(telefone) {
+  const n = soDigitos(telefone);
+  const v = n && enviadas[n];
+  if (!v || typeof v !== "object" || !recebeuComemorativa(telefone)) return "";
+  return String(v.nome || "");
+}
+
+/** "Bom dia, Karla! 🥳🎂 ..." -> "Karla". Sem saudação com nome, "". */
+function nomeNaSaudacao(mensagem) {
+  const m = String(mensagem || "").match(/^\s*(?:bom dia|boa tarde|boa noite|ol[áa]|oi)[,!]?\s+([^!,\n]{2,30}?)\s*[!,]/iu);
+  if (!m) return "";
+  const nome = m[1].trim().split(/\s+/)[0];
+  return /^[\p{L}'-]+$/u.test(nome) ? nome : "";
 }
 
 /** Tira o que já passou da janela (o arquivo não cresce para sempre). */
 function limpar() {
   const limite = Date.now() - HORAS_JANELA * 3600 * 1000;
   for (const n of Object.keys(enviadas)) {
-    if (enviadas[n] < limite) delete enviadas[n];
+    if (_quando(enviadas[n]) < limite) delete enviadas[n];
   }
 }
 
@@ -138,14 +161,18 @@ function ehAgradecimento(texto, telefone) {
 }
 
 /** O que o bot responde. Sem funil: agradece e fica à disposição. */
-function respostaAoCarinho() {
-  return "Que carinho, obrigado! ❤️\n\n" +
-    "Foi uma alegria ter feito parte desse momento. " +
-    "Se precisar de qualquer coisa, é só me chamar por aqui 😊";
+function respostaAoCarinho(nome) {
+  const quem = nome ? `, ${nome}` : "";
+  return `Nós é que agradecemos pelo carinho${quem}! 🥰❤️\n\n` +
+    "Que seu novo ciclo seja repleto de momentos felizes, bênçãos e muitos sorrisos! 🙏✨\n\n" +
+    "Esperamos nos encontrar novamente em outras comemorações para registrar mais momentos especiais! 📸🥳\n\n" +
+    "Com carinho,\n" +
+    "*Adriana e Mario*\n" +
+    "*PhotoMusic Produções* ❤️";
 }
 
 module.exports = {
   marcarComemorativa, recebeuComemorativa, ehSoCarinho, pedeAlgo,
-  ehAgradecimento, respostaAoCarinho, soDigitos, HORAS_JANELA,
+  ehAgradecimento, respostaAoCarinho, nomeDaComemorativa, nomeNaSaudacao, soDigitos, HORAS_JANELA,
   _enviadas: () => enviadas,
 };

@@ -13,7 +13,7 @@ const { handleOficina } = require("./services/oficinaNarciso.js");
 const { INSTANCE_ID, TOKEN, API_URL, PM_API_BASE, PM_API_KEY } = require("./utils/config.js");
 /* ❤️ Quem agradece (inclusive quem responde a uma comemoração nossa) não entra
    no funil de orçamento. Ver utils/carinho.js. */
-const { ehAgradecimento, recebeuComemorativa, respostaAoCarinho } = require("./utils/carinho.js");
+const { ehAgradecimento, recebeuComemorativa, respostaAoCarinho, nomeDaComemorativa } = require("./utils/carinho.js");
 /* As REGRAS DE VENDA do serviço (celebrações que a empresa atende, onde sai
    preço na hora) moram em `pm_servicos` e são editadas pelo Mario na tela
    Catálogo de Serviços. O bot lê na subida e renova sozinho a cada 10 min. */
@@ -1264,7 +1264,7 @@ async function responderCarinho(chatId, session, motivo) {
   session.carinhoRespondidoEm = agora;
   console.log(`❤️ [carinho] ${chatId}: ${motivo} - agradeço sem abrir o menu.`);
   await sendTyping(chatId);
-  await sendText(chatId, respostaAoCarinho());
+  await sendText(chatId, respostaAoCarinho(nomeDaComemorativa(chatId)));
 }
 
 function avisoOpcaoInvalidaMenu() {
