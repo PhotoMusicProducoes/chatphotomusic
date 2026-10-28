@@ -20,6 +20,7 @@ const { ehAgradecimento, recebeuComemorativa, respostaAoCarinho, nomeDaComemorat
 const regrasServico = require("./utils/regrasServico.js");
 regrasServico.iniciar();
 const axios = require("axios");
+const { avaliacoesTexto } = require("./utils/avaliacoes.js");
 
 const {
   sendText,
@@ -1155,16 +1156,16 @@ const mensagemBoasVindas1 =
 // Abertura em 3 tempos (2026-07-15, pedido do Mario): primeiro QUEM somos,
 // depois o COMPROMISSO, e só então a prova social. A nota do Google deixa de
 // ser um anúncio solto e vira a CONSEQUÊNCIA do jeito de atender ("por isso").
-// Números atualizados: 1.500+ avaliações e 15 anos (eram 1.400 e 14).
+// O número de avaliações vem do campo da Empresa no WordPress (utils/avaliacoes.js).
 const mensagemBoasVindas2a =
   "*Somos uma família que atende famílias* ❤️";
 
 const mensagemBoasVindas2b =
   "*Temos um compromisso com o atendimento aos nossos clientes e a cada convidado do seu evento.*";
 
-const mensagemBoasVindas2 =
+const mensagemBoasVindas2 = () =>
   "⭐⭐⭐⭐⭐\n" +
-  "*Por isso somos a empresa de experiências fotográficas mais bem avaliada do Brasil, com mais de 1.500 avaliações 5 estrelas e 15 anos transformando eventos em memórias inesquecíveis.*";
+  "*Por isso somos a empresa de experiências fotográficas mais bem avaliada do Brasil, com mais de " + avaliacoesTexto() + " avaliações 5 estrelas e 15 anos transformando eventos em memórias inesquecíveis.*";
 
 const mensagemBoasVindas3 =
   "*Como posso te ajudar hoje?*\n\n" +
@@ -1674,7 +1675,7 @@ async function mostrarMenuInicial(chatId) {
   await sendOptionList(
     chatId,
     "*Olá! Seja bem-vindo(a) à PhotoMusic Produções!*\n\n" +
-      "*Somos a empresa de experiências fotográficas mais bem avaliada do Brasil*, com mais de 1.500 avaliações 5 ⭐ no Google.\n\n" +
+      "*Somos a empresa de experiências fotográficas mais bem avaliada do Brasil*, com mais de " + avaliacoesTexto() + " avaliações 5 ⭐ no Google.\n\n" +
       "*Como posso te ajudar hoje?*",
     Object.keys(LABELS_MENU).map(k => ({ id: k, title: LABELS_MENU[k] })),
     { title: "Como posso ajudar?", buttonLabel: "Ver opções" }
