@@ -158,7 +158,7 @@ async function enviarFluxoFotoLembranca(chatId, clb) {
   /* 📸 O pacote Totem Retrô da Foto Lembrança é impresso pela máquina do Totem
      Retrô: a foto do equipamento vai logo depois do texto (Mario, 13/10/2026). */
   if (sessions[chatId]?.pausado) return;
-  await sendFileByUrl(chatId, urlBase4 + "totemretro1.jpg", "IMAGE", "");
+  await sendFileByUrl(chatId, "https://photomusic.com.br/wp-content/uploads/2026/10/totem-retro.jpeg", "IMAGE", "");   // foto nova do Totem Retro (31/10/2026)
   await delay(500);
 
   // Diferença entre os pacotes

@@ -29,7 +29,8 @@ const SERVICO_SLUG = "totem-retro";
 // Fotos do equipamento. São só 3 por enquanto (fotos e vídeos próprios entram
 // depois; o Mario decidiu subir com o que já existe porque os clientes estão
 // chegando do Instagram).
-const FOTO_RETRO_1 = urlBase4 + "totemretro1.jpg";
+// 31/10/2026: foto nova do equipamento (Mario); a de 14/08 saiu
+const FOTO_RETRO_1 = "https://photomusic.com.br/wp-content/uploads/2026/10/totem-retro.jpeg";
 const FOTO_RETRO_2 = urlBase4 + "totemretro2.jpg";
 const FOTO_RETRO_3 = urlBase4 + "totemretro3.jpg";
 
