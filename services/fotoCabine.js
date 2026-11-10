@@ -531,7 +531,7 @@ async function enviarFluxoPadrao(chatId, evento, clb) {
     if (estaPausado(chatId)) return;
     await sendText(
       chatId,
-      "O Guestbook é um álbum digital onde os convidados deixam mensagens especiais em vídeo ou foto, criando uma lembrança emocionante e inesquecível do seu evento. 💖"
+      "O GuestBook é um álbum físico: além da foto, cada convidado deixa uma mensagem escrita à mão para o(a) homenageado(a). A foto é colada no álbum, que tem capa personalizada, e é entregue no fim do evento. ❤️"
     );
 
     // Áudio específico da celebração (15 anos, casamento, bodas) — aniversários não têm

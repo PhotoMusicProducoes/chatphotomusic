@@ -269,7 +269,7 @@ async function enviarFluxoRetro(chatId, clb) {
     await sendTyping(chatId);
     await delay(300);
     if (estaPausado(chatId)) return;
-    await sendText(chatId, "O Guestbook é um álbum digital onde os convidados deixam mensagens especiais em vídeo ou foto 💖");
+    await sendText(chatId, "O GuestBook é um álbum físico: além da foto, cada convidado deixa uma mensagem escrita à mão para o(a) homenageado(a). A foto é colada no álbum, que tem capa personalizada, e é entregue no fim do evento. ❤️");
 
     if (estaPausado(chatId)) return;
     await sendFileByUrl(chatId, evento.guestbook.audio, "AUDIO", "");
