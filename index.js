@@ -892,7 +892,8 @@ async function pedirProximaCorrecao(chatId, session) {
      sendText, e se o cliente insistir ele recebe a lista de campos de novo,
      que é uma saída ruim mas visível. */
   await sendTyping(chatId);
-  const entregue = await sendText(chatId, perguntas[campo.tipo] || "Informe o novo valor:");
+  const textoPergunta = perguntas[campo.tipo] || "Informe o novo valor:";
+  const entregue = await sendText(chatId, textoPergunta);
 
   if (entregue === false) {
     console.error(`🚨 [Correção] Pergunta de "${campo.label}" NÃO chegou em ${chatId}. Passo não avançou.`);
@@ -901,6 +902,12 @@ async function pedirProximaCorrecao(chatId, session) {
 
   session.correcaoAtual = campo;
   session.step = "orcamento_corrigir_valor";
+  /* 🚨 CASO LEANDRA (08/11/2026): sem guardar a pergunta, o lembrete de 30 min
+     reenviava a TELA DE CONFIRMACAO velha ("1 - Sim, quero o orcamento")
+     enquanto o bot esperava o NUMERO DA CELEBRACAO. Ela digitou 1 e a festa
+     virou "Aniversario de 15 anos" (1 = 15 anos). A pergunta pendente agora e
+     sempre a que o bot realmente esta esperando. */
+  session.ultimaPerguntaNaoRespondida = textoPergunta;
 }
 
 /**
@@ -6565,11 +6572,11 @@ const resumoEucaristia =
     // r === "2" → pede os números dos campos a corrigir
     session.step = "orcamento_corrigir_escolher";
     await sendTyping(chatId);
-    await sendText(
-      chatId,
+    const textoEscolherCorrecao =
       "Digite os *números* dos itens que deseja corrigir (para mais de um, separe por vírgula, ex: *3,4*):\n\n" +
-      CAMPOS_CORRIGIVEIS.map(c => `*${c.id}* - ${c.label}`).join("\n")
-    );
+      CAMPOS_CORRIGIVEIS.map(c => `*${c.id}* - ${c.label}`).join("\n");
+    await sendText(chatId, textoEscolherCorrecao);
+    session.ultimaPerguntaNaoRespondida = textoEscolherCorrecao; // caso Leandra, 08/11/2026
     return;
   }
 
