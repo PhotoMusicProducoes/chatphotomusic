@@ -5503,6 +5503,10 @@ const resumoEucaristia =
 
     if (r === "2" || r.startsWith("nao") || r.startsWith("não") || r.startsWith("agora")) {
       session.step = "aguardando_opcao";
+      // 🚨 10/11/2026: quem recusa DEPOIS de receber os orçamentos nao esta
+      // "parado no menu". Sem desligar a marca, o lembrete "Vamos montar o seu
+      // orcamento? ... nao deu pra escolher a opcao" chegava 1h depois.
+      session.menuInicialEnviado = false;
       await sendTyping(chatId);
       await sendText(chatId,
         "Tudo bem! 😊 Os orçamentos ficam aí com você, sem pressa e sem compromisso.\n\n" +

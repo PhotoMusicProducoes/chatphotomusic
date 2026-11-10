@@ -468,6 +468,19 @@ async function executarLembreteOrcamento() {
       // o menu de boas-vindas FOI mesmo mostrado nesta rodada e o cliente sumiu.
       if (s.step === PASSO_MENU_INICIAL && !s.menuInicialEnviado) continue;
 
+      /* 🚨 10/11/2026: quem JA RECEBEU os orcamentos e voltou ao menu (disse
+         "Agora nao" ou "Nao" nos detalhes) nunca recebe "Vamos montar o seu
+         orcamento? ... nao deu pra escolher a opcao". Dai em diante quem age
+         e o follow-up. Vale para os dois lugares onde os servicos enviados
+         ficam guardados e para o estagio 9 (envio automatico concluido). */
+      if (s.step === PASSO_MENU_INICIAL) {
+        const jaRecebeu =
+          s.lembreteOrcEstagio === 9
+          || (s.orcamento && Array.isArray(s.orcamento.servicosEnviados) && s.orcamento.servicosEnviados.length > 0)
+          || (Array.isArray(s.servicosEnviados) && s.servicosEnviados.length > 0);
+        if (jaRecebeu) continue;
+      }
+
       /* ❤️ Quem acabou de receber o nosso "feliz aniversário" e respondeu (texto,
          áudio, figurinha) está AGRADECENDO, não abrindo atendimento: nenhum
          lembrete de "vamos montar o seu orçamento?" (caso Elza, 26/10/2026,
