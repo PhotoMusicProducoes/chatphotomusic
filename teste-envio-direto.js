@@ -80,12 +80,13 @@ global.Intl.DateTimeFormat = function (l, o) {
   await job.executarLembreteOrcamento();
   console.log("   ordem: " + registro.join(" | "));
   const iArq = idx(/^TEXTO: 💰 Segue o arquivo/), iAval = idx(/^AVALIACOES/);
-  checar("começa no '💰 Segue o arquivo'", iArq === 0, registro[0]);
+  // 12/11/2026: abre com a saudacao + nota do preliminar e o PDF vem PRIMEIRO; avaliacoes/depoimentos so sob pedido
+  checar("o PDF vem antes de qualquer material promocional", iArq >= 0 && (iAval === -1 || iAval > iArq), registro.join(" | "));
   checar("sem abertura 'Vi que a gente não terminou'", idx(/não terminou/) === -1);
   checar("sem nome do serviço (<<<< >>>>)", idx(/<<<</) === -1);
   checar("sem foto de serviço", idx(/^ARQUIVO: .*\.(jpg|png)/i) === -1);
-  checar("avaliações DEPOIS do arquivo", iAval > iArq, `arquivo ${iArq}, avaliações ${iAval}`);
-  checar("termina no convite para o personalizado", /^BOTOES: Quer um orçamento \*personalizado/.test(registro[registro.length - 1] || ""));
+  checar("avaliações NÃO saem no envio (só sob pedido)", iAval === -1, `avaliações ${iAval}`);
+  checar("termina no convite do orçamento PRELIMINAR", /^BOTOES: Este é um orçamento \*preliminar\*/.test(registro[registro.length - 1] || ""), registro[registro.length - 1]);
   checar("o arquivo cita todos os serviços", /Foto Cabine.*Totem Retrô/.test(registro[iArq] || ""), registro[iArq]);
   checar("serviços marcados como enviados", (sessions[C1].orcamento.servicosEnviados || []).length >= 8);
 
@@ -117,8 +118,7 @@ global.Intl.DateTimeFormat = function (l, o) {
   await bot.enviarMultiplosOrcamentos(C3, [1, 13, 2, 3, 4, 5, 6, 7], { todos: true });
   console.log("   ordem: " + registro.join(" | "));
   const tAval = idx(/^AVALIACOES/), tArq = idx(/^TEXTO: 💰 Segue o arquivo/);
-  checar("avaliação primeiro, como hoje", tAval === 0, registro[0]);
-  checar("logo depois o '💰 Segue o arquivo'", tArq === 1, `posição ${tArq}`);
+  checar("o '💰 Segue o arquivo' vem ANTES das avaliações (PDF primeiro)", tArq >= 0 && (tAval === -1 || tAval > tArq), registro.slice(0, 4).join(" | "));
   checar("sem nome do serviço (<<<< >>>>)", idx(/<<<</) === -1);
   checar("GuestBook uma vez só (aniversário infantil)", registro.filter(l => /GuestBook/.test(l)).length === 1);
   checar("GuestBook depois do arquivo", idx(/GuestBook/) > tArq);

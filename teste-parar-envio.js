@@ -45,10 +45,11 @@ const corpoAuto = (fonte.match(
 ) || [""])[0];
 checar("checa a pausa a cada serviço",
   /envioFoiInterrompido\(chatId\)/.test(corpoAuto), "");
-checar("sai do laço com break, não só pula",
-  /interrompido = true;[\s\S]{0,200}break;/.test(corpoAuto), "");
-checar("não manda PDF, resumo e despedida depois de parar",
-  /if \(interrompido \|\| envioFoiInterrompido\(chatId\)\) \{[\s\S]{0,200}return;/.test(corpoAuto), "");
+// 12/11/2026: o laço agora SAI com `return` (avisando o operador) em vez de `break` + flag
+checar("sai do laço com return, não só pula",
+  /for \(let i[\s\S]{0,260}envioFoiInterrompido\(chatId\)[\s\S]{0,260}avisarEnvioInterrompido[\s\S]{0,120}return;/.test(corpoAuto), "");
+checar("não manda resumo e despedida depois de parar",
+  /if \(envioFoiInterrompido\(chatId\)\) return;\s*await fecharEnvioAutomatico/.test(corpoAuto), "");
 
 console.log("\n— O LAÇO DO COMANDO MANUAL —");
 checar("checa a pausa a cada comando do lote",

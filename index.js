@@ -805,6 +805,8 @@ function textoMenuServicos() {
 async function mostrarConfirmacaoOrcamento(chatId, session) {
   const orc = session.orcamento || {};
   let txt = "📋 *Confira os dados do seu evento:*\n\n";
+  // 12/11/2026: o nome deixou de ter confirmacao propria; aparece aqui e corrige-se escrevendo "nome".
+  if (orc.nome) txt += `• Nome: *${orc.nome}*\n`;
   /* 🚨 OS DADOS SAEM SEM NÚMERO (Mario, 06/09/2026).
      A mensagem terminava com "1 - Sim, quero o orçamento / 2 - Corrigir algo",
      e a lista de cima começava com "1 - Celebração". DUAS numerações brigando
@@ -869,6 +871,7 @@ async function pedirProximaCorrecao(chatId, session) {
   const perguntas = {
     celebracao: "Qual a celebração? (*Digite o número*)\n" +
                 CELEBRACOES.map(c => `*${c.id}* ${c.label}`).join(" · "),
+    nome:       "Qual o seu *nome*?",
     numero:     "Quantos convidados? (*somente número*)",
     data:       "Qual a *data* do evento? (*Ex: 20/06/2026*)",
     hora_ini:   "Qual o *horário de início*? (*Ex: 18:00 ou 18h*)",
@@ -1297,6 +1300,71 @@ const LABELS_MENU = {
 // ======================================================
 // FUNÇÕES AUXILIARES
 // ======================================================
+/* ======================================================
+   💬 RAPHA, CONVERSAO (12/11/2026)
+   ====================================================== */
+/** Depois do nome: apresentacao curta e os servicos. Se o servico ja e conhecido
+ *  (citado na 1a mensagem, catalogo ou site), NAO pergunta de novo: vai direto
+ *  confirmar (com trocar/adicionar/remover). */
+async function seguirParaServicos(chatId, session) {
+  await sendTyping(chatId);
+  await sendText(chatId, `*${session.orcamento.nome}*, somos uma família que atende famílias ❤️`);
+  await sendTyping(chatId);
+  await sendText(chatId, "Temos o compromisso de atender aos nossos clientes e a cada convidado do seu evento, com muito amor, carinho e atenção.");
+  await sendTyping(chatId);
+  await sendText(chatId, "A *PhotoMusic Produções* está há 15 anos transformando eventos em memórias inesquecíveis.");
+  const ja = session.orcamento && session.orcamento.servicosPrevios;
+  if (Array.isArray(ja) && ja.length > 0) {
+    await mostrarConfirmacaoServicos(chatId, session);
+    return;
+  }
+  session.step = "orcamento_servicos_previa";
+  await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+}
+
+function linhasOpcoesConfServicos(qtd) {
+  return "*1* - Sim, é isso\n*2* - Trocar serviço\n*3* - Adicionar outro serviço" + (qtd > 1 ? "\n*4* - Remover um serviço" : "");
+}
+
+/** "1".."4", o titulo do botao ou a palavra (trocar/adicionar/remover). null = nao entendeu. */
+function respostaConfirmacaoServicos(texto, qtd) {
+  const t = normalizarParaBusca(String(texto || "")).trim();
+  const d = t.replace(/\D+/g, "");
+  if (/^[1-4]$/.test(d) && t.length <= 3) return (d === "4" && qtd < 2) ? null : d;
+  if (/^(sim|isso|e isso|sim e isso|ok|certo|confirmo|confirmar)\b/.test(t)) return "1";
+  if (/(trocar|mudar|outro no lugar|errei|errado)/.test(t)) return "2";
+  if (/(adicionar|acrescentar|incluir|mais um|tambem quero)/.test(t)) return "3";
+  if (/(remover|tirar|retirar|excluir)/.test(t) && qtd >= 2) return "4";
+  return null;
+}
+
+async function mostrarConfirmacaoServicos(chatId, session) {
+  const lista = session.orcamento.servicosPrevios || [];
+  session.step = "orcamento_servicos_confirmar";
+  const txt = `Você escolheu:\n\n${listaNomesServicos(lista)}\n\nÉ isso mesmo?`;
+  const itens = [
+    { id: "1", title: "Sim, é isso" },
+    { id: "2", title: "Trocar serviço" },
+    { id: "3", title: "Adicionar outro serviço" },
+  ];
+  if (lista.length > 1) itens.push({ id: "4", title: "Remover um serviço" });
+  await sendTyping(chatId);
+  await sendOptionList(chatId, txt, itens, { title: "Serviços", buttonLabel: "Ver opções" });
+  session.ultimaPerguntaNaoRespondida = txt + "\n" + linhasOpcoesConfServicos(lista.length);
+}
+
+/** O que falta para o orcamento deixar de ser preliminar (texto ao cliente). */
+function notaPreliminar(orc, curto) {
+  const ref = [];
+  if (!orc.convidados) ref.push("*até 200 convidados*");
+  if (!orc.horas && !orc.duracao && !orc.horaInicio) ref.push("*5 horas* de serviço");
+  const semLocal = !String(orc.bairro || "").trim() && !String(orc.cidade || "").trim();
+  let n = "📌 *Orçamento preliminar.*";
+  if (ref.length && !curto) n += " Como ainda não tenho esses dados, usei como referência " + ref.join(" e ") + " (estimativa).";
+  if (semLocal) n += "\n🚗 O *deslocamento não está incluído*: ele é calculado quando você me disser o local do evento.";
+  return n;
+}
+
 function registrarServicoEnviado(session, servico) {
   if (!session.orcamento.servicosEnviados.includes(servico)) {
     session.orcamento.servicosEnviados.push(servico);
@@ -1965,6 +2033,19 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos, opcoes = {}) {
 
   const orc = session.orcamento || {};
 
+  /* 12/11/2026: depois de um PRELIMINAR, esta e a proposta DEFINITIVA. Ela
+     substitui a preliminar: comeca do zero o registro do que foi enviado, para o
+     PDF novo ter so os servicos escolhidos (sem juntar os do preliminar). */
+  if (orc.situacao === "preliminar") {
+    orc.servicosEnviados = [];
+    orc.linksOrcamento = {};
+    orc.situacao = "definitivo";
+    await sendTyping(chatId);
+    await sendText(chatId, "Pronto! ❤️ Segue a sua *proposta atualizada*, com os dados do seu evento. Ela substitui o orçamento preliminar.");
+  } else if (!orc.situacao) {
+    orc.situacao = "definitivo";
+  }
+
   // ==============================================================
   // EVENTO MULTI-DIA (corporativo=8 ou outros=9 com dias > 1)
   // Envia apresentação completa de cada serviço (sem PDF)
@@ -2083,91 +2164,49 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos, opcoes = {}) {
   session.enviandoOrcamentos = true;
 
   try {
-    // ✅ Enviar avaliação UMA VEZ antes de todos os serviços
-    if (!session.enviouAvaliacao) {
-      console.log(`📊 Enviando avaliação da empresa para ${chatId}`);
-      await enviarAvaliacaoEmpresa(chatId, sessions);
+    /* 📄 ENVIO COMERCIAL (12/11/2026): PRIMEIRO o PDF e o link alternativo.
+       Avaliacoes, depoimentos e videos ficam no "Quero mais detalhes" (sob pedido).
+       A apresentacao por servico so roda para servico SEM preco automatico nesta
+       celebracao: e ela que manda a mensagem de "orcamento especial". */
+    const celebPdf = session.orcamento.celebracaoId;
+    const geradosAgora = listaServicos.filter(id => usaOrcamentoGerado(id, celebPdf));
+    const semPrecoAgora = listaServicos.filter(id => !geradosAgora.includes(id));
+    geradosAgora.forEach(id => registrarServicoEnviado(session, id));
 
-      // Aguardar avaliação terminar
-      while (session.enviandoAvaliacao) {
-        await new Promise(r => setTimeout(r, 300));
-      }
-
-      session.enviouAvaliacao = true;
+    const _jaTinhaOrcamento = Object.keys(session.orcamento?.linksOrcamento || {}).length > 0;
+    if (geradosAgora.length) {
+      await enviarOrcamentoGerado(chatId, session, listaServicos, {
+        segundaRodada: _jaTinhaOrcamento
+      });
     }
 
-    /* 📄 PEDIU TODOS OS SERVIÇOS (Mario, 07/10/2026): depois da avaliação vai
-       direto ao "💰 Segue o arquivo com o orçamento de ...", que já traz o
-       nome de todos. Nome + foto de cada um eram 9 blocos antes do preço.
-       As fotos seguem disponíveis no "Quero mais detalhes" do menu final. */
-    if (opcoes.todos) {
-      listaServicos.forEach(id => registrarServicoEnviado(session, id));
-    }
-
-    // ✅ Agora enviar cada serviço (SEM avaliação novamente)
-    for (const [idx, servico] of (opcoes.todos ? [] : listaServicos).entries()) {
-
+    for (const [idx, servico] of semPrecoAgora.entries()) {
       while (session.processandoServico) {
         await new Promise(r => setTimeout(r, 300));
       }
-
-      // Define flags de deduplicação (lidas pelos serviços via sessions[chatId]._envioMultiplo)
-      // apenasOrcamento (2026-07-15, ideia da Adriana): manda SÓ o preço/PDF.
-      // As fotos e vídeos viram opcionais e só vão se o cliente pedir no menu
-      // pós-orçamento. Antes, ele levava ~80 mensagens antes de ver um valor.
       sessions[chatId]._envioMultiplo = {
         apenasOrcamento:   true,
-        ehUltimo:          idx === listaServicos.length - 1,
+        ehUltimo:          idx === semPrecoAgora.length - 1,
         ehUltimoComMoldura: servico === ultimoComMoldura,
         servicosNaLista:   listaServicos
       };
-
       const celebracaoId = session.orcamento.celebracaoId;
       const convidados   = session.orcamento.convidados;
       const horas        = Number.parseInt(session.orcamento.duracao, 10) || session.orcamento.horas || 4;
       const diasServ     = session.orcamento.dias || 1;
-
-      console.log(`📤 Enviando orçamento do serviço ${servico} para ${chatId}`);
-
-      // ✅ IMPORTANTE: Passar modoManual=true para NÃO enviar avaliação novamente
-      await enviarOrcamentoUnificado(
-        chatId,
-        servico,
-        celebracaoId,
-        convidados,
-        horas,
-        diasServ,
-        true  // ✅ modoManual=true previne re-envio de avaliação
-      );
-
+      await enviarOrcamentoUnificado(chatId, servico, celebracaoId, convidados, horas, diasServ, true);
       registrarServicoEnviado(session, servico);
-
       await new Promise(resolve => setTimeout(resolve, 600));
     }
-
-    // Limpa flags de deduplicação após todos os serviços
     delete sessions[chatId]._envioMultiplo;
 
-    /* 🧾 UM ORÇAMENTO SÓ, com todos os serviços migrados deste pedido
-       (decisão do Mario, 17/08/2026). Vem DEPOIS da apresentação de todos: cada
-       serviço mostrou a foto do seu equipamento, e aqui vai o preço de tudo
-       junto, com o desconto de R$ 200 por serviço a mais.
-       Serviço ainda não migrado continua mandando o PDF pronto dele lá dentro.
-       `segundaRodada`: se ele já tinha recebido orçamento antes, o PDF novo sai
-       com TUDO e o texto avisa que substitui o anterior. */
-    const _jaTinhaOrcamento = Object.keys(session.orcamento?.linksOrcamento || {}).length > 0;
-    await enviarOrcamentoGerado(chatId, session, listaServicos, {
-      segundaRodada: _jaTinhaOrcamento
-    });
-
-    /* GuestBook: cada serviço com cabine/totem o mandava no laço acima, que
-       no "todos" não roda. Vai UMA vez, depois do arquivo (no laço ia até 3x). */
-    if (opcoes.todos && [1, 2, 13].some(id => listaServicos.includes(id))) {
+    /* GuestBook: vai UMA vez, depois do arquivo, quando ha cabine/totem. */
+    if ([1, 2, 13].some(id => geradosAgora.includes(id))) {
       try {
         const { enviarGuestbook } = require("./services/guestbook.js");
         await enviarGuestbook(chatId, session.orcamento.celebracaoId, "Foto Cabine ou Totem");
       } catch (e) {
-        console.error("⚠️ GuestBook (todos os serviços):", e.message);
+        console.error("⚠️ GuestBook:", e.message);
       }
     }
 
@@ -2787,6 +2826,11 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
   }
 
   if (escolha.acao === "detalhes") {
+    /* 12/11/2026: avaliacoes e depoimentos sairam do envio do orcamento e vem aqui, sob pedido. */
+    if (!session.enviouAvaliacao) {
+      try { await enviarAvaliacaoEmpresa(chatId, sessions); session.enviouAvaliacao = true; }
+      catch (e) { console.error("⚠️ avaliações (detalhes):", e.message); }
+    }
     const paraDetalhar = servicosParaDetalhar(session);
 
     /* Manda os detalhes de TODOS os serviços orçados (Mario, 06/08/2026).
@@ -5482,17 +5526,9 @@ const resumoEucaristia =
     }
 
     session.orcamento.nome = nome;
-    session.step = "orcamento_nome_confirmar";
-
-    await sendTyping(chatId);
-    await sendButtonList(
-      chatId,
-      `Seu nome é *${nome}*?`,
-      [
-        { id: "1", label: "Sim" },
-        { id: "2", label: "Não" }
-      ]
-    );
+    /* 💬 12/11/2026 (Rapha, conversao): sem o "Seu nome e X?". O nome aparece no
+       resumo final e pode ser corrigido la (escrevendo "nome" na tela de correcao). */
+    await seguirParaServicos(chatId, session);
     return;
   }
 
@@ -5532,12 +5568,24 @@ const resumoEucaristia =
       return;
     }
 
-    await sendButtonList(
-      chatId,
-      "Só me diz: quer um orçamento *personalizado* para o seu evento?",
-      [{ id: "1", label: "Sim, quero" }, { id: "2", label: "Agora não" }]
-    );
-    return;
+    /* 12/11/2026 (caso Leidiana): o cliente respondeu outra coisa. Em vez de
+       repetir "quer um personalizado?", CONTINUA de onde parou: a resposta vale
+       para a pergunta pendente. Passo do nome (ou comeco): faz a pergunta. */
+    const retC = resolverRetomada(session);
+    if (retC.doZero || retC.passo === "orcamento_nome") {
+      session.step = "orcamento_nome";
+      await sendTyping(chatId);
+      await sendText(chatId, ABERTURA_DO_ZERO);
+      await sendTyping(chatId);
+      await sendText(chatId, PERGUNTA_NOME);
+      session.ultimaPerguntaNaoRespondida = PERGUNTA_NOME;
+      return;
+    }
+    if (retC.passo === "orcamento_nome_confirmar") {
+      await seguirParaServicos(chatId, session);
+      return;
+    }
+    session.step = retC.passo;   // sem return: o bloco do passo, mais abaixo, trata ESTA mensagem
   }
 
   if (session.step === "orcamento_nome_confirmar") {
@@ -5556,22 +5604,7 @@ const resumoEucaristia =
       return;
     }
 
-    // Serviços ANTES do evento (Mario, 22/10/2026): ver textoMenuServicosPrevia.
-    session.step = "orcamento_servicos_previa";
-
-    // Apresentação da empresa (2026-08-05, pedido do Mario): saiu da abertura
-    // (que virou 1 msg só com o menu) e passou p/ DEPOIS da confirmação do nome,
-    // já chamando a pessoa pelo nome. É onde o cliente demonstrou interesse real.
-    await sendTyping(chatId);
-    await sendText(chatId, `*${session.orcamento.nome}*, somos uma família que atende famílias ❤️`);
-
-    await sendTyping(chatId);
-    await sendText(chatId, "Temos o compromisso de atender aos nossos clientes e a cada convidado do seu evento, com muito amor, carinho e atenção.");
-
-    await sendTyping(chatId);
-    await sendText(chatId, "A *PhotoMusic Produções* está há 15 anos transformando eventos em memórias inesquecíveis.");
-
-    await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+    await seguirParaServicos(chatId, session);
     return;
   }
 
@@ -5620,18 +5653,7 @@ const resumoEucaristia =
 
     // A escolha só vale depois do "são esses mesmo?": o cliente pode querer mudar.
     session.orcamento.servicosPrevios = servicos;
-    session.step = "orcamento_servicos_confirmar";
-    await sendTyping(chatId);
-    await sendButtonList(
-      chatId,
-      `Você escolheu:\n\n${listaNomesServicos(servicos)}\n\nÉ isso mesmo?`,
-      [
-        { id: "1", label: "Sim, é isso" },
-        { id: "2", label: "Quero mudar" }
-      ]
-    );
-    session.ultimaPerguntaNaoRespondida =
-      `Você escolheu:\n\n${listaNomesServicos(servicos)}\n\nÉ isso mesmo?\n*1* - Sim, é isso\n*2* - Quero mudar`;
+    await mostrarConfirmacaoServicos(chatId, session);
     return;
   }
 
@@ -5639,9 +5661,13 @@ const resumoEucaristia =
   // ORÇAMENTO — CONFIRMAR OS SERVIÇOS ESCOLHIDOS
   // ======================================================
   if (session.step === "orcamento_servicos_confirmar") {
-    const r = (corpoMensagem || "").trim();
-    if (r !== "1" && r !== "2") {
-      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim, é isso\n*2* - Quero mudar");
+    /* 🔁 12/11/2026 (Rapha): confirmar, TROCAR, ADICIONAR ou REMOVER sem recomecar.
+       O cliente costuma escolher o servico errado; e aqui tambem aparece o
+       interesse por mais um servico. Nada do que ja foi respondido se perde. */
+    const prevConf = Array.isArray(session.orcamento.servicosPrevios) ? session.orcamento.servicosPrevios : [];
+    const r = respostaConfirmacaoServicos(corpoMensagem, prevConf.length);
+    if (!r) {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n" + linhasOpcoesConfServicos(prevConf.length));
       return;
     }
 
@@ -5649,6 +5675,27 @@ const resumoEucaristia =
       session.orcamento.servicosPrevios = null;
       session.step = "orcamento_servicos_previa";
       await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+      return;
+    }
+
+    if (r === "3") {
+      const restantesConf = TODOS_SERVICOS.filter(s => !prevConf.includes(s) && !(s === 8 && prevConf.includes(7)));
+      if (restantesConf.length === 0) {
+        await sendText(chatId, "Você já escolheu todos os nossos serviços. 😊");
+        await mostrarConfirmacaoServicos(chatId, session);
+        return;
+      }
+      session.step = "orcamento_servicos_adicionar";
+      await enviarPerguntaESalvar(chatId, session,
+        "Qual serviço você quer *adicionar*? (digite o número; para mais de um, separe por vírgula)\n\n" +
+        linhasMenuServicos(restantesConf));
+      return;
+    }
+
+    if (r === "4") {
+      session.step = "orcamento_servicos_remover";
+      await enviarPerguntaESalvar(chatId, session,
+        "Qual serviço você quer *remover*? (digite o número)\n\n" + linhasMenuServicos(prevConf));
       return;
     }
 
@@ -5668,6 +5715,39 @@ const resumoEucaristia =
   // ======================================================
   // ORÇAMENTO — CELEBRAÇÃO
   // ======================================================
+  // ======================================================
+  // ORÇAMENTO — ADICIONAR / REMOVER SERVIÇO (12/11/2026)
+  // ======================================================
+  if (session.step === "orcamento_servicos_adicionar" || session.step === "orcamento_servicos_remover") {
+    const prevAR = Array.isArray(session.orcamento.servicosPrevios) ? session.orcamento.servicosPrevios : [];
+    const lidos = extrairServicosDaMensagem(corpoMensagem);
+    const adicionar = session.step === "orcamento_servicos_adicionar";
+    const alvo = adicionar ? lidos.filter(s => !prevAR.includes(s)) : lidos.filter(s => prevAR.includes(s));
+    if (alvo.length === 0) {
+      await sendText(chatId, adicionar
+        ? "*⚠ Digite o número do serviço que você quer adicionar.*"
+        : "*⚠ Digite o número de um dos serviços escolhidos para remover.*");
+      return;
+    }
+    let novaLista = adicionar ? prevAR.concat(alvo) : prevAR.filter(s => !alvo.includes(s));
+    if (novaLista.includes(7) && novaLista.includes(8)) {
+      novaLista = novaLista.filter(s => s !== 8);
+      await sendText(chatId, "✨ A Iluminação de Pista de Dança já está *inclusa* no Som Completo com DJ.");
+    }
+    if (novaLista.length === 0 || (novaLista.length === 1 && novaLista[0] === 8)) {
+      session.orcamento.servicosPrevios = null;
+      session.step = "orcamento_servicos_previa";
+      if (novaLista.length === 1) {
+        await sendText(chatId, "⚠️ A *Iluminação de Pista de Dança* não pode ser contratada sozinha.");
+      }
+      await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+      return;
+    }
+    session.orcamento.servicosPrevios = novaLista;
+    await mostrarConfirmacaoServicos(chatId, session);
+    return;
+  }
+
   if (session.step === "orcamento_celebracao") {
     const opcao = parseInt(corpoMensagem, 10);
 
@@ -6584,7 +6664,8 @@ const resumoEucaristia =
     await sendTyping(chatId);
     const textoEscolherCorrecao =
       "Digite os *números* dos itens que deseja corrigir (para mais de um, separe por vírgula, ex: *3,4*):\n\n" +
-      CAMPOS_CORRIGIVEIS.map(c => `*${c.id}* - ${c.label}`).join("\n");
+      CAMPOS_CORRIGIVEIS.map(c => `*${c.id}* - ${c.label}`).join("\n") +
+      "\n\n_Para corrigir o seu nome, escreva *nome*._";
     await sendText(chatId, textoEscolherCorrecao);
     session.ultimaPerguntaNaoRespondida = textoEscolherCorrecao; // caso Leandra, 08/11/2026
     return;
@@ -6594,13 +6675,15 @@ const resumoEucaristia =
   // ORÇAMENTO — ESCOLHER O QUE CORRIGIR
   // ======================================================
   if (session.step === "orcamento_corrigir_escolher") {
+    const pediuNome = /\bnome\b/i.test(corpoMensagem || "");
     const unicos = extrairNumerosCampos(corpoMensagem, CAMPOS_CORRIGIVEIS.length);
-    if (unicos.length === 0) {
+    if (unicos.length === 0 && !pediuNome) {
       await sendText(chatId, "*⚠ Digite os números dos itens a corrigir, separados por vírgula* (ex: *3,4*).");
       return;
     }
     // Monta a fila na ordem dos campos
     session.correcaoFila = CAMPOS_CORRIGIVEIS.filter(c => unicos.includes(c.id));
+    if (pediuNome) session.correcaoFila.unshift({ id: 0, label: "Nome", tipo: "nome" });
     await pedirProximaCorrecao(chatId, session);
     return;
   }
@@ -6632,6 +6715,10 @@ const resumoEucaristia =
          reabre o bug dos números de 2 dígitos. Quem quiser corrigir a empresa
          corrige a "Celebração", escolhe 8 de novo e o bot repergunta - por
          isso este `case` existe, mesmo sem id na lista. */
+      case "nome": {
+        if (txt.length >= 2) { orc.nome = capitalizarPalavras(txt); ok = true; }
+        break;
+      }
       case "empresa": {
         const pulou = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === "pular";
         if (pulou) { orc.empresa = ""; ok = true; }
@@ -7033,6 +7120,10 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids, opcoes = {})
 ` +
       `_É o nosso orçamento base: evento de até 200 convidados, de 4h a 5h._`;
 
+  // 12/11/2026: o servico que ele ja disse vale para o questionario (nao pergunta de novo).
+  if (!Array.isArray(session.orcamento.servicosPrevios) || session.orcamento.servicosPrevios.length === 0) {
+    session.orcamento.servicosPrevios = [...lista];
+  }
   await enviarOrcamentosAutomaticos(chatId, session, lista, { textoAbertura });
 
   /* Não precisa mexer no "de onde parou": quem chega por aqui estava no menu,
@@ -7092,141 +7183,77 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
 
   session.orcamento = session.orcamento || {};
   const orc = session.orcamento;
-
-  if (!orc.celebracaoId) orc.celebracaoId = 9;   // Outros
-  if (!orc.horas)        orc.horas = 5;          // 5 => tabela "4h5h"
-  if (!orc.convidados)   orc.convidados = 200;   // até 200 pessoas
   if (!Array.isArray(orc.servicosEnviados)) orc.servicosEnviados = [];
+
+  /* 🚨 ORCAMENTO PRELIMINAR (12/11/2026, caso Leidiana / orc. 598).
+     Antes, os valores de referencia (celebracao "Outros", 200 convidados, 5h)
+     eram GRAVADOS na conversa: o questionario seguia como se o cliente tivesse
+     respondido isso. Agora entram so durante o pedido do PDF e sao desfeitos
+     logo depois; o que o cliente ja informou e usado como esta. */
+  const estimados = {};
+  if (!orc.celebracaoId) { orc.celebracaoId = 9; estimados.celebracaoId = true; }
+  if (!orc.horas && !orc.duracao && !orc.horaInicio) { orc.horas = 5; estimados.horas = true; }
+  if (!orc.convidados) { orc.convidados = 200; estimados.convidados = true; }
+  const orcAntes = { horas: estimados.horas ? undefined : orc.horas, convidados: estimados.convidados ? undefined : orc.convidados };
 
   const clb   = Number(orc.celebracaoId);
   const conv  = Number(orc.convidados);
   const horas = Number(orc.horas) || 5;
   const dias  = orc.dias || 1;
   const nome  = orc.nome ? String(orc.nome).split(" ")[0] : "";
-  // Saudação pela hora do envio (no agendado, a hora marcada pelo operador)
   const saud  = saudacaoPorHora();
   const ola   = nome ? `${saud}, *${nome}*!` : `${saud}!`;
 
-  /* 📄 ENVIO DIRETO (Mario, 07/10/2026). Só o lembrete de 1h usa, e só para
-     quem NÃO passou nenhuma informação do evento (ver enviarTodosOrcamentos
-     no jobs/lembreteOrcamento.js). A ordem inverte: o cliente recebe primeiro
-     o arquivo, começando no "💰 Segue o arquivo com o orçamento de ...", sem
-     abertura, sem nome e foto de cada serviço; as avaliações vêm DEPOIS.
-     Quem conversou e escolheu o serviço segue o envio normal (abaixo). */
-  if (opcoes.direto) {
-    const listaDireta = (Array.isArray(listaServicos) && listaServicos.length)
-      ? listaServicos
-      : [...TODOS_SERVICOS];
+  const lista = (Array.isArray(listaServicos) && listaServicos.length) ? listaServicos : [...TODOS_SERVICOS];
 
+  try {
     if (envioFoiInterrompido(chatId)) {
-      await avisarEnvioInterrompido(chatId, orc.servicosEnviados, listaDireta);
+      await avisarEnvioInterrompido(chatId, orc.servicosEnviados, lista);
       return;
     }
-    listaDireta.forEach(id => registrarServicoEnviado(session, id));
 
+    await sendTyping(chatId);
+    await sendText(chatId, opcoes.textoAbertura || (opcoes.direto
+      ? `${ola} ❤️\n\nSegue o seu orçamento, sem compromisso. 😊`
+      : `${ola} ❤️\n\nVi que a gente não terminou o seu orçamento e não quero te deixar esperando. Já te mando os valores. 😊`));
+    // o que e estimativa e o deslocamento (sem a celebracao "Outros" escrita ao cliente)
+    await sendText(chatId, notaPreliminar(Object.assign({}, orc, orcAntes), !!opcoes.textoAbertura));
+
+    /* 📄 ENVIO COMERCIAL (12/11/2026): PRIMEIRO o PDF e o link alternativo.
+       Avaliacoes, depoimentos e videos ficam no "Quero mais detalhes". */
+    const gerados = lista.filter(id => usaOrcamentoGerado(id, clb));
+    gerados.forEach(id => registrarServicoEnviado(session, id));
     try {
-      await enviarOrcamentoGerado(chatId, session, listaDireta);
+      if (gerados.length) await enviarOrcamentoGerado(chatId, session, lista);
     } catch (e) {
-      console.error("⚠️ orçamento gerado não saiu (envio direto):", e.message);
+      console.error("⚠️ orçamento gerado não saiu (preliminar):", e.message);
     }
-    if (envioFoiInterrompido(chatId)) return;
 
-    try {
-      await enviarAvaliacaoEmpresa(chatId, sessions);
-      session.enviouAvaliacao = true;
-    } catch (e) {
-      console.error("⚠️ avaliações não enviadas (envio direto):", e.message);
+    // Servico sem preco automatico nesta celebracao: a mensagem propria dele ("orcamento especial").
+    const semPreco = lista.filter(id => !gerados.includes(id));
+    for (let i = 0; i < semPreco.length; i++) {
+      if (envioFoiInterrompido(chatId)) {
+        await avisarEnvioInterrompido(chatId, orc.servicosEnviados || [], lista);
+        return;
+      }
+      sessions[chatId]._envioMultiplo = { apenasOrcamento: true, ehUltimo: i === semPreco.length - 1, ehUltimoComMoldura: false, servicosNaLista: lista };
+      try {
+        await enviarOrcamentoUnificado(chatId, semPreco[i], clb, conv, horas, dias, true);
+        registrarServicoEnviado(session, semPreco[i]);
+      } catch (e) {
+        console.error(`⚠️ falha no serviço ${semPreco[i]}:`, e.message);
+      }
+      await new Promise(r => setTimeout(r, 600));
     }
-    if (envioFoiInterrompido(chatId)) return;
-
-    await fecharEnvioAutomatico(chatId, session, passoOriginal);
-    return;
+    delete sessions[chatId]._envioMultiplo;
+  } finally {
+    // desfaz as estimativas: o questionario continua com o que o CLIENTE disse
+    if (estimados.celebracaoId) delete orc.celebracaoId;
+    if (estimados.horas) delete orc.horas;
+    if (estimados.convidados) delete orc.convidados;
   }
 
-  await sendTyping(chatId);
-  /* A abertura padrão é a do lembrete de 1h ("a gente não terminou"). Quem
-     chama com `opcoes.textoAbertura` manda a sua — é o caso do serviço
-     detectado por extenso, em que o cliente ainda nem começou nada e essa
-     frase não faria sentido nenhum. */
-  await sendText(chatId, opcoes.textoAbertura || (
-    `${ola} ❤️\n\n` +
-    `Vi que a gente não terminou o seu orçamento e não quero te deixar esperando.\n\n` +
-    `Então já vou te enviar *todos os nossos serviços*, pra você ver com calma e sem compromisso. 😊`
-  ));
-
-  try { await enviarAvaliacaoEmpresa(chatId, sessions); } catch (e) {
-    console.error("⚠️ avaliações não enviadas:", e.message);
-  }
-
-  if (clb === 8) {
-    await sendText(chatId,
-      "ℹ️ Os valores a seguir atendem eventos de *até 200 pessoas*. " +
-      "Se o seu for maior, me avisa que eu faço um orçamento sob medida. 😉"
-    );
-  }
-
-  // listaServicos: permite mandar SÓ os que faltam (comando #enviarfaltantes)
-  /* 🚨 Lista PADRÃO = TODOS_SERVICOS, não uma lista escrita à mão. Com o Totem
-     Retrô no menu são 9 serviços, e a lista fixa de 8 deixaria ele de fora
-     justamente no envio que se chama "todos os nossos serviços". */
-  const lista = (Array.isArray(listaServicos) && listaServicos.length)
-    ? listaServicos
-    : [...TODOS_SERVICOS];
-
-  /* Lotes de 3 com 15s entre eles (anti-bloqueio da Meta). 🚨 Antes era um
-     array fixo [3,3,2], que comportava 8 e SILENCIOSAMENTE descartava o 9º
-     serviço. Agora fatia a lista, seja qual for o tamanho dela. */
-  const POR_LOTE = 3;
-  let interrompido = false;
-  for (let i = 0; i < lista.length; i++) {
-    // Freio: o operador pausou no meio do envio (ver envioFoiInterrompido).
-    if (envioFoiInterrompido(chatId)) {
-      interrompido = true;
-      console.log(`⏸️ [Envio] Parado em ${chatId} antes do serviço ${lista[i]} (pausado).`);
-      break;
-    }
-    const servico = lista[i];
-    sessions[chatId]._envioMultiplo = {
-      apenasOrcamento:    true,
-      ehUltimo:           i === lista.length - 1,
-      ehUltimoComMoldura: false,
-      servicosNaLista:    lista
-    };
-    try {
-      await enviarOrcamentoUnificado(chatId, servico, clb, conv, horas, dias, true);
-      registrarServicoEnviado(session, servico);
-    } catch (e) {
-      console.error(`⚠️ falha no serviço ${servico}:`, e.message);
-    }
-    await new Promise(r => setTimeout(r, 600));
-    // Respiro entre lotes, menos depois do último serviço
-    const fimDeLote = (i + 1) % POR_LOTE === 0;
-    if (fimDeLote && i < lista.length - 1) await new Promise(r => setTimeout(r, 15000));
-  }
-  delete sessions[chatId]._envioMultiplo;
-
-  /* Parou no meio: nada de PDF, resumo, despedida e menu. O cliente pausado
-     receberia a cauda inteira depois de o operador ter mandado parar. */
-  if (interrompido || envioFoiInterrompido(chatId)) {
-    await avisarEnvioInterrompido(chatId, session.orcamento.servicosEnviados || [], lista);
-    return;
-  }
-
-  /* 🧾 O ORÇAMENTO EM SI (bug pego pelo Mario em 17/08/2026).
-     Este envio saía SEM ARQUIVO: o laço acima manda a apresentação de cada
-     serviço com `apenasOrcamento`, e o PDF vinha de dentro de cada service.
-     Quando os 9 migraram para o orçamento GERADO, o PDF saiu de lá e passou a
-     vir do `orcamentoGerado.js`, chamado UMA vez com a lista inteira - e este
-     job, que é um TERCEIRO chamador, ficou para trás. O cliente que parou de
-     responder recebia "segue o orçamento" e nenhum arquivo.
-     🚨 Todo caminho que envia serviço precisa desta chamada: fluxo automático,
-     comando manual do operador e este envio do lembrete. */
-  try {
-    await enviarOrcamentoGerado(chatId, session, lista);
-  } catch (e) {
-    console.error("⚠️ orçamento gerado não saiu:", e.message);
-  }
-
+  if (envioFoiInterrompido(chatId)) return;
   await fecharEnvioAutomatico(chatId, session, passoOriginal);
 }
 
@@ -7244,12 +7271,17 @@ async function fecharEnvioAutomatico(chatId, session, passoOriginal) {
   }
 
   // Convite para personalizar, retomando de onde parou
+  /* 12/11/2026: estado proprio do PRELIMINAR. A proxima resposta do cliente
+     continua o questionario de onde parou (ver "lembrete_retomar"); a proposta
+     final substitui esta (ver enviarMultiplosOrcamentos). */
+  session.orcamento.situacao = "preliminar";
+  session.orcamento.preliminarEnviadoEm = Date.now();
   session.lembreteRetomarStep = passoOriginal;
   session.step = "lembrete_retomar";
   await sendTyping(chatId);
   await sendButtonList(
     chatId,
-    "Quer um orçamento *personalizado* para o seu evento? É rapidinho, continuamos de onde paramos.",
+    "Este é um orçamento *preliminar*. Quer que eu ajuste com os dados do seu evento? É rapidinho, continuamos de onde paramos.",
     [{ id: "1", label: "Sim, quero" }, { id: "2", label: "Agora não" }]
   );
 }
