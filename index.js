@@ -3149,6 +3149,14 @@ async function handleIncomingMessage(message) {
     // sobra pra resposta — sem isso, uma resposta de 1 dígito (ex: "2") era
     // engolida pro final do número (greedy), esvaziando a resposta.
     const m = t.match(/^(\+?\(?\d[\d\s\-\(\)\.]{4,18}\d)\s+([\s\S]+)$/);
+    const _dig = (x) => String(x || "").replace(/\D/g, "").length;
+    // Número no INÍCIO com 10+ dígitos: "responder 21 98539-2405 2", "responder +55 21 98539-2405 pular"
+    if (m && _dig(m[1]) >= 10) return { numero: m[1].trim(), resto: m[2].trim() };
+    // 🆕 11/11/2026: resposta ANTES do número ("responder 2 21 98539-2405"). O 1º pedaço
+    // curto (ex.: "2") era tomado como número e dava "Número inválido: 2". Se o FIM do texto
+    // for um telefone de 10+ dígitos, ele é o número e o que vem antes é a resposta.
+    const f = t.match(/^([\s\S]+?)\s+(\+?\(?\d[\d\s\-\(\)\.]{8,20}\d)\s*$/);
+    if (f && _dig(f[2]) >= 10) return { numero: f[2].trim(), resto: f[1].trim() };
     if (m) return { numero: m[1].trim(), resto: m[2].trim() };
     // Fallback: comportamento antigo (1º token = número) para não quebrar
     // casos fora do padrão esperado (ex.: só o número, sem resposta).
@@ -3523,7 +3531,8 @@ async function handleIncomingMessage(message) {
         await sendText(destinoOperador,
           `⚠ Número inválido: *${numeroRaw}*\n\n` +
           "Formatos aceitos:\n" +
-          "  +5521995021656\n  5521995021656\n  21995021656\n  995021656"
+          "  +55 21 98539-2405\n  55 21 98539-2405\n  21 98539-2405\n  +5521985392405\n  21985392405\n  985392405\n\n" +
+          "Exemplo: *responder 21 98539-2405 2*"
         );
         return;
       }
@@ -3722,7 +3731,8 @@ async function handleIncomingMessage(message) {
         await sendText(destinoOperador,
           `⚠ Número inválido: *${numeroRaw}*\n\n` +
           "Formatos aceitos:\n" +
-          "  +5521995021656\n  5521995021656\n  21995021656\n  995021656"
+          "  +55 21 98539-2405\n  55 21 98539-2405\n  21 98539-2405\n  +5521985392405\n  21985392405\n  985392405\n\n" +
+          "Exemplo: *responder 21 98539-2405 2*"
         );
         return;
       }
