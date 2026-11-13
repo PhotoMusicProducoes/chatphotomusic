@@ -769,6 +769,19 @@ function listaNomesServicos(ids) {
     .join("\n");
 }
 
+/* 🖼️ 12/11/2026 (Mario): o menu de servicos leva uma IMAGEM com a miniatura de cada servico e o mesmo numero do menu
+   (0 a 9). Fica no proprio bot (/midia). So na 1a vez de cada orcamento (nao repete se a pergunta for refeita).
+   Qualquer falha = so o texto, como antes. Desligar: MENU_SERVICOS_IMAGEM=0 (secret do Fly). */
+const URL_MENU_SERVICOS_IMG = "https://chatphotomusic.fly.dev/midia/menu-servicos.jpg";
+async function perguntarServicosPrevia(chatId, session) {
+  session.orcamento = session.orcamento || {};
+  if (process.env.MENU_SERVICOS_IMAGEM !== "0" && !session.orcamento.menuServicosImagemEnviada) {
+    session.orcamento.menuServicosImagemEnviada = true;
+    try { await sendTyping(chatId); await sendFileByUrl(chatId, URL_MENU_SERVICOS_IMG); } catch (e) { console.warn(`⚠️ imagem do menu de serviços: ${e.message}`); }
+  }
+  await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+}
+
 function textoMenuServicosPrevia() {
   return "Para começar, me conta: *quais serviços você tem interesse?* " +
     "(para mais de um, digite os números separados por vírgula, ex: *0,3,5 ou 124*)\n\n" +
@@ -1320,7 +1333,7 @@ async function seguirParaServicos(chatId, session) {
     return;
   }
   session.step = "orcamento_servicos_previa";
-  await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+  await perguntarServicosPrevia(chatId, session);
 }
 
 /* ======================================================
@@ -5887,7 +5900,7 @@ const resumoEucaristia =
     if (r === "2") {
       session.orcamento.servicosPrevios = null;
       session.step = "orcamento_servicos_previa";
-      await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+      await perguntarServicosPrevia(chatId, session);
       return;
     }
 
@@ -5945,7 +5958,7 @@ const resumoEucaristia =
       if (novaLista.length === 1) {
         await sendText(chatId, "⚠️ A *Iluminação de Pista de Dança* não pode ser contratada sozinha.");
       }
-      await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
+      await perguntarServicosPrevia(chatId, session);
       return;
     }
     session.orcamento.servicosPrevios = novaLista;

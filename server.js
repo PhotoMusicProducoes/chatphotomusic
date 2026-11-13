@@ -16,6 +16,8 @@ const { extrairRespostaDeClique, extrairPedidoDeCatalogo } = require("./utils/we
 const { escolherChaveFila } = require("./utils/filaWebhook.js");
 
 const app = express();
+// 12/11/2026: midia do proprio bot (imagem do menu de servicos), servida em /midia
+app.use("/midia", express.static(require("path").join(__dirname, "midia"), { maxAge: "7d" }));
 // Limite alto p/ o upload de documentos do batismo (foto em base64, já
 // comprimida no navegador). Os webhooks da Z-API são pequenos; a folga só
 // habilita o anexo. Na produção (gru) troca por storage de objeto + signed URL.
