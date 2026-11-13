@@ -3342,7 +3342,7 @@ async function handleIncomingMessage(message) {
       corpoNormalizado.startsWith("retomar") ||
       corpoNormalizado.startsWith("liberar") ||
       corpoNormalizado.startsWith("resetar") ||
-      corpoNormalizado.startsWith("limparsessao") ||
+      corpoNormalizado.startsWith("iniciarsessao") ||
       corpoNormalizado.startsWith("respondercliente") ||
       corpoNormalizado.startsWith("responder") ||
       corpoNormalizado.startsWith("#")
@@ -3656,24 +3656,29 @@ async function handleIncomingMessage(message) {
     }
 
     // ======================================================
-    // LIMPAR SESSAO (12/11/2026): como o resetar, mas NAO envia nada ao cliente (nem o menu).
-    // COMANDO: limparsessao 21 99999-8888   - para testes: o proximo "oi" recebe o menu como num 1o contato.
+    // RESETAR (12/11/2026: agora e SILENCIOSO)
+    // COMANDO: resetar 21 99999-8888
+    // Apaga a sessao e tira a pausa; NAO envia nada ao cliente (nem o menu).
+    // A pessoa so recebe as boas-vindas quando ELA escrever. Para o comportamento antigo
+    // (resetar E mandar o menu na hora), use `iniciarsessao`.
     // ======================================================
-    if (corpoNormalizado.startsWith("limparsessao")) {
-      if (!numero) { await sendText(destinoOperador, "⚠ Formato: *limparsessao 21 99999-8888*"); return; }
-      const normalizadoLS = normalizarNumero(numero);
-      retomarCliente(normalizadoLS);
-      const tinha = !!sessions[normalizadoLS];
-      delete sessions[normalizadoLS];
-      await sendText(destinoOperador, `🧹 Sessão limpa para ${normalizadoLS}${tinha ? "" : " (não havia sessão)"}. Nada foi enviado ao cliente.`);
+    if (corpoNormalizado.startsWith("resetar")) {
+      if (!numero) { await sendText(destinoOperador, "⚠ Formato: *resetar 21 99999-8888*"); return; }
+      const normalizado = normalizarNumero(numero);
+      retomarCliente(normalizado);
+      const tinha = !!sessions[normalizado];
+      delete sessions[normalizado];
+      await sendText(destinoOperador, `🧹 Atendimento resetado para ${normalizado}${tinha ? "" : " (não havia sessão)"}. Nada foi enviado ao cliente: ele recebe as boas-vindas quando escrever.`);
       return;
     }
 
     // ======================================================
-    // RESETAR
-    // COMANDO: resetar 21 99999-8888
+    // INICIAR SESSAO (era o antigo "resetar")
+    // COMANDO: iniciarsessao 21 99999-8888
+    // Apaga a sessao E manda o menu inicial na hora (o cliente recebe uma mensagem que nao pediu).
     // ======================================================
-    if (corpoNormalizado.startsWith("resetar")) {
+    if (corpoNormalizado.startsWith("iniciarsessao")) {
+      if (!numero) { await sendText(destinoOperador, "⚠ Formato: *iniciarsessao 21 99999-8888*"); return; }
       const normalizado = normalizarNumero(numero);
       retomarCliente(normalizado);
       delete sessions[normalizado];
@@ -3682,7 +3687,7 @@ async function handleIncomingMessage(message) {
          abandono achava que ele tinha escrito e mandava orcamento 1h depois, sem a pessoa ter pedido nada
          (numero resetado por engano). Com `false`, o job nao envia orcamento a quem so recebeu o menu. */
       if (sessions[normalizado]) sessions[normalizado].clienteEscreveuTexto = false;
-      await sendText(destinoOperador, `🔄 Atendimento resetado para ${normalizado}`);
+      await sendText(destinoOperador, `🔄 Sessão iniciada para ${normalizado}: menu enviado.`);
       return;
     }
 
