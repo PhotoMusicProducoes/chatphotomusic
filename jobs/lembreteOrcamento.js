@@ -69,7 +69,7 @@ const PASSOS_QUESTIONARIO = new Set([
   "orcamento_nome", "orcamento_nome_confirmar",
   // 🚨 Passos novos (12/11/2026): perfil (festa/empresa/agência) e "cliente que
   // volta" confirmando os dados. Entram AQUI na hora em que nascem (lição de 15/08).
-  "orcamento_perfil", "orcamento_reuso", "orcamento_data_confirmar", "orcamento_bairro_confirmar",
+  "orcamento_perfil", "orcamento_reuso", "orcamento_data_confirmar", "orcamento_bairro_confirmar", "orcamento_completar",
   // 🚨 Passos novos (22/10/2026): os serviços agora são escolhidos LOGO DEPOIS
   // do nome, e a cidade ganhou uma confirmação. Entram aqui na mesma hora em
   // que nascem (a lição de 15/08).
@@ -183,7 +183,7 @@ const PERGUNTA_POR_PASSO = {
 const DESCRICAO_PASSO = {
   "orcamento_nome": "nome", "orcamento_nome_confirmar": "confirmar nome",
   "orcamento_perfil": "tipo de cliente (festa, empresa ou agência)", "orcamento_reuso": "confirmar os dados da última vez",
-  "orcamento_data_confirmar": "confirmar a data", "orcamento_bairro_confirmar": "confirmar o bairro",
+  "orcamento_data_confirmar": "confirmar a data", "orcamento_bairro_confirmar": "confirmar o bairro", "orcamento_completar": "completar os dados do evento",
   "orcamento_servicos_previa": "escolher os serviços de interesse",
   "orcamento_servicos_confirmar": "confirmar os serviços escolhidos",
   "orcamento_cidade_confirmar": "confirmar a cidade",

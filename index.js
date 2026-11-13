@@ -51,6 +51,7 @@ const {
 } = require("./utils/roteadorIA.js");
 const { criarExtrator: criarExtratorIA } = require("./utils/iaExtrair.js");
 const { acharDataNoTexto, candidatosLocal } = require("./utils/dadosLivres.js");
+const { extrairBriefing } = require("./utils/briefingLivre.js");
 
 const {
   enviarFotoCabine,
@@ -1651,6 +1652,91 @@ async function responderDisponibilidade(chatId, session, texto) {
     console.warn(`⚠️ disponibilidade: ${e.message}`);
     return false;
   }
+}
+
+/* 🧾 BRIEFING LIVRE (13/11/2026, caso Raquel/Petrobras 06 e 12/11): quando o cliente escreve um texto longo com nome, servico,
+   data, horario, convidados e local, o bot USA o que veio (sem IA) e pergunta SO o que falta; completo = resumo com 1 toque.
+   Antes: "so me diga o nome" 3x, o resto ignorado e um orcamento generico (Outros, 200, 5h) no abandono.
+   Se a pessoa para de responder, o orcamento automatico ja sai com o que ela disse (os campos ficam em session.orcamento). */
+async function aplicarBriefingLivre(chatId, session, texto) {
+  const b = extrairBriefing(texto);
+  const orc = session.orcamento = session.orcamento || { servicosEnviados: [] };
+  const r = { nome: false, servicos: false, convidados: false, data: false, horario: false, multiEvento: b.convidados.length > 1 };
+  if (b.nome && !orc.nome) { orc.nome = capitalizarPalavras(b.nome); r.nome = true; }
+  if (b.empresa && !orc.empresa) orc.empresa = b.empresa;
+  if (b.corporativo) {
+    orc.perfil = orc.perfil || (/ag[eê]ncia|produtora|cerimonial/i.test(b.empresa || texto) ? "agencia" : "empresa");
+    orc.celebracaoId = 8; orc.celebracao = celebracoes[8];
+  }
+  const ids = detectarServicosNoTexto(texto).filter(id => SERVICOS_NOMES[id]);
+  if (ids.length && !(Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length)) { orc.servicosPrevios = ids; r.servicos = true; }
+  if (b.convidados.length === 1 && !orc.convidados) { orc.convidados = b.convidados[0]; r.convidados = true; }
+  if (b.dataTxt && !orc.data) {
+    const f = parsearDataFlex(b.dataTxt); const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    if (f && f.date >= hoje) { orc.data = f.str; r.data = true; }
+  }
+  if (b.horario && !orc.horaInicio) {
+    orc.horaInicio = b.horario.inicio; orc.horaFim = b.horario.fim;
+    orc.duracao = calcularDuracaoEvento(b.horario.inicio, b.horario.fim);
+    orc.horas = Number.parseInt(orc.duracao, 10) || 2; r.horario = true;
+  } else if (b.horas && !orc.horas) { orc.horas = b.horas; r.horario = true; }
+  const dl = session.dadosLivres = session.dadosLivres || {};
+  if (!dl.bairro) {
+    const achados = await Promise.all((b.local || []).slice(0, 3).map(c => inferirCidadePorBairro(c)));
+    const p = achados.find(Boolean);
+    if (p) { dl.bairro = p.bairro; dl.cidade = p.cidade; }
+  }
+  r.util = [r.servicos, r.convidados, r.data, r.horario].filter(Boolean).length;
+  return r;
+}
+
+function dadoQueFalta(session) {
+  const orc = session.orcamento || {};
+  if (!orc.nome) return "nome";
+  if (!orc.celebracaoId) return "celebracao";
+  if (!orc.convidados) return "convidados";
+  if (!orc.data) return "data";
+  if (!orc.horaInicio && !orc.horas) return "horario";
+  if (!orc.bairro || !orc.cidade) return "local";
+  return null;
+}
+
+async function completarBriefing(chatId, session) {
+  const falta = dadoQueFalta(session);
+  const orc = session.orcamento;
+  if (!falta) {
+    await consultarDeslocamento(session);
+    orc.local = [orc.salao, orc.bairro, orc.cidade].filter(Boolean).join(", ");
+    await sendTyping(chatId);
+    await sendText(chatId, "Já tenho tudo o que preciso! 😊" + (Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length ? ` Serviço: *${orc.servicosPrevios.map(i => SERVICOS_NOMES[i]).filter(Boolean).join(", ")}*.` : "") + " Confira os dados:");
+    await mostrarConfirmacaoOrcamento(chatId, session);
+    return;
+  }
+  session.step = "orcamento_completar";
+  orc._faltante = falta;
+  const dl = session.dadosLivres || {};
+  if (falta === "celebracao") {
+    await sendTyping(chatId);
+    await sendOptionList(chatId, "Só me conta: o que vai celebrar?", CELEBRACOES.map(c => ({ id: String(c.id), title: c.label })), { title: "Celebrações", buttonLabel: "Ver opções" });
+    session.ultimaPerguntaNaoRespondida = "O que você vai celebrar? (digite o número da lista)";
+    return;
+  }
+  if (falta === "local" && dl.bairro && dl.cidade && !dl.bairroUsado) {
+    dl.bairroUsado = true; orc._faltante = "local_confirmar";
+    const perg = `O evento é em *${dl.bairro}* (${dl.cidade}), certo?`;
+    await sendTyping(chatId);
+    await sendButtonList(chatId, perg, [{ id: "1", label: "Sim, é aí" }, { id: "2", label: "Outro local" }]);
+    session.ultimaPerguntaNaoRespondida = perg + "\n*1* - Sim, é aí\n*2* - Outro local";
+    return;
+  }
+  const PERG = {
+    nome: "Só me diga o *seu nome* (só o nome mesmo), que eu sigo com o orçamento.",
+    convidados: "Quantos convidados? (*Digite somente número*)",
+    data: "Qual a data do evento? (Ex: *01/06/2026* ou *9 de setembro*)",
+    horario: "Qual o horário do evento? (Ex: *17h30 às 20h*)",
+    local: "Qual o *bairro e a cidade* do evento? (Ex: *Flamengo, Rio de Janeiro*)",
+  };
+  await enviarPerguntaESalvar(chatId, session, PERG[falta] || PERG.local);
 }
 
 function linhasOpcoesConfServicos(qtd) {
@@ -6014,6 +6100,18 @@ const resumoEucaristia =
        novo (foi o que afundou o atendimento da ADERJ). */
     if (pareceBriefing(cru)) {
       session.orcamento.textoLivre = cru;
+      /* 13/11/2026 (caso Raquel/Petrobras): usa nome, servico, data, horario, convidados e local que vieram no texto e
+         pergunta SO o que falta. Dois eventos no mesmo texto (2 contagens de convidados) vai para a equipe. */
+      const rb = await aplicarBriefingLivre(chatId, session, cru);
+      if (rb.multiEvento) {
+        await sendTyping(chatId);
+        await sendText(chatId, "Recebi as informações dos *dois eventos*, obrigado! 😊 Vou passar para a nossa equipe montar as duas propostas e já te retornamos por aqui.");
+        try { await sendText(OPERADOR_TELEFONE_ID, `📋 *Briefing com 2 eventos* — ${chatId}\n\n${cru.slice(0, 600)}\n\nO bot NÃO montou orçamento: assuma o atendimento.`); } catch (e) {}
+        session.step = "aguardando_retorno";
+        return;
+      }
+      if (rb.util >= 2) { await completarBriefing(chatId, session); return; }
+      if (rb.nome) { await seguirDepoisDoNome(chatId, session); return; }
       /* 🤖 12/11/2026: com IA_EXTRACAO ligada, nome/perfil/servicos que a pessoa
          ja escreveu sao aproveitados (validados contra o catalogo); o resto fica
          em `sugestoesIA` so como pista. Desligada ou com falha = fluxo de sempre. */
@@ -6105,6 +6203,22 @@ const resumoEucaristia =
     /* 12/11/2026 (caso Leidiana): o cliente respondeu outra coisa. Em vez de
        repetir "quer um personalizado?", CONTINUA de onde parou: a resposta vale
        para a pergunta pendente. Passo do nome (ou comeco): faz a pergunta. */
+    /* 13/11/2026 (caso Raquel): a pessoa respondeu o convite com um TEXTO LONGO (data, horario, convidados...): usa o que veio. */
+    if (pareceBriefing(corpoMensagem)) {
+      const rb = await aplicarBriefingLivre(chatId, session, corpoMensagem);
+      if (rb.multiEvento) {
+        await sendTyping(chatId);
+        await sendText(chatId, "Recebi as informações dos *dois eventos*, obrigado! 😊 Vou passar para a nossa equipe montar as duas propostas e já te retornamos por aqui.");
+        try { await sendText(OPERADOR_TELEFONE_ID, `📋 *Briefing com 2 eventos* — ${chatId}
+
+${String(corpoMensagem).slice(0, 600)}
+
+O bot NÃO montou orçamento: assuma o atendimento.`); } catch (e) {}
+        session.step = "aguardando_retorno";
+        return;
+      }
+      if (rb.util >= 1 || rb.nome) { await completarBriefing(chatId, session); return; }
+    }
     const retC = resolverRetomada(session);
     if (retC.doZero || retC.passo === "orcamento_nome") {
       session.step = "orcamento_nome";
@@ -6654,6 +6768,54 @@ const resumoEucaristia =
   // ======================================================
   // ORÇAMENTO — CONFIRMAR A DATA / O BAIRRO DITOS EM TEXTO LIVRE (13/11/2026)
   // ======================================================
+  // ======================================================
+  // ORÇAMENTO — COMPLETAR SO O QUE FALTA DO BRIEFING (13/11/2026)
+  // ======================================================
+  if (session.step === "orcamento_completar") {
+    const orc = session.orcamento; const falta = orc._faltante; const txt = String(corpoMensagem || "").trim();
+    const recusar = async (m) => { await sendText(chatId, m); };
+    if (falta === "nome") {
+      const ex = extrairBriefing(txt).nome;
+      const nome = ex || (pareceBriefing(txt) || /\d/.test(txt) ? "" : capitalizarPalavras(txt));
+      if (!nome || nome.length < 2) return recusar("*⚠ Informe só o seu nome*, por favor.");
+      orc.nome = nome;
+    } else if (falta === "celebracao") {
+      const op = parseInt(txt, 10);
+      if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(op)) return recusar("*⚠ Digite o número da celebração na lista.*");
+      orc.celebracaoId = op; orc.celebracao = celebracoes[op];
+      await abrirColetaDoEvento(chatId, session);
+    } else if (falta === "convidados") {
+      const n = parseInt(txt.replace(/\D+/g, ""), 10);
+      if (!n || n < 1 || n > 5000) return recusar("*⚠ Digite só o número de convidados.* (ex: 120)");
+      orc.convidados = n;
+    } else if (falta === "data") {
+      const f = parsearDataFlex(txt); const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      if (!f) return recusar("*⚠ Data inválida!* Use *01/02/2026*, *01/02* ou por extenso, *9 de setembro*.");
+      if (f.date < hoje) return recusar("*⚠ A data do evento não pode estar no passado!*");
+      orc.data = f.str;
+    } else if (falta === "horario") {
+      const iv = normalizarIntervaloHorario(txt);
+      if (!iv) return recusar("*⚠ Horário inválido!* Use, por exemplo, *17h30 às 20h*.");
+      orc.horaInicio = iv.inicio; orc.horaFim = iv.fim;
+      orc.duracao = calcularDuracaoEvento(iv.inicio, iv.fim); orc.horas = Number.parseInt(orc.duracao, 10) || 2;
+    } else if (falta === "local_confirmar") {
+      const dl = session.dadosLivres || {}; const r = normalizarParaBusca(txt);
+      if (/^1$/.test(r) || /^(sim|isso|certo|e ai|e aqui)\b/.test(r)) { orc.bairro = dl.bairro; orc.cidade = dl.cidade; orc._localOrigem = "cliente"; }
+      else { orc._faltante = "local"; await completarBriefing(chatId, session); return; }
+    } else if (falta === "local" || falta === "cidade") {
+      if (txt.length < 2 || !/[a-zA-ZÀ-ÿ]/.test(txt)) return recusar("*⚠ Informe o bairro e a cidade* (ex: Flamengo, Rio de Janeiro).");
+      if (falta === "cidade") { orc.cidade = capitalizarPalavras(txt); }
+      else {
+        const [b1, c1] = txt.split(/\s*[,\-\/]\s*/);
+        orc.bairro = capitalizarPalavras(b1); orc._localOrigem = "cliente";
+        if (c1) orc.cidade = capitalizarPalavras(c1);
+        else { const p = await inferirCidadePorBairro(orc.bairro); if (p) { orc.bairro = p.bairro; orc.cidade = p.cidade; } else { orc._faltante = "cidade"; session.step = "orcamento_completar"; await enviarPerguntaESalvar(chatId, session, "Qual a *cidade* do evento?"); return; } }
+      }
+    }
+    await completarBriefing(chatId, session);
+    return;
+  }
+
   if (session.step === "orcamento_data_confirmar") {
     const r = normalizarParaBusca(String(corpoMensagem || "")).trim();
     const dl = session.dadosLivres || {};
