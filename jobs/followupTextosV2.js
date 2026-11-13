@@ -99,10 +99,26 @@ function textoCorporativo(lead, h, agencia) {
 
 /* h = ajudantes de followupLeads.js (blocoPreco, montarMensagemFollowup...).
    Passados por parametro para nao criar require circular. */
-function montarMensagemV2(lead, h) {
+function corpoV2(lead, h) {
   const perfil = lead.perfil === "empresa" || lead.perfil === "agencia" ? lead.perfil : "social";
   const corpo  = perfil === "social" ? textoSocial(lead, h) : textoCorporativo(lead, h, perfil === "agencia");
-  return corpo.replace(/\s+$/, "") + RESPOSTAS_RAPIDAS;
+  return corpo.replace(/\s+$/, "");
 }
 
-module.exports = { montarMensagemV2, RESPOSTAS_RAPIDAS, TROCAS_SOCIAL };
+function montarMensagemV2(lead, h) {
+  return corpoV2(lead, h) + RESPOSTAS_RAPIDAS;
+}
+
+/* 13/11/2026 (pedido do Mario): o follow-up sai com BOTÕES, "Quero contratar" primeiro.
+   O sendButtonList escreve "*1* - Quero contratar..." no corpo (quem não vê botão
+   responde o número) e o toque no botão chega ao bot como "1", "2" ou "3". */
+const BOTOES_RESPOSTA = [
+  { id: "1", label: "Quero contratar" },
+  { id: "2", label: "Tenho uma dúvida" },
+  { id: "3", label: "Agora não" },
+];
+function montarBotoesV2(lead, h) {
+  return { pergunta: corpoV2(lead, h) + "\n\nPara agilizar, toque numa opção:", opcoes: BOTOES_RESPOSTA };
+}
+
+module.exports = { montarMensagemV2, montarBotoesV2, BOTOES_RESPOSTA, RESPOSTAS_RAPIDAS, TROCAS_SOCIAL };

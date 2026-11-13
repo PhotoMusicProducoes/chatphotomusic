@@ -77,7 +77,8 @@ function sessao(extra) {
   checar("lembrete do menu ainda sai para quem so sumiu", /Vamos montar o seu or/.test(registro[0] || ""), registro.join(" | "));
 
   console.log("\n— 'AGORA NAO' DESLIGA A MARCA DO MENU —");
-  const fonte = fs.readFileSync(require("path").join(__dirname, "index.js"), "utf8");
+  // 13/11/2026: normaliza a quebra de linha (o git do Windows grava CRLF ao trocar de ramo; o trecho procurado e LF)
+  const fonte = fs.readFileSync(require("path").join(__dirname, "index.js"), "utf8").replace(/\r\n/g, "\n");
   const ini = fonte.indexOf('if (session.step === "lembrete_retomar") {');
   const trecho = fonte.slice(ini, fonte.indexOf('if (session.step === "orcamento_nome_confirmar")', ini));
   checar("ramo 'Agora nao' zera menuInicialEnviado",

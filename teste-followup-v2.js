@@ -17,7 +17,8 @@ const utils = require("./utils/index.js");
 utils.sendText       = async (c, t) => { enviados.push([String(c), String(t)]); return true; };
 utils.sendTyping     = async () => {};
 utils.sendFileByUrl  = async () => true;
-utils.sendButtonList = async (c, t) => { enviados.push([String(c), "BOTOES: " + t]); return true; };
+// igual ao sendButtonList de verdade: o corpo leva as opcoes numeradas (quem nao ve botao responde o numero)
+utils.sendButtonList = async (c, t, o) => { enviados.push([String(c), "BOTOES: " + t + "\n\n" + (o || []).map(x => `*${x.id}* - ${x.label}`).join("\n")]); return true; };
 utils.sendOptionList = async (c, t) => { enviados.push([String(c), "LISTA: " + t]); return true; };
 utils.enviarPdfComLink = async () => {};
 require("./utils/intervaloEnvio.js").esperaEntreEnvios = () => 0;
@@ -87,6 +88,7 @@ const paraOperador = () => enviados.filter(e => e[0] === OPERADOR).map(e => e[1]
   checar("v2 social: serviço, celebração, data e valor reais", /Foto Cabine|Aniversário de 15 anos/.test(soc) && /20\/12\/2026/.test(soc) && /R\$/.test(soc), soc);
   checar("v2 social: termina com 1 - Quero contratar / 2 - Tenho uma dúvida / 3 - Agora não", /\*1\* - Quero contratar\n\*2\* - Tenho uma dúvida\n\*3\* - Agora não$/.test(soc), soc.slice(-120));
   checar("v2: telefone marcado para ler o 1/2/3", !!rr.marcaAtiva("5521990001111"));
+  checar("v2: follow-up sai com BOTÕES e o primeiro é 'Quero contratar' (pedido do Mario)", /^BOTOES: /.test(soc) && /\n\*1\* - Quero contratar\n/.test(soc), soc.slice(0, 40));
 
   // Empresa e agencia
   for (const [perfil, emp, re] of [["empresa", "Acme S.A.", /aprovação interna/], ["agencia", "Agência Lua", /seu cliente/]]) {
