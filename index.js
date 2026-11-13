@@ -47,6 +47,7 @@ const {
   criarRoteador: criarRoteadorIA,
   iaLigada: iaLigadaRoteador,
 } = require("./utils/roteadorIA.js");
+const { criarExtrator: criarExtratorIA } = require("./utils/iaExtrair.js");
 
 const {
   enviarFotoCabine,
@@ -1322,6 +1323,122 @@ async function seguirParaServicos(chatId, session) {
   await enviarPerguntaESalvar(chatId, session, textoMenuServicosPrevia());
 }
 
+/* ======================================================
+   💬 RAPHA, ATENDIMENTO POR PERFIL + CLIENTE QUE VOLTA (12/11/2026, NAZ)
+   ======================================================
+   Perfil: festa/evento pessoal (social), empresa ou agencia. Empresa e agencia
+   nao veem o menu de celebracoes (e sempre Evento Corporativo) e informam o nome
+   da empresa/agencia. Quem volta confirma ou corrige nome+perfil+empresa em UMA
+   pergunta, sem recomecar. Preco, data e disponibilidade seguem no PhotoMusic Pro. */
+const NOMES_PERFIL = { social: "Festa ou evento pessoal", empresa: "Empresa", agencia: "Agência de eventos" };
+
+function perfilDaResposta(texto) {
+  const t = normalizarParaBusca(String(texto || "")).trim();
+  if (/^1$/.test(t) || /(festa|pessoal|particular|casamento|aniversario|familia|formatura|social)/.test(t)) return "social";
+  if (/^2$/.test(t) || /(empresa|corporativ|cnpj|institucional)/.test(t)) return "empresa";
+  if (/^3$/.test(t) || /(agencia|produtora|cerimonial|assessoria)/.test(t)) return "agencia";
+  return null;
+}
+
+/** Guarda o que vale para o PROXIMO pedido do mesmo cliente (nunca data, hora ou local). */
+function lembrarCliente(session) {
+  const o = session && session.orcamento;
+  if (!o || !o.nome || !o.perfil) return;
+  session.clienteConhecido = {
+    nome: o.nome,
+    perfil: o.perfil,
+    empresa: o.empresa || "",
+    ondeEncontrou: o.ondeEncontrou || (session.clienteConhecido && session.clienteConhecido.ondeEncontrou) || "",
+    atualizadoEm: Date.now(),
+  };
+}
+
+async function perguntarPerfil(chatId, session) {
+  session.step = "orcamento_perfil";
+  const txt = `Obrigado, *${session.orcamento.nome}*! ❤️ Para eu te atender do jeito certo: o orçamento é para quem?`;
+  await sendTyping(chatId);
+  await sendButtonList(chatId, txt, [
+    { id: "1", label: "Festa / evento" },
+    { id: "2", label: "Empresa" },
+    { id: "3", label: "Agência de eventos" },
+  ]);
+  session.ultimaPerguntaNaoRespondida = txt + "\n*1* - Festa ou evento pessoal\n*2* - Empresa\n*3* - Agência de eventos";
+}
+
+/** Depois do nome: se o perfil ja e conhecido (IA ou cadastro anterior), pula a pergunta. */
+async function seguirDepoisDoNome(chatId, session) {
+  if (session.orcamento.perfil) { await seguirParaServicos(chatId, session); return; }
+  await perguntarPerfil(chatId, session);
+}
+
+/** Depois dos servicos: social ve o menu de celebracoes; empresa/agencia vao direto para o corporativo. */
+async function seguirParaCelebracao(chatId, session) {
+  const perfil = session.orcamento.perfil || "social";
+  if (perfil === "social") {
+    session.step = "orcamento_celebracao";
+    await sendTyping(chatId);
+    await sendOptionList(
+      chatId,
+      "Perfeito! Agora me conta: o que vai celebrar?",
+      CELEBRACOES.map(c => ({ id: String(c.id), title: c.label })),
+      { title: "Celebrações", buttonLabel: "Ver opções" }
+    );
+    return;
+  }
+  session.orcamento.celebracao = celebracoes[8];
+  session.orcamento.celebracaoId = 8;
+  await abrirColetaDoEvento(chatId, session);
+  if (session.orcamento.reusoConfirmado && session.orcamento.empresa) {
+    session.step = "orcamento_convidados";
+    await enviarPerguntaESalvar(chatId, session, "Quantos convidados? (*Digite somente número*)");
+    return;
+  }
+  session.step = "orcamento_empresa";
+  await enviarPerguntaESalvar(chatId, session, perfil === "agencia"
+    ? "Qual o *nome da agência*? (se já souber, pode dizer também a empresa do seu cliente; para não informar, digite *pular*)"
+    : "Qual o *nome da empresa*? (se preferir não informar, digite *pular*)");
+}
+
+async function perguntarDetalhes(chatId, session) {
+  session.step = "orcamento_detalhes";
+  await sendTyping(chatId);
+  await sendButtonList(
+    chatId,
+    "Deseja informar mais detalhes do seu evento?",
+    [{ id: "1", label: "Sim" }, { id: "2", label: "Não" }]
+  );
+  session.ultimaPerguntaNaoRespondida = "Deseja informar mais detalhes do seu evento?\n*1* - Sim\n*2* - Não";
+}
+
+/** Cliente que volta: UMA pergunta para confirmar ou corrigir. */
+async function oferecerReuso(chatId, session) {
+  const c = session.clienteConhecido;
+  session.step = "orcamento_reuso";
+  const quem = (c.perfil === "social" || !c.empresa)
+    ? NOMES_PERFIL[c.perfil]
+    : `${NOMES_PERFIL[c.perfil]} (${c.empresa})`;
+  const txt = `Que bom ter você de volta, *${c.nome}*! ❤️\n\nGuardei seus dados da última vez:\n• Nome: ${c.nome}\n• Tipo: ${quem}\n\nPosso usar esses dados?`;
+  await sendTyping(chatId);
+  await sendButtonList(chatId, txt, [
+    { id: "1", label: "Sim, usar" },
+    { id: "2", label: "Corrigir dados" },
+  ]);
+  session.ultimaPerguntaNaoRespondida = txt + "\n*1* - Sim, usar\n*2* - Corrigir dados";
+}
+
+/* 🤖 IA: extrair da mensagem livre (desligada por padrao: IA_EXTRACAO=1). So ENTENDE;
+   qualquer falha devolve null e o fluxo tradicional segue. */
+let _extratorIA = null;
+async function extrairDaMensagemLivre(texto) {
+  try {
+    if (!_extratorIA) _extratorIA = criarExtratorIA({ servicos: SERVICOS_NOMES });
+    return await _extratorIA.extrair(texto);
+  } catch (e) {
+    console.warn(`⚠️ IA extração: ${e.message}`);
+    return null;
+  }
+}
+
 function linhasOpcoesConfServicos(qtd) {
   return "*1* - Sim, é isso\n*2* - Trocar serviço\n*3* - Adicionar outro serviço" + (qtd > 1 ? "\n*4* - Remover um serviço" : "");
 }
@@ -1364,6 +1481,9 @@ function notaPreliminar(orc, curto) {
   if (semLocal) n += "\n🚗 O *deslocamento não está incluído*: ele é calculado quando você me disser o local do evento.";
   return n;
 }
+
+/* Selecao do preliminar enxuto: Foto Cabine (1), Totem Retro (13), Plataforma 360 (3) e Som e DJ (7, so nas combinacoes). */
+const SERVICOS_ENXUTO = [1, 13, 3, 7];
 
 function registrarServicoEnviado(session, servico) {
   if (!session.orcamento.servicosEnviados.includes(servico)) {
@@ -1803,6 +1923,10 @@ async function executarOpcaoMenu(chatId, session, opcaoMenu, chatIdNormalizado) 
       await sendText(chatId, MSG_CARTAO_PARCELAS);
 
       await sendTyping(chatId);
+      if (session.clienteConhecido && session.clienteConhecido.nome && session.clienteConhecido.perfil) {
+        await oferecerReuso(chatId, session);
+        return;
+      }
       await sendText(chatId, "Perfeito! Vamos começar seu orçamento.\nQual o seu nome?");
       return;
 
@@ -2361,7 +2485,7 @@ async function tentarRoteadorIA(chatId, session, texto, opcoes = {}) {
 
   if (r.acao === "servicos") {
     if (opcoes.permitirServicos === false) return false;
-    await enviarOrcamentoPadraoDetectado(chatId, session, r.servicos);
+    await iniciarOrcamentoComServicosDitos(chatId, session, r.servicos);
     return true;
   }
 
@@ -5100,7 +5224,7 @@ async function handleIncomingMessage(message) {
     if (opcaoMenu === "") {
       const _serv1 = detectarServicosNoTexto(texto);
       if (_serv1.length) {
-        await enviarOrcamentoPadraoDetectado(chatId, session, _serv1);
+        await iniciarOrcamentoComServicosDitos(chatId, session, _serv1);
         return;
       }
       /* 🤖 O detector não achou palavra nenhuma. A IA ainda pode entender
@@ -5127,7 +5251,7 @@ async function handleIncomingMessage(message) {
   if (opcaoMenu === "") {
     const _serv2 = detectarServicosNoTexto(texto);
     if (_serv2.length) {
-      await enviarOrcamentoPadraoDetectado(chatId, session, _serv2);
+      await iniciarOrcamentoComServicosDitos(chatId, session, _serv2);
       return;
     }
   }
@@ -5181,7 +5305,7 @@ async function handleIncomingMessage(message) {
     const _servConf = detectarServicosNoTexto(corpoMensagem || "");
     if (_servConf.length) {
       session.opcaoMenuPendente = null;
-      await enviarOrcamentoPadraoDetectado(chatId, session, _servConf);
+      await iniciarOrcamentoComServicosDitos(chatId, session, _servConf);
       return;
     }
     if (await tentarRoteadorIA(chatId, session, corpoMensagem || "")) {
@@ -5489,6 +5613,47 @@ const resumoEucaristia =
   // ======================================================
   // ORÇAMENTO — NOME
   // ======================================================
+  // ======================================================
+  // ORÇAMENTO — CLIENTE QUE VOLTA: CONFIRMAR OU CORRIGIR (12/11/2026)
+  // ======================================================
+  if (session.step === "orcamento_reuso") {
+    const t = normalizarParaBusca(String(corpoMensagem || "")).trim();
+    const usar = /^1$/.test(t) || /^(sim|isso|pode|ok|certo|usar|esses|mesmos)\b/.test(t);
+    const corrigir = /^2$/.test(t) || /(corrig|mudar|trocar|outro|nao|errado|alterar)/.test(t);
+    const c = session.clienteConhecido || {};
+    if (usar && !corrigir && c.nome && c.perfil) {
+      session.orcamento.nome = c.nome;
+      session.orcamento.perfil = c.perfil;
+      if (c.empresa) session.orcamento.empresa = c.empresa;
+      session.orcamento.reusoConfirmado = true;
+      await seguirParaServicos(chatId, session);
+      return;
+    }
+    if (corrigir) {
+      session.step = "orcamento_nome";
+      await sendTyping(chatId);
+      await enviarPerguntaESalvar(chatId, session, "Sem problemas! Qual o seu nome?");
+      return;
+    }
+    await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim, usar\n*2* - Corrigir dados");
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — PERFIL: FESTA, EMPRESA OU AGÊNCIA (12/11/2026)
+  // ======================================================
+  if (session.step === "orcamento_perfil") {
+    const perfil = perfilDaResposta(corpoMensagem);
+    if (!perfil) {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Festa ou evento pessoal\n*2* - Empresa\n*3* - Agência de eventos");
+      return;
+    }
+    session.orcamento.perfil = perfil;
+    lembrarCliente(session);
+    await seguirParaServicos(chatId, session);
+    return;
+  }
+
   if (session.step === "orcamento_nome") {
     const cru = (corpoMensagem || "").trim();
 
@@ -5504,6 +5669,23 @@ const resumoEucaristia =
        novo (foi o que afundou o atendimento da ADERJ). */
     if (pareceBriefing(cru)) {
       session.orcamento.textoLivre = cru;
+      /* 🤖 12/11/2026: com IA_EXTRACAO ligada, nome/perfil/servicos que a pessoa
+         ja escreveu sao aproveitados (validados contra o catalogo); o resto fica
+         em `sugestoesIA` so como pista. Desligada ou com falha = fluxo de sempre. */
+      const ia = await extrairDaMensagemLivre(cru);
+      if (ia) {
+        session.orcamento.sugestoesIA = { celebracao: ia.celebracao, convidados: ia.convidados, local: ia.local, dataTexto: ia.dataTexto };
+        if (ia.perfil && !session.orcamento.perfil) session.orcamento.perfil = ia.perfil;
+        const jaTem = Array.isArray(session.orcamento.servicosPrevios) && session.orcamento.servicosPrevios.length > 0;
+        if (ia.servicos.length && !jaTem) session.orcamento.servicosPrevios = ia.servicos;
+        if (ia.nome) {
+          session.orcamento.nome = capitalizarPalavras(ia.nome);
+          await sendTyping(chatId);
+          await sendText(chatId, "Recebi todas as informações, obrigado! 😊 Já anotei aqui.");
+          await seguirDepoisDoNome(chatId, session);
+          return;
+        }
+      }
       await sendTyping(chatId);
       await sendText(chatId,
         "Recebi todas as informações, obrigado! 😊 Já anotei aqui.\n\n" +
@@ -5525,10 +5707,17 @@ const resumoEucaristia =
       return;
     }
 
+    /* 12/11/2026 (caso Leidiana): "80 pessoas" virou "Seu nome é 80 Pessoas?". Numero,
+       "pessoas", "convidados" ou "horas" nao e nome: pede so o nome (sem perder a resposta). */
+    if (/\d/.test(cru) || /\b(pessoas?|convidados?|horas?|hrs?)\b/i.test(normalizarParaBusca(cru))) {
+      await sendText(chatId, "Essa informação eu pergunto daqui a pouco, combinado? 😊 Agora me diga só o *seu nome*, por favor.");
+      return;
+    }
+
     session.orcamento.nome = nome;
     /* 💬 12/11/2026 (Rapha, conversao): sem o "Seu nome e X?". O nome aparece no
        resumo final e pode ser corrigido la (escrevendo "nome" na tela de correcao). */
-    await seguirParaServicos(chatId, session);
+    await seguirDepoisDoNome(chatId, session);
     return;
   }
 
@@ -5699,16 +5888,8 @@ const resumoEucaristia =
       return;
     }
 
-    session.step = "orcamento_celebracao";
-    await sendTyping(chatId);
-    // 9 opções: cabe na lista (limite 10). O menu numerado vai no corpo pelo
-    // sendOptionList, então quem não vê a lista digita como sempre.
-    await sendOptionList(
-      chatId,
-      "Perfeito! Agora me conta: o que vai celebrar?",
-      CELEBRACOES.map(c => ({ id: String(c.id), title: c.label })),
-      { title: "Celebrações", buttonLabel: "Ver opções" }
-    );
+    // social: menu de celebracoes (9 opcoes, cabe na lista); empresa/agencia: direto ao corporativo
+    await seguirParaCelebracao(chatId, session);
     return;
   }
 
@@ -5806,6 +5987,7 @@ const resumoEucaristia =
     }
 
     session.orcamento.empresa = pulou ? "" : capitalizarPalavras(txt);
+    lembrarCliente(session);
     session.step = "orcamento_convidados";
 
     await enviarPerguntaESalvar(chatId, session, "Quantos convidados? (*Digite somente número*)");
@@ -6448,6 +6630,12 @@ const resumoEucaristia =
       session.orcamento.cidade
     ].filter(Boolean).join(", ");
 
+    // cliente que voltou e confirmou os dados: a origem ja e conhecida
+    if (session.orcamento.reusoConfirmado && session.clienteConhecido && session.clienteConhecido.ondeEncontrou) {
+      session.orcamento.ondeEncontrou = session.clienteConhecido.ondeEncontrou;
+      await perguntarDetalhes(chatId, session);
+      return;
+    }
     session.step = "orcamento_onde_encontrou";
     await enviarPerguntaESalvar(chatId, session, "Onde nos encontrou?");
     return;
@@ -6458,18 +6646,8 @@ const resumoEucaristia =
   // ======================================================
   if (session.step === "orcamento_onde_encontrou") {
     session.orcamento.ondeEncontrou = capitalizarPalavras(corpoMensagem);
-    session.step = "orcamento_detalhes";
-
-    await sendTyping(chatId);
-    await sendButtonList(
-      chatId,
-      "Deseja informar mais detalhes do seu evento?",
-      [
-        { id: "1", label: "Sim" },
-        { id: "2", label: "Não" }
-      ]
-    );
-    session.ultimaPerguntaNaoRespondida = "Deseja informar mais detalhes do seu evento?\n*1* - Sim\n*2* - Não";
+    lembrarCliente(session);
+    await perguntarDetalhes(chatId, session);
     return;
   }
 
@@ -7064,6 +7242,40 @@ module.exports = {
 // ===================================================
 
 /**
+ * 12/11/2026 (caso Leidiana): quem JA DISSE o que quer, em texto livre
+ * ("qual o valor da foto lembranca e da foto cabine"), nao escolhe servico de novo,
+ * mas PRECISA passar os dados do evento para o orcamento sair personalizado. Antes o
+ * bot mandava na hora o orcamento-base (200 convidados, 5h, "Outros"), e as respostas
+ * que ela digitava durante o envio ("80 pessoas", "4 horas") se perdiam. Agora abre o
+ * questionario com o servico ja anotado (a confirmacao com trocar/adicionar continua).
+ * Quem chega pela PAGINA DO SERVICO ou pelo CATALOGO continua recebendo o valor na hora.
+ */
+async function iniciarOrcamentoComServicosDitos(chatId, session, ids) {
+  const lista = (ids || []).slice(0, 6);
+  const nomes = lista.map(id => SERVICOS_NOMES[id]).filter(Boolean);
+  const comE = nomes.length > 1
+    ? nomes.slice(0, -1).join(", ") + " e " + nomes[nomes.length - 1]
+    : (nomes[0] || "nosso serviço");
+  console.log(`🔎 Serviço citado por extenso por ${chatId}: ${lista.join(", ")} (${comE}) - abrindo o questionário`);
+
+  session.orcamento = { servicosEnviados: [], servicosPrevios: [...lista] };
+  session.servicosEnviados = [];
+  session.lembreteOrcamentoEnviado = false;
+  session.optOutLembretes = false;
+
+  await sendTyping(chatId);
+  await sendText(chatId,
+    `${saudacaoPorHora()}! ❤️\n\n` +
+    `Vi que você quer saber sobre *${comE}*. Para o valor sair *feito para o seu evento* ` +
+    `(e não um valor genérico), preciso de algumas informações. São perguntas rapidinhas! 😊`
+  );
+  await sendTyping(chatId);
+  await sendText(chatId, MSG_CARTAO_PARCELAS);
+  session.step = "orcamento_nome";
+  await enviarPerguntaESalvar(chatId, session, PERGUNTA_NOME);
+}
+
+/**
  * ORÇAMENTO PADRÃO DO SERVIÇO QUE O CLIENTE CITOU POR EXTENSO.
  *
  * Reaproveita inteiro o envio do lembrete de 1h (mesmos fallbacks: até 200
@@ -7204,7 +7416,13 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
   const saud  = saudacaoPorHora();
   const ola   = nome ? `${saud}, *${nome}*!` : `${saud}!`;
 
-  const lista = (Array.isArray(listaServicos) && listaServicos.length) ? listaServicos : [...TODOS_SERVICOS];
+  /* 🎯 PRELIMINAR ENXUTO (12/11/2026, aprovado pelo ChatGPT): quem abandonou SEM escolher servico recebe
+     3 principais (Foto Cabine, Totem Retro, Plataforma 360) + 5 combinacoes, em 4h e 5h, em vez do catalogo
+     inteiro. So no job de abandono (opcoes.enxuto), so social. Quem escolheu servico segue so com o que escolheu. */
+  const semListaPropria = !(Array.isArray(listaServicos) && listaServicos.length);
+  const corporativo = orc.perfil === "empresa" || orc.perfil === "agencia" || (!estimados.celebracaoId && Number(orc.celebracaoId) === 8);
+  const enxuto = !!opcoes.enxuto && semListaPropria && !corporativo;
+  const lista = enxuto ? [...SERVICOS_ENXUTO] : (semListaPropria ? [...TODOS_SERVICOS] : listaServicos);
 
   try {
     if (envioFoiInterrompido(chatId)) {
@@ -7224,7 +7442,7 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
     const gerados = lista.filter(id => usaOrcamentoGerado(id, clb));
     gerados.forEach(id => registrarServicoEnviado(session, id));
     try {
-      if (gerados.length) await enviarOrcamentoGerado(chatId, session, lista);
+      if (gerados.length) await enviarOrcamentoGerado(chatId, session, lista, enxuto ? { modelo: "preliminar_enxuto" } : {});
     } catch (e) {
       console.error("⚠️ orçamento gerado não saiu (preliminar):", e.message);
     }

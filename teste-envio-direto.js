@@ -79,7 +79,7 @@ global.Intl.DateTimeFormat = function (l, o) {
   registro.length = 0;
   await job.executarLembreteOrcamento();
   console.log("   ordem: " + registro.join(" | "));
-  const iArq = idx(/^TEXTO: 💰 Segue o arquivo/), iAval = idx(/^AVALIACOES/);
+  const iArq = idx(/^TEXTO: 💰 Segue (o arquivo|uma seleção)/), iAval = idx(/^AVALIACOES/);
   // 12/11/2026: abre com a saudacao + nota do preliminar e o PDF vem PRIMEIRO; avaliacoes/depoimentos so sob pedido
   checar("o PDF vem antes de qualquer material promocional", iArq >= 0 && (iAval === -1 || iAval > iArq), registro.join(" | "));
   checar("sem abertura 'Vi que a gente não terminou'", idx(/não terminou/) === -1);
@@ -87,8 +87,9 @@ global.Intl.DateTimeFormat = function (l, o) {
   checar("sem foto de serviço", idx(/^ARQUIVO: .*\.(jpg|png)/i) === -1);
   checar("avaliações NÃO saem no envio (só sob pedido)", iAval === -1, `avaliações ${iAval}`);
   checar("termina no convite do orçamento PRELIMINAR", /^BOTOES: Este é um orçamento \*preliminar\*/.test(registro[registro.length - 1] || ""), registro[registro.length - 1]);
-  checar("o arquivo cita todos os serviços", /Foto Cabine.*Totem Retrô/.test(registro[iArq] || ""), registro[iArq]);
-  checar("serviços marcados como enviados", (sessions[C1].orcamento.servicosEnviados || []).length >= 8);
+  // 12/11/2026: sem servico escolhido o preliminar e ENXUTO (principais + combinacoes, 4h e 5h), nao o catalogo inteiro
+  checar("sem serviço escolhido: a mensagem anuncia a seleção enxuta (principais e combinações)", /serviços principais e combinações/.test(registro[iArq] || ""), registro[iArq]);
+  checar("serviços da seleção marcados como enviados (4)", (sessions[C1].orcamento.servicosEnviados || []).length === 4, JSON.stringify(sessions[C1].orcamento.servicosEnviados));
 
   console.log("\n— 3) SÓ MANDOU MEME/EMOJI: NÃO RECEBE ORÇAMENTO —");
   const C2 = "5521900000002@c.us";
@@ -105,7 +106,7 @@ global.Intl.DateTimeFormat = function (l, o) {
   sessions[C2].clienteEscreveuTexto = undefined; // sessão antiga, de antes da mudança
   registro.length = 0;
   await job.executarLembreteOrcamento();
-  checar("sessão antiga (sem o campo) segue como era", idx(/💰 Segue o arquivo/) >= 0);
+  checar("sessão antiga (sem o campo) segue como era", idx(/💰 Segue (o arquivo|uma seleção)/) >= 0);
   delete sessions[C2];
 
   console.log("\n— 2) PEDIU TODOS OS SERVIÇOS NA CONVERSA —");
@@ -117,7 +118,7 @@ global.Intl.DateTimeFormat = function (l, o) {
   registro.length = 0;
   await bot.enviarMultiplosOrcamentos(C3, [1, 13, 2, 3, 4, 5, 6, 7], { todos: true });
   console.log("   ordem: " + registro.join(" | "));
-  const tAval = idx(/^AVALIACOES/), tArq = idx(/^TEXTO: 💰 Segue o arquivo/);
+  const tAval = idx(/^AVALIACOES/), tArq = idx(/^TEXTO: 💰 Segue (o arquivo|uma seleção)/);
   checar("o '💰 Segue o arquivo' vem ANTES das avaliações (PDF primeiro)", tArq >= 0 && (tAval === -1 || tAval > tArq), registro.slice(0, 4).join(" | "));
   checar("sem nome do serviço (<<<< >>>>)", idx(/<<<</) === -1);
   checar("GuestBook uma vez só (aniversário infantil)", registro.filter(l => /GuestBook/.test(l)).length === 1);

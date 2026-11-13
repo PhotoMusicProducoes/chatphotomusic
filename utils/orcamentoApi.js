@@ -72,7 +72,9 @@ function datasDoEvento(orc) {
  * @returns {Promise<{id:number,url:string,total:number,horas:number,servicos:string[],ignorados:string[]}>}
  * @throws  Error com .codigo quando o endpoint recusa (data_no_passado, etc.)
  */
-async function gerarOrcamento(session, chatId, slugs) {
+/* 12/11/2026: `opcoes.modelo = "preliminar_enxuto"` pede o PDF enxuto (quem abandonou sem escolher servico).
+   O plugin so aplica dentro do escopo (social, 1 dia, sem horario); fora dele ou em falha, devolve o PDF de sempre. */
+async function gerarOrcamento(session, chatId, slugs, opcoes = {}) {
   if (!PM_API_KEY) {
     const e = new Error("PM_API_KEY não configurada no .env");
     e.codigo = "sem_chave";
@@ -114,7 +116,7 @@ async function gerarOrcamento(session, chatId, slugs) {
   console.log(`🧾 [orcamentoApi] Pedindo orçamento de [${slugs.join(", ")}] para ${chatId}`);
 
   try {
-    const resp = await axios.post(`${PM_API_BASE}/orcamento`, corpo, {
+    const resp = await axios.post(`${PM_API_BASE}/orcamento`, opcoes.modelo ? Object.assign({}, corpo, { modelo: opcoes.modelo }) : corpo, {
       timeout: TIMEOUT_MS,
       headers: {
         "X-PM-API-Key": PM_API_KEY,

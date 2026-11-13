@@ -202,7 +202,7 @@ async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
   // cliente lia "Segue o arquivo" seguido de "Estou finalizando".
   let dados;
   try {
-    dados = await gerarOrcamento(session, chatId, slugs);
+    dados = await gerarOrcamento(session, chatId, slugs, opcoes.modelo ? { modelo: opcoes.modelo } : {});
   } catch (erro) {
     console.error(`🚨 [orcamentoGerado] Falhou para ${chatId} [${slugs.join(", ")}]: ${erro.codigo} — ${erro.message}`);
 
@@ -252,7 +252,11 @@ async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
       // Substitui a anterior: com mais serviços o desconto entra e o total cai.
       ? `💰 Segue o orçamento *atualizado*, agora com *${nomes}* juntos 📸✨\n\n` +
         `_Esta proposta substitui a anterior e já vem com o desconto por contratar mais de um serviço._`
-      : `💰 Segue o arquivo com o orçamento de *${nomes}* 📸✨`
+      : opcoes.modelo === "preliminar_enxuto"
+        ? `💰 Segue uma seleção com os nossos *serviços principais e combinações*, com opções de *4 e 5 horas* 📸✨
+
+_Os demais serviços (Totem Fotográfico, Foto Paparazzi, Foto Lembrança e Cobertura) eu envio quando você pedir._`
+        : `💰 Segue o arquivo com o orçamento de *${nomes}* 📸✨`
   );
 
   if (estaPausado(chatId)) return false;

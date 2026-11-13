@@ -58,6 +58,8 @@ async function cliente(texto) {
   await cliente("1");
   await cliente("1");
   await cliente("Marlon");
+  checar("pergunta o PERFIL (festa, empresa ou agência) antes dos serviços", sess().step === "orcamento_perfil", sess().step);
+  await cliente("1"); // festa ou evento pessoal
   checar("NÃO pergunta 'Seu nome é Marlon?' (confirmação de nome removida)", !todas.some(t => /Seu nome é/.test(t)), todas.join(" | ").slice(0, 200));
   checar("vai direto para a escolha dos serviços", sess().step === "orcamento_servicos_previa", sess().step);
   await cliente("0");

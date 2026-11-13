@@ -10,6 +10,9 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// false enquanto o audio antigo (1100 avaliacoes) nao e trocado pelo novo (mais de 1700)
+const ENVIAR_AUDIO_INFOEMPRESA = false;
+
 const urlsAvaliacao = {
   infoempresa: urlBase + "infoempresa.mp3",
   avaliacao1: urlBase + "avaliacao1.jpg",
@@ -50,11 +53,16 @@ async function enviarAvaliacaoEmpresa(chatId, sessions) {
       await sendText(chatId, "*Desejo que Deus abençoe grandiosamente, toda preparação para este dia super especial!!!🙏🙏🙏*");
       await delay(600);
 
+      /* 12/11/2026: o 1o audio (infoempresa.mp3) diz "1100 avaliacoes" e hoje sao mais de 1700.
+         Fica DESLIGADO ate o Mario gravar o novo: subir o novo infoempresa.mp3 na pasta de
+         midia e trocar ENVIAR_AUDIO_INFOEMPRESA para true (ou apagar este bloco). */
+      if (ENVIAR_AUDIO_INFOEMPRESA) {
       await sendTyping(chatId);
       await delay(300);
       if (interromper()) return;
       await sendFileByUrl(chatId, urlsAvaliacao.infoempresa);
       await delay(800);
+      }
 
       await sendTyping(chatId);
       await delay(300);

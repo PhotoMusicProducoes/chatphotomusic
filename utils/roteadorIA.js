@@ -270,6 +270,7 @@ async function chamarModeloReal(instrucao, mensagemCliente) {
 
 module.exports = {
   criarRoteador,
+  obterCliente,
   iaLigada,
   // expostos para o banco de medição (teste-roteador-ia.js)
   validar,

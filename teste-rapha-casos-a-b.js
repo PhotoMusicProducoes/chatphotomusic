@@ -63,7 +63,7 @@ function zerar() { Object.keys(sessions).forEach(k => delete sessions[k]); todas
 (async () => {
   console.log("\n— CASO A: serviço errado, depois trocar, acrescentar e remover (sem reiniciar) —");
   zerar();
-  await ate(["oi", "1", "1", "Maria"]);
+  await ate(["oi", "1", "1", "Maria", "1"]);
   const perguntasDeNomeAntes = todas.filter(t => /Qual o seu nome/.test(t)).length;
   await cliente("0"); // Foto Cabine (errado)
   checar("mostra a confirmação do serviço escolhido", sess().step === "orcamento_servicos_confirmar" && JSON.stringify(sess().orcamento.servicosPrevios) === "[1]", sess().step);
@@ -87,7 +87,7 @@ function zerar() { Object.keys(sessions).forEach(k => delete sessions[k]); todas
 
   console.log("\n— CASO B (Leidiana, orç. 598): preliminar, volta ao atendimento e conclui —");
   zerar();
-  await ate(["oi", "1", "1", "Leidiana", "0,5"]);
+  await ate(["oi", "1", "1", "Leidiana", "1", "0,5"]);
   const rConf = todas[todas.length - 1];
   checar("a confirmação lista Foto Cabine e Foto Lembrança", /Foto Cabine/.test(rConf) && /Foto Lembrança/.test(rConf), rConf);
   await cliente("1"); // confirma os serviços; agora pergunta a celebração

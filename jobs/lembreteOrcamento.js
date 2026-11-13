@@ -67,6 +67,9 @@ const ANTECIPA_DIAS_ANTES = 3; // a <=3 dias do evento, dispara a última chamad
 // aqui e ficou em silêncio é um abandono recuperável.
 const PASSOS_QUESTIONARIO = new Set([
   "orcamento_nome", "orcamento_nome_confirmar",
+  // 🚨 Passos novos (12/11/2026): perfil (festa/empresa/agência) e "cliente que
+  // volta" confirmando os dados. Entram AQUI na hora em que nascem (lição de 15/08).
+  "orcamento_perfil", "orcamento_reuso",
   // 🚨 Passos novos (22/10/2026): os serviços agora são escolhidos LOGO DEPOIS
   // do nome, e a cidade ganhou uma confirmação. Entram aqui na mesma hora em
   // que nascem (a lição de 15/08).
@@ -141,7 +144,9 @@ function textoEscolherServico() {
 const PERGUNTA_POR_PASSO = {
   "orcamento_nome": "Qual o seu nome?",
   "orcamento_nome_confirmar": "Só confirmando: o seu nome está correto? (1 - Sim / 2 - Não)",
-  "orcamento_servicos_confirmar": "Os serviços que você escolheu estão certos? (1 - Sim, é isso / 2 - Quero mudar)",
+  "orcamento_perfil": "O orçamento é para quem? (1 - Festa ou evento pessoal / 2 - Empresa / 3 - Agência de eventos)",
+  "orcamento_reuso": "Posso usar os dados da última vez? (1 - Sim, usar / 2 - Corrigir dados)",
+  "orcamento_servicos_confirmar": "Os serviços que você escolheu estão certos? (1 - Sim, é isso / 2 - Trocar serviço / 3 - Adicionar outro serviço / 4 - Remover um serviço)",
   "orcamento_cidade_confirmar": "A cidade do evento está certa? (1 - Sim, é isso / 2 - É em outra cidade)",
   "orcamento_celebracao": "O que você vai celebrar?",
   "orcamento_celebracao_outros": "O que você vai celebrar?",
@@ -175,6 +180,7 @@ const PERGUNTA_POR_PASSO = {
 // Descrição curta do passo para o aviso do operador
 const DESCRICAO_PASSO = {
   "orcamento_nome": "nome", "orcamento_nome_confirmar": "confirmar nome",
+  "orcamento_perfil": "tipo de cliente (festa, empresa ou agência)", "orcamento_reuso": "confirmar os dados da última vez",
   "orcamento_servicos_previa": "escolher os serviços de interesse",
   "orcamento_servicos_confirmar": "confirmar os serviços escolhidos",
   "orcamento_cidade_confirmar": "confirmar a cidade",
@@ -253,6 +259,8 @@ function perguntaPendente(s) {
 const ORDEM_PASSOS = [
   "orcamento_nome",
   "orcamento_nome_confirmar",
+  "orcamento_perfil",
+  "orcamento_reuso",
   "orcamento_servicos_previa",
   "orcamento_servicos_confirmar",
   "orcamento_celebracao",
@@ -384,7 +392,9 @@ async function enviarTodosOrcamentos(chatId, s) {
   // Quem já escolheu os serviços no começo recebe SÓ eles (22/10/2026).
   const previos = s.orcamento && Array.isArray(s.orcamento.servicosPrevios) && s.orcamento.servicosPrevios.length
     ? [...s.orcamento.servicosPrevios] : null;
-  await enviarOrcamentosAutomaticos(chatId, s, previos, { direto: semInfoDoEvento(s) });
+  /* 12/11/2026: sem NENHUM servico escolhido, o preliminar vai ENXUTO (3 principais + 5 combinacoes, 4h e 5h).
+     Com servico escolhido, so o que ele escolheu (previos). */
+  await enviarOrcamentosAutomaticos(chatId, s, previos, { direto: semInfoDoEvento(s), enxuto: !previos });
 }
 
 /** O cliente não passou nada do evento (só o nome não conta). */
