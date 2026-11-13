@@ -1654,13 +1654,16 @@ async function responderDisponibilidade(chatId, session, texto) {
     await sendText(chatId, "Essa é uma verificação inicial: nossa equipe confirma a disponibilidade final com você por aqui. 🙏");
     try {
       const resumo = respostas.map(r => `${r.id ? SERVICOS_NOMES[r.id] : "geral"}: ${r.d.estado}`).join(" | ");
+      const contestada = respostas.some(r => r.d.precisa_confirmar);
       await sendText(OPERADOR_TELEFONE_ID, `📅 *Consulta de disponibilidade* - ${chatId}
 Data: *${f.str}*
 Sistema: ${resumo}
 
 "${String(texto).slice(0, 300)}"
 
-Confirme a disponibilidade com o cliente (o sistema não considera horários nem pré-reservas).`);
+` +
+        (contestada ? "⚠️ *Há evento com CONTRATO AINDA NÃO ASSINADO nessa data*: a data segue disponível até a assinatura, e este cliente é o argumento para o primeiro decidir. Avise os dois.\n\n" : "") +
+        "Confirme a disponibilidade com o cliente (o sistema não considera horários nem pré-reservas).");
     } catch (e) { console.warn(`⚠️ aviso de disponibilidade ao operador: ${e.message}`); }
     await sendTyping(chatId);
     await sendText(chatId, "Quer que eu monte o seu orçamento? É só digitar *1* (Solicitar um orçamento). 😊");

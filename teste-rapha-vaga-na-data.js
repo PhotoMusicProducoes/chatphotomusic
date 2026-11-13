@@ -59,6 +59,11 @@ async function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); 
   checar("com serviço citado: consulta POR SERVIÇO (foto-cabine)", chamadas.length === 1 && chamadas[0].servico === "foto-cabine", JSON.stringify(chamadas));
   checar("'última disponibilidade' é dita sem contar a agenda", /última/.test(r) && !/evento marcado|eventos marcados/i.test(r), r);
 
+  await novo(); falhar = false; estado = "ultima"; TEXTOS.ultima.precisa_confirmar = true;
+  r = await cliente("tem vaga para o dia 28/11?");
+  checar("data com contrato NÃO assinado: avisa o operador que há outro cliente e que a data segue disponível", /CONTRATO AINDA NÃO ASSINADO/.test(r) && /argumento/.test(r), r);
+  TEXTOS.ultima.precisa_confirmar = false;
+
   await novo(); estado = "lotada";
   r = await cliente("vocês estão livres dia 27/11?");
   checar("data lotada: diz que não há disponibilidade e convida a falar com a equipe", /Não temos disponibilidade/.test(r) && /fale com a gente/i.test(r), r);
