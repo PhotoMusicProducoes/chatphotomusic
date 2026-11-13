@@ -102,21 +102,25 @@ const idDe = (re) => Number(Object.keys(catalogo || {}).find(id => re.test(catal
   await ate(["oi", "1", "1"]);
   const rVolta = todas[todas.length - 1];
   checar("reconhece o cliente e mostra os dados guardados", sess().step === "orcamento_reuso" && /Carlos/.test(rVolta) && /Acme Eventos/.test(rVolta) && /Empresa/.test(rVolta), rVolta);
-  checar("NÃO pergunta o nome nem o perfil de novo", !/Qual o seu nome/.test(rVolta) && !/orçamento é para quem/.test(rVolta));
-  await cliente("1");
-  checar("confirmou: aproveita nome, perfil e empresa e segue para os serviços", sess().step === "orcamento_servicos_previa" && sess().orcamento.nome === "Carlos" && sess().orcamento.perfil === "empresa" && sess().orcamento.empresa === "Acme Eventos", sess().step);
+  checar("NÃO pede o nome: mostra o nome guardado e pergunta direto o tipo (4 = corrigir nome)", !/Qual o seu nome/.test(rVolta) && /será para quem/.test(rVolta) && /Corrigir meu nome/.test(rVolta), rVolta);
+  await cliente("2");
+  checar("escolheu o MESMO tipo (Empresa): aproveita nome, perfil e empresa e segue para os serviços", sess().step === "orcamento_servicos_previa" && sess().orcamento.nome === "Carlos" && sess().orcamento.perfil === "empresa" && sess().orcamento.empresa === "Acme Eventos", sess().step);
   await ate(["0", "1"]);
   checar("empresa já conhecida: NÃO pergunta de novo, vai aos convidados", sess().step === "orcamento_convidados", sess().step);
 
   zerar({ clienteConhecido: conhecido });
-  await ate(["oi", "1", "1", "2"]);
-  checar("corrigir: volta a perguntar o nome, sem usar os dados antigos", sess().step === "orcamento_nome" && !sess().orcamento.perfil, sess().step);
+  await ate(["oi", "1", "1", "4"]);
+  checar("4 = corrigir o nome: só então pergunta o nome, sem usar os dados antigos", sess().step === "orcamento_nome" && !sess().orcamento.perfil, sess().step);
   await cliente("Carlos Souza");
   checar("depois do nome corrigido pergunta o perfil de novo", sess().step === "orcamento_perfil", sess().step);
 
   zerar({ clienteConhecido: conhecido });
   await ate(["oi", "1", "1", "talvez"]);
-  checar("resposta confusa repete a pergunta de confirmar ou corrigir", sess().step === "orcamento_reuso", sess().step);
+  checar("resposta confusa repete a pergunta do tipo", sess().step === "orcamento_reuso", sess().step);
+
+  zerar({ clienteConhecido: conhecido });
+  await ate(["oi", "1", "1", "1"]);
+  checar("empresa que agora quer FESTA: troca só o tipo, mantém o nome e NÃO leva a empresa", sess().orcamento.perfil === "social" && sess().orcamento.nome === "Carlos" && !sess().orcamento.empresa && sess().step === "orcamento_servicos_previa", JSON.stringify(sess().orcamento));
 
   console.log("\n— 3. IA: extrair da mensagem livre (simulada, nada pago) —");
   // 1a chamada so para o extrator nascer e mostrar o catalogo (o modelo falso nao responde nada)

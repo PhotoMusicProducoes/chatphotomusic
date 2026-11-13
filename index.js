@@ -1815,20 +1815,27 @@ async function perguntarDetalhes(chatId, session) {
   session.ultimaPerguntaNaoRespondida = "Deseja informar mais detalhes do seu evento?\n*1* - Sim\n*2* - Não";
 }
 
-/** Cliente que volta: UMA pergunta para confirmar ou corrigir. */
+/** Cliente que volta: o NOME guardado fica e a pergunta já é o perfil (13/11/2026, teste do Mario).
+    Antes era "Posso usar esses dados? 1 Sim / 2 Corrigir" e o "Corrigir" pedia o nome de novo
+    mesmo quando a pessoa só queria trocar o tipo. Data, horário e local de eventos antigos NUNCA
+    são reaproveitados aqui (só nome, perfil e empresa). */
+const OPCOES_REUSO = [
+  { id: "1", label: "Festa ou evento pessoal" },
+  { id: "2", label: "Empresa" },
+  { id: "3", label: "Agência de eventos" },
+  { id: "4", label: "Corrigir meu nome" },
+];
 async function oferecerReuso(chatId, session) {
   const c = session.clienteConhecido;
   session.step = "orcamento_reuso";
-  const quem = (c.perfil === "social" || !c.empresa)
-    ? NOMES_PERFIL[c.perfil]
-    : `${NOMES_PERFIL[c.perfil]} (${c.empresa})`;
-  const txt = `Que bom ter você de volta, *${c.nome}*! ❤️\n\nGuardei seus dados da última vez:\n• Nome: ${c.nome}\n• Tipo: ${quem}\n\nPosso usar esses dados?`;
+  const primeiro = String(c.nome || "").split(" ")[0];
+  const ultimo = c.perfil
+    ? `\n• Último atendimento: ${(c.perfil === "social" || !c.empresa) ? NOMES_PERFIL[c.perfil] : `${NOMES_PERFIL[c.perfil]} (${c.empresa})`}`
+    : "";
+  const txt = `Que bom ter você de volta, *${primeiro || c.nome}*! ❤️\n\nEncontrei seus dados cadastrados:\n• Nome: ${c.nome}${ultimo}\n\nO novo orçamento será para quem?`;
   await sendTyping(chatId);
-  await sendButtonList(chatId, txt, [
-    { id: "1", label: "Sim, usar" },
-    { id: "2", label: "Corrigir dados" },
-  ]);
-  session.ultimaPerguntaNaoRespondida = txt + "\n*1* - Sim, usar\n*2* - Corrigir dados";
+  await sendOptionList(chatId, txt, OPCOES_REUSO);
+  session.ultimaPerguntaNaoRespondida = txt + "\n" + OPCOES_REUSO.map(o => `*${o.id}* - ${o.label}`).join("\n");
 }
 
 /* 🤖 IA: extrair da mensagem livre (desligada por padrao: IA_EXTRACAO=1). So ENTENDE;
@@ -2907,9 +2914,15 @@ async function mostrarMenuInicial(chatId) {
 // ======================================================
 async function executarOpcaoMenu(chatId, session, opcaoMenu, chatIdNormalizado) {
   switch (opcaoMenu) {
-    case "1":
-      await sendTyping(chatId);
-      await sendText(chatId, "Você deseja *Solicitar um Orçamento*😍.");
+    case "1": {
+      /* 13/11/2026: cliente que volta (nome e tipo guardados) vai DIRETO à pergunta do tipo, sem o
+         eco "Você deseja..." e sem o aviso de parcelamento antes de saber o que ele quer (o
+         parcelamento volta no resumo, com o preço na mão). Cliente novo segue igual. */
+      const _volta = !!(session.clienteConhecido && session.clienteConhecido.nome && session.clienteConhecido.perfil);
+      if (!_volta) {
+        await sendTyping(chatId);
+        await sendText(chatId, "Você deseja *Solicitar um Orçamento*😍.");
+      }
       session.step = "orcamento_nome";
       session.orcamento = { servicosEnviados: [] };
       session.servicosEnviados = [];
@@ -2922,16 +2935,17 @@ async function executarOpcaoMenu(chatId, session, opcaoMenu, chatIdNormalizado) 
          para parcelar em 10x sem juros já no começo tira a objeção de valor
          antes dela aparecer. A mesma informação volta depois do resumo,
          quando ele já tem o número na mão. */
+      if (_volta) {
+        await oferecerReuso(chatId, session);
+        return;
+      }
       await sendTyping(chatId);
       await sendText(chatId, MSG_CARTAO_PARCELAS);
 
       await sendTyping(chatId);
-      if (session.clienteConhecido && session.clienteConhecido.nome && session.clienteConhecido.perfil) {
-        await oferecerReuso(chatId, session);
-        return;
-      }
       await sendText(chatId, "Perfeito! Vamos começar seu orçamento.\nQual o seu nome?");
       return;
+    }
 
     case "2":
       await sendTyping(chatId);
@@ -6877,24 +6891,29 @@ const resumoEucaristia =
   // ======================================================
   if (session.step === "orcamento_reuso") {
     const t = normalizarParaBusca(String(corpoMensagem || "")).trim();
-    const usar = /^1$/.test(t) || /^(sim|isso|pode|ok|certo|usar|esses|mesmos)\b/.test(t);
-    const corrigir = /^2$/.test(t) || /(corrig|mudar|trocar|outro|nao|errado|alterar)/.test(t);
     const c = session.clienteConhecido || {};
-    if (usar && !corrigir && c.nome && c.perfil) {
-      session.orcamento.nome = c.nome;
-      session.orcamento.perfil = c.perfil;
-      if (c.empresa) session.orcamento.empresa = c.empresa;
-      session.orcamento.reusoConfirmado = true;
-      await seguirParaServicos(chatId, session);
-      return;
-    }
-    if (corrigir) {
+    // 4 / "corrigir meu nome": só então pede o nome (vale para ESTE atendimento; contratos,
+    // eventos e orçamentos antigos não são tocados)
+    if (/^4$/.test(t) || /(corrig|nome errado|meu nome|trocar o nome|mudar o nome|alterar o nome)/.test(t)) {
       session.step = "orcamento_nome";
       await sendTyping(chatId);
       await enviarPerguntaESalvar(chatId, session, "Sem problemas! Qual o seu nome?");
       return;
     }
-    await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim, usar\n*2* - Corrigir dados");
+    // "sim / pode usar" (texto do modelo antigo) = o mesmo tipo da última vez
+    const mesmo = /^(sim|isso|pode|ok|certo|usar|esses|mesmos?)\b/.test(t) ? c.perfil : null;
+    const perfil = mesmo || perfilDaResposta(corpoMensagem);
+    if (perfil && c.nome) {
+      session.orcamento.nome = c.nome;
+      session.orcamento.perfil = perfil;
+      // empresa/agência guardada só vale se o tipo for o MESMO da última vez
+      if (perfil === c.perfil && c.empresa && perfil !== "social") session.orcamento.empresa = c.empresa;
+      session.orcamento.reusoConfirmado = perfil === c.perfil;
+      lembrarCliente(session);
+      await seguirParaServicos(chatId, session);
+      return;
+    }
+    await sendText(chatId, "*⚠ Responda com o número da opção:*\n" + OPCOES_REUSO.map(o => `*${o.id}* - ${o.label}`).join("\n"));
     return;
   }
 
