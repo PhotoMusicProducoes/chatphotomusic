@@ -57,7 +57,10 @@ function extrairBriefing(texto) {
   const datas = [];
   const d1 = acharDataNoTexto(t);
   if (d1) datas.push(d1);
+  const tl = t.toLowerCase();
+  const celebracaoId = corporativo ? 8 : /casamento|noiv/.test(tl) ? 2 : /15 anos|quinze anos|debutante/.test(tl) ? 1 : /bodas/.test(tl) ? 6 : /formatura/.test(tl) ? 7 : /infantil|crian[cç]a/.test(tl) ? 3 : 0;
   return {
+    celebracaoId,
     nome: acharNome(t),
     empresa,
     corporativo,

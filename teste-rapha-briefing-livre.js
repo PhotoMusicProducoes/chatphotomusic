@@ -60,6 +60,8 @@ const T_DOIS = "Estou retomando o contato para solicitar um orçamento da cabine
   const o = sess().orcamento;
   checar("guardou serviço, convidados, data e horário que ela disse", (o.servicosPrevios || []).join() === "1" && o.convidados === 300 && /^17\/12\/\d{4}$/.test(o.data || "") && o.horaInicio === "17:30" && o.horaFim === "20:00", JSON.stringify(o));
   checar("evento corporativo reconhecido (celebração 'Evento Corporativo')", o.celebracaoId === 8, String(o.celebracaoId));
+  checar("confirma o serviço entendido (mantém a confirmação dos serviços)", sess().step === "orcamento_completar" && /Foto Cabine/.test(r) && /Está certo/.test(r), sess().step + " | " + r);
+  r = await cliente("1");
   checar("pergunta SÓ o que falta: o local (não repete nome, data, horário, convidados)", sess().step === "orcamento_completar" && /bairro e a cidade/i.test(r) && !/nome|Quantos convidados|Qual a data/i.test(r), sess().step + " | " + r);
   r = await cliente("Flamengo");
   checar("com o bairro, completa a cidade pela tabela e mostra o RESUMO com os dados dela", sess().step === "orcamento_confirmar" && /Flamengo/.test(r) && /17\/12/.test(r) && /300/.test(r), sess().step + " | " + r);

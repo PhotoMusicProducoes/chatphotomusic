@@ -1660,13 +1660,16 @@ async function responderDisponibilidade(chatId, session, texto) {
    Se a pessoa para de responder, o orcamento automatico ja sai com o que ela disse (os campos ficam em session.orcamento). */
 async function aplicarBriefingLivre(chatId, session, texto) {
   const b = extrairBriefing(texto);
-  const orc = session.orcamento = session.orcamento || { servicosEnviados: [] };
+  const original = session.orcamento = session.orcamento || { servicosEnviados: [] };
+  const orc = JSON.parse(JSON.stringify(original));   // rascunho: so vira resposta se o texto trouxe algo util
   const r = { nome: false, servicos: false, convidados: false, data: false, horario: false, multiEvento: b.convidados.length > 1 };
   if (b.nome && !orc.nome) { orc.nome = capitalizarPalavras(b.nome); r.nome = true; }
   if (b.empresa && !orc.empresa) orc.empresa = b.empresa;
   if (b.corporativo) {
     orc.perfil = orc.perfil || (/ag[eê]ncia|produtora|cerimonial/i.test(b.empresa || texto) ? "agencia" : "empresa");
     orc.celebracaoId = 8; orc.celebracao = celebracoes[8];
+  } else if (b.celebracaoId && !orc.celebracaoId) {
+    orc.perfil = orc.perfil || "social"; orc.celebracaoId = b.celebracaoId; orc.celebracao = celebracoes[b.celebracaoId];
   }
   const ids = detectarServicosNoTexto(texto).filter(id => SERVICOS_NOMES[id]);
   if (ids.length && !(Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length)) { orc.servicosPrevios = ids; r.servicos = true; }
@@ -1680,19 +1683,23 @@ async function aplicarBriefingLivre(chatId, session, texto) {
     orc.duracao = calcularDuracaoEvento(b.horario.inicio, b.horario.fim);
     orc.horas = Number.parseInt(orc.duracao, 10) || 2; r.horario = true;
   } else if (b.horas && !orc.horas) { orc.horas = b.horas; r.horario = true; }
-  const dl = session.dadosLivres = session.dadosLivres || {};
-  if (!dl.bairro) {
-    const achados = await Promise.all((b.local || []).slice(0, 3).map(c => inferirCidadePorBairro(c)));
-    const p = achados.find(Boolean);
-    if (p) { dl.bairro = p.bairro; dl.cidade = p.cidade; }
-  }
   r.util = [r.servicos, r.convidados, r.data, r.horario].filter(Boolean).length;
+  if (r.util >= 1 || r.nome) {
+    Object.assign(original, orc);   // confirma o rascunho
+    const dl = session.dadosLivres = session.dadosLivres || {};
+    if (!dl.bairro) {
+      const achados = await Promise.all((b.local || []).slice(0, 3).map(c => inferirCidadePorBairro(c)));
+      const p = achados.find(Boolean);
+      if (p) { dl.bairro = p.bairro; dl.cidade = p.cidade; }
+    }
+  }
   return r;
 }
 
 function dadoQueFalta(session) {
   const orc = session.orcamento || {};
   if (!orc.nome) return "nome";
+  if (Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length && !orc._servicosConfirmados) return "servicos_confirmar";
   if (!orc.celebracaoId) return "celebracao";
   if (!orc.convidados) return "convidados";
   if (!orc.data) return "data";
@@ -1715,6 +1722,13 @@ async function completarBriefing(chatId, session) {
   session.step = "orcamento_completar";
   orc._faltante = falta;
   const dl = session.dadosLivres || {};
+  if (falta === "servicos_confirmar") {
+    const perg = `Entendi que você quer *${orc.servicosPrevios.map(i => SERVICOS_NOMES[i]).filter(Boolean).join(", ")}*. Está certo?`;
+    await sendTyping(chatId);
+    await sendButtonList(chatId, perg, [{ id: "1", label: "Sim, é isso" }, { id: "2", label: "Outro serviço" }]);
+    session.ultimaPerguntaNaoRespondida = perg + "\n*1* - Sim, é isso\n*2* - Outro serviço";
+    return;
+  }
   if (falta === "celebracao") {
     await sendTyping(chatId);
     await sendOptionList(chatId, "Só me conta: o que vai celebrar?", CELEBRACOES.map(c => ({ id: String(c.id), title: c.label })), { title: "Celebrações", buttonLabel: "Ver opções" });
@@ -6779,6 +6793,11 @@ O bot NÃO montou orçamento: assuma o atendimento.`); } catch (e) {}
       const nome = ex || (pareceBriefing(txt) || /\d/.test(txt) ? "" : capitalizarPalavras(txt));
       if (!nome || nome.length < 2) return recusar("*⚠ Informe só o seu nome*, por favor.");
       orc.nome = nome;
+    } else if (falta === "servicos_confirmar") {
+      const rr = normalizarParaBusca(txt);
+      if (/^1$/.test(rr) || /^(sim|isso|certo|correto|ok)/.test(rr)) { orc._servicosConfirmados = true; }
+      else if (/^2$/.test(rr) || /^(nao|outro|errado|trocar)/.test(rr)) { orc.servicosPrevios = null; session.step = "orcamento_servicos_previa"; await perguntarServicosPrevia(chatId, session); return; }
+      else return recusar("*⚠ Responda com o número da opção:*\n*1* - Sim, é isso\n*2* - Outro serviço");
     } else if (falta === "celebracao") {
       const op = parseInt(txt, 10);
       if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(op)) return recusar("*⚠ Digite o número da celebração na lista.*");

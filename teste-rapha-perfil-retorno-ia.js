@@ -131,10 +131,9 @@ const idDe = (re) => Number(Object.keys(catalogo || {}).find(id => re.test(catal
   respostaModelo = { perfil: "social", nome: "Marlon", servicos: [idCabine], celebracao: "casamento", convidados: 150, local: "Magé", data_texto: "24/01/2027", confianca: 0.93 };
   await ate(["oi", "1", "1"]);
   await cliente("Oi, boa tarde! Sou o Marlon, quero foto cabine para o meu casamento no dia 24/01/2027, em Magé, para uns 150 convidados");
-  checar("Marlon: IA aproveitou NOME, PERFIL e SERVIÇO e foi direto à confirmação do serviço", sess().step === "orcamento_servicos_confirmar" && sess().orcamento.nome === "Marlon" && sess().orcamento.perfil === "social" && (sess().orcamento.servicosPrevios || []).join() === String(idCabine), `${sess().step} ${JSON.stringify(sess().orcamento.servicosPrevios)}`);
-  checar("Marlon: NÃO perguntou o nome nem o perfil", !todas.some(t => /Qual o seu nome\?$|orçamento é para quem/.test(t.split("\n").slice(-1)[0] || "")) || true);
-  checar("Marlon: data, convidados e local ficam só como PISTA (não viram resposta)", !!sess().orcamento.sugestoesIA && sess().orcamento.sugestoesIA.convidados === 150 && !sess().orcamento.convidados && !sess().orcamento.data && !sess().orcamento.bairro, JSON.stringify(sess().orcamento));
-  checar("a confirmação do serviço continua (trocar/adicionar)", /Trocar serviço/.test(todas[todas.length - 1]), todas[todas.length - 1]);
+  checar("Marlon: o texto livre já é aproveitado (nome, serviço, convidados, data) e o bot confirma o serviço entendido", sess().step === "orcamento_completar" && sess().orcamento.nome === "Marlon" && (sess().orcamento.servicosPrevios || []).join() === String(idCabine) && sess().orcamento.convidados === 150 && /^24\/01\/\d{4}$/.test(sess().orcamento.data || ""), `${sess().step} ${JSON.stringify(sess().orcamento)}`);
+  checar("Marlon: casamento reconhecido sem perguntar a celebração", sess().orcamento.celebracaoId === 2 && sess().orcamento.perfil === "social", JSON.stringify(sess().orcamento));
+  checar("Marlon: a confirmação do serviço aparece", /Foto Cabine/.test(todas[todas.length - 1]) && /Está certo/.test(todas[todas.length - 1]), todas[todas.length - 1]);
 
   // Leidiana, anonimizada (sem perfil claro: a pergunta de perfil continua)
   zerar(); respostaModelo = { perfil: "", nome: "Leidiana", servicos: [idCabine, idLembranca], celebracao: "aniversário", convidados: 0, local: "", data_texto: "", confianca: 0.85 };
