@@ -51,6 +51,8 @@ const {
 } = require("./utils/roteadorIA.js");
 const { criarExtrator: criarExtratorIA } = require("./utils/iaExtrair.js");
 const { acharDataNoTexto, candidatosLocal } = require("./utils/dadosLivres.js");
+// 13/11/2026 (NAZ): ja contratou -> suporte; tirinha -> 3 servicos; data so com numeros. Ver o arquivo.
+const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA } = require("./utils/entendimentoLivre.js");
 const { extrairBriefing } = require("./utils/briefingLivre.js");
 
 const {
@@ -1585,6 +1587,74 @@ async function guardarDadosLivres(session, texto) {
   } catch (e) { console.warn(`⚠️ dados livres: ${e.message}`); }
 }
 
+/* 👥 CONVIDADOS DITOS ANTES DA PERGUNTA (13/11/2026, caso Sheila): "Evento aproximadamente 59 pessoas" chegou na
+   confirmacao do servico e o bot ignorou; depois perguntou os convidados de novo. Agora guarda (so com a palavra
+   pessoas/convidados junto, para nunca confundir com resposta de opcao) e, na pergunta, so CONFIRMA com 1 toque. */
+function guardarConvidadosLivres(session, texto) {
+  try {
+    if (!session || session.step === "orcamento_convidados" || session.step === "orcamento_convidados_confirmar") return null;
+    if (session.orcamento && session.orcamento.convidados) return null;
+    const t = normalizarParaBusca(String(texto || ""));
+    if (!/\b\d{2,4}\s*(?:pessoas|convidados|convidado|pax)\b/.test(t)) return null;
+    const n = convidadosNaMensagem(texto);
+    if (!n) return null;
+    const dl = session.dadosLivres = session.dadosLivres || {};
+    if (dl.convidados === n) return null;
+    dl.convidados = n;
+    dl.convidadosUsado = false;
+    console.log(`📌 [dados livres] convidados ${n}`);
+    return n;
+  } catch (e) { console.warn(`⚠️ convidados livres: ${e.message}`); return null; }
+}
+
+async function perguntarConvidados(chatId, session, textoPadrao) {
+  const dl = session.dadosLivres;
+  if (dl && dl.convidados && !dl.convidadosUsado) {
+    dl.convidadosUsado = true;   // confirma UMA vez; se o cliente recusar, a pergunta normal segue
+    session.step = "orcamento_convidados_confirmar";
+    const perg = `Você comentou que são cerca de *${dl.convidados} convidados*. Está certo?`;
+    await sendTyping(chatId);
+    await sendButtonList(chatId, perg, [{ id: "1", label: "Sim, isso" }, { id: "2", label: "Outro número" }]);
+    session.ultimaPerguntaNaoRespondida = perg + "\n*1* - Sim, isso\n*2* - Outro número";
+    return;
+  }
+  session.step = "orcamento_convidados";
+  await enviarPerguntaESalvar(chatId, session, textoPadrao);
+}
+
+/* Depois dos convidados: corporativo (8) e Outros (9) perguntam os DIAS antes da data. */
+async function seguirAposConvidados(chatId, session) {
+  const clbConv = session.orcamento.celebracaoId;
+  if (clbConv === 8 || clbConv === 9) {
+    session.step = "orcamento_dias";
+    await enviarPerguntaESalvar(chatId, session, "Quantos dias de evento? *(Digite somente o número)*");
+    return;
+  }
+  session.step = "orcamento_data";
+  await perguntarDataEvento(chatId, session, "Qual a data do evento? (Ex: *01/02/2026* ou *9 de setembro*)");
+}
+
+/* 🎞️ TIRINHA = 3 SERVICOS (13/11/2026, caso Sheila "qual o preco da foto tirinha?"). Quando o cliente fala em
+   tirinha e NAO disse qual dos tres, o bot mostra Foto Cabine, Totem Fotografico e Totem Retro e ele escolhe
+   1, 2 ou os 3. Outro servico citado na mesma frase (ex.: 360) vai junto. Devolve true se assumiu a conversa. */
+function textoEscolhaTirinha() {
+  return "A *foto tirinha* sai em 3 serviços nossos 📸\n\n" +
+    SERVICOS_TIRINHA.map((id, i) => `*${i + 1}* - ${SERVICOS_NOMES[id]}`).join("\n") +
+    "\n\nQual você quer orçar? Pode escolher um, dois ou os três (ex.: *1*, *1 e 3* ou *todos*).";
+}
+
+async function tratarTirinha(chatId, session, texto, idsDetectados) {
+  if (!mencionaTirinha(texto)) return false;
+  const ids = Array.isArray(idsDetectados) ? idsDetectados : [];
+  if (ids.some(id => SERVICOS_TIRINHA.includes(id))) return false;   // ja disse qual (ex.: "tirinha do totem retro")
+  session.tirinhaExtras = ids.filter(id => SERVICOS_NOMES[id]);
+  session.menuInicialEnviado = true;
+  session.step = "escolher_tirinha";
+  console.log(`🎞️ ${chatId} pediu tirinha: mostrando Cabine, Totem e Retro${session.tirinhaExtras.length ? " (+ " + session.tirinhaExtras.join(",") + ")" : ""}`);
+  await enviarPerguntaESalvar(chatId, session, textoEscolhaTirinha());
+  return true;
+}
+
 async function perguntarDataEvento(chatId, session, textoPadrao) {
   const dl = session.dadosLivres;
   if (dl && dl.data && !dl.dataUsada) {
@@ -1833,7 +1903,7 @@ function notaPreliminar(orc, curto) {
    Nada muda no motor de preço nem nos PDFs.
    ====================================================== */
 const PASSOS_DADO_DO_EVENTO = new Set([
-  "orcamento_convidados", "orcamento_dias", "orcamento_data", "orcamento_hora_inicio", "orcamento_hora_fim",
+  "orcamento_convidados", "orcamento_convidados_confirmar", "orcamento_dias", "orcamento_data", "orcamento_hora_inicio", "orcamento_hora_fim",
   "orcamento_datas_multiplas", "orcamento_dia_data", "orcamento_dia_hora_inicio", "orcamento_dia_hora_fim",
   "orcamento_bairro", "orcamento_cidade",
 ]);
@@ -1984,7 +2054,8 @@ async function avancarAposHoraFimDoDia(chatId, session) {
 }
 
 function parsearDataFlex(texto) {
-  const t = (texto || "").trim();
+  // 13/11/2026 (Sheila): "15112026" e "15 11 2026" na ordem dia-mes-ano viram 15/11/2026; quem valida e o resto da funcao.
+  const t = dataSoNumeros(texto) || (texto || "").trim();
   const m = t.match(/^(0?[1-9]|[12][0-9]|3[01])[\/.\-](0?[1-9]|1[0-2])(?:[\/.\-](\d{2}|\d{4}))?$/);
 
   if (!m) {
@@ -5452,6 +5523,18 @@ async function handleIncomingMessage(message) {
       return;
     }
 
+    /* 🤝 13/11/2026 (caso Adrielen): quem abre a conversa dizendo que JA CONTRATOU vai direto ao suporte,
+       sem o menu de boas-vindas. 🎞️ Quem abre perguntando da TIRINHA escolhe entre os 3 servicos. */
+    if (jaContratou(corpoMensagem)) {
+      console.log(`🤝 ${chatId} disse que já contratou (1ª mensagem): suporte direto, sem menu.`);
+      sessions[chatId].menuInicialEnviado = true;
+      await sendTyping(chatId);
+      await sendText(chatId, `${saudacaoPorHora()}! ❤️ Que bom falar com você!\n\nVocê já tem um serviço contratado com a gente. Como posso te ajudar?`);
+      pausarCliente(chatIdNormalizado);
+      return;
+    }
+    if (await tratarTirinha(chatId, sessions[chatId], corpoMensagem, detectarServicosNoTexto(corpoMensagem))) return;
+
     await mostrarMenuInicial(chatId);
     return;
   }
@@ -5637,6 +5720,32 @@ async function handleIncomingMessage(message) {
   }
 
   // ======================================================
+  // 👥 Convidados ditos em qualquer ponto antes da pergunta (13/11/2026, caso Sheila)
+  const convidadosNovos = guardarConvidadosLivres(session, corpoMensagem);
+
+  // 🎞️ ESCOLHA ENTRE OS 3 SERVICOS DA TIRINHA (13/11/2026)
+  if (session.step === "escolher_tirinha") {
+    const txtT = String(corpoMensagem || "");
+    let escolhidos = escolhaTirinha(txtT);
+    if (!escolhidos) {
+      const porNome = detectarServicosNoTexto(txtT).filter(id => SERVICOS_NOMES[id]);
+      if (porNome.length) escolhidos = porNome;
+    }
+    if (!escolhidos || !escolhidos.length) {
+      if (querValorAgora(session, txtT)) escolhidos = [...SERVICOS_TIRINHA];   // "quanto custa?" = mostra os 3
+    }
+    if (!escolhidos || !escolhidos.length) {
+      await sendText(chatId, "*⚠ Responda com o número da opção* (um, dois ou os três):\n" +
+        SERVICOS_TIRINHA.map((id, i) => `*${i + 1}* - ${SERVICOS_NOMES[id]}`).join("\n") + "\nou *todos*");
+      return;
+    }
+    const extras = Array.isArray(session.tirinhaExtras) ? session.tirinhaExtras : [];
+    session.tirinhaExtras = null;
+    const ids = [...escolhidos, ...extras.filter(id => !escolhidos.includes(id))];
+    await iniciarOrcamentoComServicosDitos(chatId, session, ids, { porNome: true });
+    return;
+  }
+
   // MENU INICIAL
   // ======================================================
   if (session.step === "aguardando_opcao") {
@@ -5701,6 +5810,18 @@ async function handleIncomingMessage(message) {
     }
   }
 
+  /* 🤝 JA CONTRATOU = SUPORTE DIRETO (13/11/2026, caso Adrielen "fechou uma contratacao para o dia 28/11"):
+     sem menu de boas-vindas e sem "confirme a opcao 4". Vale na primeira mensagem e no menu ja enviado. */
+  if (opcaoMenu === "" && jaContratou(texto)) {
+    console.log(`🤝 ${chatId} disse que já contratou: suporte direto (opção 4), sem menu.`);
+    session.menuInicialEnviado = true;
+    session.opcaoMenuPendente = null;
+    await sendTyping(chatId);
+    await sendText(chatId, `${saudacaoPorHora()}! ❤️ Que bom falar com você!\n\nVocê já tem um serviço contratado com a gente. Como posso te ajudar?`);
+    pausarCliente(chatIdNormalizado);
+    return;
+  }
+
   if (!session.menuInicialEnviado) {
     await mostrarMenuInicial(chatId);
 
@@ -5708,6 +5829,7 @@ async function handleIncomingMessage(message) {
     // boas-vindas e, na sequência, o valor. Ver detectarServicosNoTexto.
     if (opcaoMenu === "") {
       const _serv1 = detectarServicosNoTexto(texto);
+      if (await tratarTirinha(chatId, session, texto, _serv1)) return;
       if (_serv1.length) {
         await iniciarOrcamentoComServicosDitos(chatId, session, _serv1, { porNome: true });
         return;
@@ -5735,6 +5857,7 @@ async function handleIncomingMessage(message) {
      escrita na mensagem dele). */
   if (opcaoMenu === "") {
     const _serv2 = detectarServicosNoTexto(texto);
+    if (await tratarTirinha(chatId, session, texto, _serv2)) return;
     if (_serv2.length) {
       await iniciarOrcamentoComServicosDitos(chatId, session, _serv2, { porNome: true });
       return;
@@ -5788,6 +5911,7 @@ async function handleIncomingMessage(message) {
        "responda 1 ou 2" é o pior que o bot pode fazer: o cliente falou.
        Antes do aviso seco, tentamos entender e REDIRECIONAR. */
     const _servConf = detectarServicosNoTexto(corpoMensagem || "");
+    if (await tratarTirinha(chatId, session, corpoMensagem || "", _servConf)) { session.opcaoMenuPendente = null; return; }
     if (_servConf.length) {
       session.opcaoMenuPendente = null;
       await iniciarOrcamentoComServicosDitos(chatId, session, _servConf, { porNome: true });
@@ -6359,6 +6483,10 @@ const resumoEucaristia =
     const prevConf = Array.isArray(session.orcamento.servicosPrevios) ? session.orcamento.servicosPrevios : [];
     const r = respostaConfirmacaoServicos(corpoMensagem, prevConf.length);
     if (!r) {
+      if (convidadosNovos) {
+        await sendText(chatId, `Anotei: cerca de *${convidadosNovos} convidados* 😊\n\nAgora me confirma os serviços:\n` + linhasOpcoesConfServicos(prevConf.length));
+        return;
+      }
       await sendText(chatId, "*⚠ Responda com o número da opção:*\n" + linhasOpcoesConfServicos(prevConf.length));
       return;
     }
@@ -6465,9 +6593,7 @@ const resumoEucaristia =
       return;
     }
 
-    session.step = "orcamento_convidados";
-
-    await enviarPerguntaESalvar(chatId, session, "Quantos convidados?");
+    await perguntarConvidados(chatId, session, "Quantos convidados?");
     return;
   }
 
@@ -6491,9 +6617,7 @@ const resumoEucaristia =
 
     session.orcamento.empresa = pulou ? "" : capitalizarPalavras(txt);
     lembrarCliente(session);
-    session.step = "orcamento_convidados";
-
-    await enviarPerguntaESalvar(chatId, session, "Quantos convidados? (*Digite somente número*)");
+    await perguntarConvidados(chatId, session, "Quantos convidados? (*Digite somente número*)");
     return;
   }
 
@@ -6503,35 +6627,46 @@ const resumoEucaristia =
     session.step = "orcamento_convidados";
 
     await abrirColetaDoEvento(chatId, session);
-    await enviarPerguntaESalvar(chatId, session, "Quantos convidados? (*Digite somente número*)");
+    await perguntarConvidados(chatId, session, "Quantos convidados? (*Digite somente número*)");
     return;
   }
 
   // ======================================================
   // ORÇAMENTO — CONVIDADOS
   // ======================================================
+  if (session.step === "orcamento_convidados_confirmar") {
+    const r = normalizarParaBusca(String(corpoMensagem || "")).trim();
+    const dl = session.dadosLivres || {};
+    const sim = /^1$/.test(r) || /^(sim|isso|certo|correto|ok|exato|e isso)\b/.test(r);
+    const outro = /^2$/.test(r) || /^(nao|outro|errado|mudou)\b/.test(r);
+    if (sim && dl.convidados) {
+      session.orcamento.convidados = dl.convidados;
+      await seguirAposConvidados(chatId, session);
+      return;
+    }
+    if (outro || sim) {
+      session.step = "orcamento_convidados";
+      await enviarPerguntaESalvar(chatId, session, "Quantos convidados? (*Digite somente número*)");
+      return;
+    }
+    if (/\d{2,4}/.test(r)) { session.step = "orcamento_convidados"; }   // ja digitou o numero: o passo de baixo grava
+    else {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim, isso\n*2* - Outro número");
+      return;
+    }
+  }
+
   if (session.step === "orcamento_convidados") {
     const convidados = parseInt(corpoMensagem.replace(/\D+/g, ""), 10);
 
     if (isNaN(convidados) || convidados <= 0) {
-      await sendText(chatId, "*⚠ Digite apenas números válidos.*");
+      // 13/11/2026: o aviso seco nao dizia o que fazer; agora repete a pergunta com exemplo.
+      await sendText(chatId, "*⚠ Não entendi a quantidade.* Quantos convidados, mais ou menos? Digite só o número (ex.: *80*).");
       return;
     }
 
     session.orcamento.convidados = convidados;
-
-    // Corporativo (8) e Outros (9) → perguntar dias ANTES da data
-    const clbConv = session.orcamento.celebracaoId;
-    if (clbConv === 8 || clbConv === 9) {
-      session.step = "orcamento_dias";
-      await enviarPerguntaESalvar(chatId, session,
-        "Quantos dias de evento? *(Digite somente o número)*"
-      );
-      return;
-    }
-
-    session.step = "orcamento_data";
-    await perguntarDataEvento(chatId, session, "Qual a data do evento? (Ex: *01/02/2026* ou *9 de setembro*)");
+    await seguirAposConvidados(chatId, session);
     return;
   }
 
@@ -6825,8 +6960,8 @@ const resumoEucaristia =
       orc.nome = nome;
     } else if (falta === "servicos_confirmar") {
       const rr = normalizarParaBusca(txt);
-      if (/^1$/.test(rr) || /^(sim|isso|certo|correto|ok)/.test(rr)) { orc._servicosConfirmados = true; }
-      else if (/^2$/.test(rr) || /^(nao|outro|errado|trocar)/.test(rr)) { orc.servicosPrevios = null; session.step = "orcamento_servicos_previa"; await perguntarServicosPrevia(chatId, session); return; }
+      if (/^1$/.test(rr) || /^(sim|isso|certo|correto|ok)\b/.test(rr)) { orc._servicosConfirmados = true; }
+      else if (/^2$/.test(rr) || /^(nao|outro|errado|trocar)\b/.test(rr)) { orc.servicosPrevios = null; session.step = "orcamento_servicos_previa"; await perguntarServicosPrevia(chatId, session); return; }
       else return recusar("*⚠ Responda com o número da opção:*\n*1* - Sim, é isso\n*2* - Outro serviço");
     } else if (falta === "celebracao") {
       const op = parseInt(txt, 10);
@@ -7826,6 +7961,8 @@ module.exports = {
   DIAS_SEM_CONFIRMAR,
   // idem, para teste-resposta-por-titulo.js (o caso Helena de 15/09/2026)
   opcaoPorTitulo,
+  // idem, para teste-rapha-entendimento-livre.js (data so com numeros, 13/11/2026)
+  parsearDataFlex,
   ROTULOS_CONFIRMACAO,
   // idem, para teste-retomar-personalizado.js
   resolverRetomada,

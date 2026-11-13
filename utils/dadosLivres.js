@@ -38,7 +38,7 @@ function candidatosLocal(texto) {
   while ((m = re.exec(bruto)) !== null) {
     cands.add(m[1]);
     // a captura pode engolir "festa em Piabeta" ou "Recreio dia": parte nas palavras de ligacao e guarda cada pedaco
-    for (const pedaco of m[1].split(/\s+(?:em|no|na|nos|nas|pra|para|dia|com|uns|umas|que|e|mas)\s+|\s+(?:dia|com|uns|umas|que|mas).*$/i)) cands.add(pedaco);
+    for (const pedaco of m[1].split(/\s+(?:em|no|na|nos|nas|pra|para|dia|com|uns|umas|que|e|mas)\s+|\s+(?:dia|com|uns|umas|que|mas)\b.*$/i)) cands.add(pedaco);
   }
   // 2) cada trecho entre pontuacoes (".", "!", "?", ",", ";" e quebra de linha)
   for (const parte of bruto.split(/[.!?,;\n]+/)) cands.add(parte);

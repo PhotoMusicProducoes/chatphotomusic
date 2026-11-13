@@ -65,7 +65,10 @@ async function cliente(texto) {
   const rConf = todas[todas.length - 1];
   checar("serviço dito pelo NOME: não pergunta quais serviços nem pede confirmação, vai à celebração", sess().step === "orcamento_celebracao" && (sess().orcamento.servicosPrevios || []).length === 2, sess().step);
   await cliente("4");
-  checar("depois da celebração, pergunta os convidados", sess().step === "orcamento_convidados", sess().step);
+  // 13/11/2026: o "80 pessoas" que ela escreveu antes do nome ficou guardado; agora o bot so CONFIRMA os 80.
+  checar("depois da celebração, CONFIRMA os 80 convidados que ela já tinha dito", sess().step === "orcamento_convidados_confirmar" && /80 convidados/.test(todas[todas.length - 1]), sess().step + " | " + todas[todas.length - 1]);
+  await cliente("1");
+  checar("confirmou: 80 gravado e segue para a data", sess().orcamento.convidados === 80 && sess().step === "orcamento_data", sess().step + " " + sess().orcamento.convidados);
   checar("nada foi orçado ainda (o orçamento sai personalizado no fim)", (sess().orcamento.servicosEnviados || []).length === 0, JSON.stringify(sess().orcamento.servicosEnviados));
 
   devolverSessoes();
