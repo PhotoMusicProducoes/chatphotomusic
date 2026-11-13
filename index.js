@@ -41,6 +41,7 @@ const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require(".
 
 const { sessions } = require("./utils/sessions");
 const { marcaAtiva, limparMarca, qualRespostaRapida, clientePediuParar } = require("./utils/followupRespostaRapida.js");
+const { clienteQuerFechar, numeroDoOrcamento, resumoOrcamento, rotuloBotao } = require("./utils/queroContratar.js");
 const { ehEstrangeiroConhecido, lembrarEstrangeiro, numeroDeEntrada } = require("./utils/numeroEstrangeiro.js");
 const { resetSession } = require("./utils/resetSession");
 // 🤖 Camada de ENTENDIMENTO (Fase 1). Fica desligada até IA_ROTEADOR=1.
@@ -1077,7 +1078,7 @@ function clienteQuerContratar(texto) {
 }
 
 async function avisarLeadRespondeu(telefone, texto, extra = {}) {
-  const querContratar = clienteQuerContratar(texto);
+  const querContratar = !!extra.forcarContratar || clienteQuerContratar(texto);
   try {
     const resp = await axios.post(
       `${PM_API_BASE}/lead-cliente-respondeu`,
@@ -1151,6 +1152,10 @@ async function tratarFollowupV2(chatId, texto) {
   const parar = !rr && clientePediuParar(texto);
   if (!rr && !parar) return false;
 
+  if (rr === "contratar") {   // 13/11: com a conversão ligada, o "1" do follow-up segue o caminho do contrato
+    limparMarca(chatId);
+    if (await tratarQueroContratar(chatId, texto, { forcar: true })) return true;
+  }
   const data = await avisarLeadRespondeu(chatId, texto, { respostaRapida: rr, parar, semAvisoOperador: true });
   if (!data || !data.v2 || data.status === "sem_lead") return false;   // fluxo de sempre
 
@@ -1193,6 +1198,227 @@ async function tratarFollowupV2(chatId, texto) {
     await sendText(OPERADOR_TELEFONE_ID, `${avisos[rr]}\n\n${quem}\n📱 ${chatId}`);
   } catch (e) { console.warn(`⚠️ aviso operador (resposta rápida): ${e.message}`); }
   console.log(`🔘 ${chatId} resposta rápida "${rr}" (lead #${data.id}).`);
+  return true;
+}
+
+/* ======================================================
+   QUERO CONTRATAR (13/11/2026 · RJN) - conversão orçamento -> contrato
+   Reconhece o pedido em qualquer estado da conversa (botão do PDF, botão
+   do follow-up, frase escrita), acha o orçamento do cliente, confirma o
+   pacote e avisa o operador com o link "Criar evento a partir do orçamento".
+   Não gera contrato: o evento nasce em rascunho para o operador conferir.
+   Só funciona com o PhotoMusic Pro na chave pm_conversao_v1_ativo; sem ela,
+   o fluxo de sempre continua (devolve false).
+   ====================================================== */
+const PM_ADMIN_BASE = String(PM_API_BASE || "").replace(/\/wp-json\/.*$/, "");
+
+async function buscarOrcamentosDoCliente(telefone, numero) {
+  try {
+    const resp = await axios.get(`${PM_API_BASE}/orcamentos-do-cliente`, {
+      params: { telefone, numero: numero || "" },
+      headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 8000,
+    });
+    return resp.data || null;
+  } catch (e) {
+    console.warn(`⚠️ orcamentos-do-cliente (${telefone}): ${e.message}`);
+    return null;
+  }
+}
+
+/* ---- a conversa de contratação: equipamento -> pacote -> duração -> pagamento -> confirmação ----
+   Pedido do Mario (13/11): é o que ele precisa para criar o evento e mandar o formulário.
+   As opções são as MESMAS do PDF (vêm do PhotoMusic Pro). Nenhum preço novo é mostrado:
+   o valor exato só aparece quando a escolha é a da própria proposta; senão, "conforme o PDF". */
+function igualSemPacote(a, b) {
+  const n = s => normalizarParaBusca(String(s || "")).replace(/^pacote\s+/, "").trim();
+  return !!a && !!b && (n(a).includes(n(b)) || n(b).includes(n(a)));
+}
+
+function escolhaEhDaProposta(c) {
+  const o = c.orc;
+  if (c.opcao && Array.isArray(o.opcoes) && o.opcoes.length) {
+    const menor = Math.min(...o.opcoes.map(x => Number(x.valor)));
+    const esc = o.opcoes.find(x => x.slug === c.opcao);
+    if (!esc || Number(esc.valor) !== menor) return false;
+  }
+  if (c.pacote && !(o.itens || []).concat(o.opcoes || []).some(i => igualSemPacote(i.pacote, c.pacote))) return false;
+  if (c.horas && o.horas_proposta && Number(c.horas) !== Number(o.horas_proposta)) return false;
+  return true;
+}
+
+function resumoEscolhas(c) {
+  const o = c.orc;
+  const pg = (o.pagamentos || {})[c.pagto];
+  const esc = (o.opcoes || []).find(x => x.slug === c.opcao);
+  const linhas = (o.itens || []).map(i => `• ${i.servico}`);
+  if (esc) linhas.unshift(`• ${esc.servico}`);
+  return `*Orçamento nº ${o.id}*${o.celebracao ? " · " + o.celebracao : ""}${o.data_evento ? " · " + o.data_evento : ""}\n` +
+    linhas.join("\n") +
+    (c.pacote ? `\n📦 Pacote: *${c.pacote}*` : "") +
+    (c.horas ? `\n⏱️ Duração: *${c.horas}h*` : "") +
+    (pg ? `\n💳 Pagamento: *${pg}*` : "") +
+    (escolhaEhDaProposta(c) && !esc ? `\n💰 Total da proposta: *${brlContratar(o.total)}*` : "\n💰 Valor conforme o seu orçamento (a equipe confirma com você)");
+}
+function brlContratar(v) { return "R$ " + Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+// envia até 3 opções como botão, mais que isso como lista (o corpo sempre leva os números)
+async function perguntarOpcoes(chatId, pergunta, rotulos) {
+  const opcoes = rotulos.map((l, i) => ({ id: String(i + 1), label: String(l).slice(0, 24) }));
+  if (opcoes.length <= 3) await sendButtonList(chatId, pergunta, opcoes);
+  else await sendOptionList(chatId, pergunta, opcoes);
+}
+
+function lerEscolha(texto, rotulos) {
+  const t = String(texto || "").trim();
+  const n = Number(t.replace(/\D+/g, ""));
+  if (/^\d{1,2}$/.test(t) && n >= 1 && n <= rotulos.length) return n - 1;
+  const alvo = normalizarParaBusca(t);
+  const i = rotulos.findIndex(r => { const x = normalizarParaBusca(String(r)); return x && (alvo === x || alvo.includes(x)); });
+  return i;
+}
+
+// qual é a próxima pergunta (ou a confirmação)
+async function perguntarProximoContratar(chatId) {
+  const s = sessions[chatId]; const c = s._contratar; const o = c.orc;
+  if (!o.pacote_definido && !(o.opcoes || []).length) return concluirQueroContratar(chatId, o, false);
+  if ((o.opcoes || []).length && !c.opcao) {
+    s.step = "contratar_opcao";
+    return perguntarOpcoes(chatId, `Que ótimo! ❤️ No seu orçamento nº ${o.id} você tem opções de equipamento de foto. Qual você quer?\n\n` +
+      o.opcoes.map((x, i) => `*${i + 1}* ${x.servico}${x.pacote && x.pacote !== x.servico ? " - " + x.pacote : ""}: ${brlContratar(x.valor)}`).join("\n"),
+      o.opcoes.map(x => x.servico));
+  }
+  if ((o.pacotes || []).length && !c.pacote) {
+    s.step = "contratar_pacote";
+    return perguntarOpcoes(chatId, "Qual *pacote* você escolheu? (os valores de cada um estão na página de Pacotes do seu orçamento)", o.pacotes);
+  }
+  if ((o.duracoes || []).length && !c.horas) {
+    s.step = "contratar_duracao";
+    return perguntarOpcoes(chatId, "E qual *duração* do serviço?", o.duracoes.map(h => `${h} horas`));
+  }
+  const pgs = Object.keys(o.pagamentos || {});
+  if (pgs.length && !c.pagto) {
+    s.step = "contratar_pagamento";
+    return perguntarOpcoes(chatId, "Como você prefere pagar?", pgs.map(k => o.pagamentos[k]));
+  }
+  s.step = "contratar_confirmar";
+  return sendButtonList(chatId, `Perfeito! Confere se está tudo certo:\n\n${resumoEscolhas(c)}`,
+    [{ id: "1", label: "Sim, está certo" }, { id: "2", label: "Quero mudar algo" }]);
+}
+
+async function iniciarConversaContratar(chatId, orc) {
+  const s = sessions[chatId] || sessaoAguardandoOperador(chatId, true);
+  if (!/^contratar_/.test(s.step || "")) s.stepAntesContratar = s.step;
+  s._contratar = { orc, opcao: "", pacote: "", horas: 0, pagto: "" };
+  s._contratarOpcoes = null;
+  s.ultimaPerguntaNaoRespondida = null;
+  await perguntarProximoContratar(chatId);
+  return true;
+}
+
+// Fecha o pedido: lead em Negociando, cliente com a próxima etapa, operador com o link já com as escolhas.
+async function concluirQueroContratar(chatId, orc, mudar, textoCliente) {
+  const s = sessaoAguardandoOperador(chatId, true);
+  const c = s._contratar || { orc };
+  s._contratar = null; s._contratarOpcoes = null; s.ultimaPerguntaNaoRespondida = null;
+  avisarLeadRespondeu(chatId, `quero contratar o orçamento nº ${orc ? orc.id : "?"}`, { semAvisoOperador: true, forcarContratar: true });
+  const primeiro = String(((s.orcamento || {}).nome) || "").split(" ")[0];
+  const corp = orc && !!orc.empresa;
+  const q = orc ? [["opcao", c.opcao], ["pacote", c.pacote], ["horas", c.horas || ""], ["pagto", c.pagto]]
+    .filter(([, v]) => v).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join("") : "";
+  const link = orc ? `${PM_ADMIN_BASE}/wp-admin/admin-post.php?action=pm_evento_do_orcamento&orc=${orc.id}${q}` : "";
+  const escolhas = orc && (c.opcao || c.pacote || c.horas || c.pagto) ? resumoEscolhas(c) : (orc ? resumoOrcamento(orc) : "");
+  if (mudar) {
+    await sendText(chatId, "Claro! Me conta o que você quer mudar, que a nossa equipe ajusta com você por aqui. 😊");
+  } else {
+    await sendText(chatId, (corp ? `Perfeito${primeiro ? ", *" + primeiro + "*" : ""}! ` : `Que alegria${primeiro ? ", *" + primeiro + "*" : ""}! ❤️ `) +
+      "Já avisei a nossa equipe. O próximo passo é o cadastro para o contrato: vamos te enviar o formulário por aqui, " +
+      "já preenchido com os dados do orçamento, e você completa só o que falta. 🙌");
+  }
+  try {
+    await sendText(OPERADOR_TELEFONE_ID,
+      `🟢 *Cliente quer CONTRATAR!*${mudar ? " (pediu ajuste)" : ""}\n\n${primeiro ? "*" + primeiro + "*\n" : ""}📱 ${chatId}\n` +
+      (escolhas ? `\n${escolhas}\n` : "") +
+      (mudar && textoCliente ? `\nPediu: "${String(textoCliente).slice(0, 100)}"\n` : "") +
+      (orc && !escolhaEhDaProposta(c) ? "\n⚠️ Escolha diferente da proposta: ajuste o valor pelo PDF ao criar o evento.\n" : "") +
+      (link ? `\n📅 Criar o evento já preenchido:\n${link}` : "\nNão achei orçamento deste telefone no sistema.") +
+      "\n\nO lead foi para *Negociando* e o follow-up está pausado.");
+  } catch (e) { console.warn(`⚠️ aviso operador (contratar): ${e.message}`); }
+  console.log(`🤝 ${chatId} quer contratar${orc ? " o orçamento nº " + orc.id : ""}${mudar ? " (com ajuste)" : ""}.`);
+  return true;
+}
+
+async function tratarQueroContratar(chatId, texto, opc = {}) {
+  const s = sessions[chatId];
+  const t = String(texto || "").trim();
+
+  // respostas às perguntas da conversa de contratação
+  if (s && /^contratar_/.test(s.step || "")) {
+    if (s.step === "contratar_escolher" && Array.isArray(s._contratarOpcoes)) {
+      const orc = s._contratarOpcoes[lerEscolha(t, s._contratarOpcoes.map(o => "nº " + o.id))];
+      return orc ? iniciarConversaContratar(chatId, orc) : concluirQueroContratar(chatId, null, true, t);
+    }
+    const c = s._contratar;
+    if (!c) return false;
+    const o = c.orc;
+    const mapa = {
+      contratar_opcao:     [(o.opcoes || []).map(x => x.servico), i => { c.opcao = o.opcoes[i].slug; }],
+      contratar_pacote:    [o.pacotes || [], i => { c.pacote = o.pacotes[i]; }],
+      contratar_duracao:   [(o.duracoes || []).map(h => `${h} horas`), i => { c.horas = o.duracoes[i]; }],
+      contratar_pagamento: [Object.values(o.pagamentos || {}), i => { c.pagto = Object.keys(o.pagamentos)[i]; }],
+    };
+    if (s.step === "contratar_confirmar") {
+      const n = normalizarParaBusca(t);
+      if (t === "1" || /^sim\b|^esta certo|^isso\b|^confirm/.test(n)) return concluirQueroContratar(chatId, o, false);
+      return concluirQueroContratar(chatId, o, true, t === "2" ? "" : t);
+    }
+    const [rotulos, gravar] = mapa[s.step] || [null, null];
+    if (!rotulos) return false;
+    const i = lerEscolha(t, rotulos);
+    if (i < 0) {   // respondeu outra coisa: repete a pergunta uma vez, depois a equipe assume
+      c.erros = (c.erros || 0) + 1;
+      if (c.erros >= 2) return concluirQueroContratar(chatId, o, true, t);
+      await sendText(chatId, "Não entendi 😅 Responda com o número da opção, por favor.");
+      await perguntarProximoContratar(chatId);
+      return true;
+    }
+    gravar(i);
+    await perguntarProximoContratar(chatId);
+    return true;
+  }
+
+  if (!opc.forcar && !clienteQuerFechar(t)) return false;
+
+  const numero = numeroDoOrcamento(t);
+  const r = await buscarOrcamentosDoCliente(chatId, numero);
+  if (!r || r.ativo !== true) return false;   // PhotoMusic Pro sem a chave: fluxo de sempre
+
+  const lista = Array.isArray(r.orcamentos) ? r.orcamentos : [];
+  let orc = numero ? lista.find(o => o.id === numero) : null;
+  if (!orc && lista.length === 1) orc = lista[0];
+
+  if (!orc && lista.length > 1) {
+    const sess = sessions[chatId] || sessaoAguardandoOperador(chatId, true);
+    if (!/^contratar_/.test(sess.step || "")) sess.stepAntesContratar = sess.step;
+    sess.step = "contratar_escolher";
+    sess._contratarOpcoes = lista.slice(0, 3);
+    await sendButtonList(chatId,
+      "Que ótimo! ❤️ Encontrei mais de um orçamento seu. Qual você quer contratar?\n\n" +
+      sess._contratarOpcoes.map((o, i) => `*${i + 1}*) ${resumoOrcamento(o)}`).join("\n\n"),
+      sess._contratarOpcoes.map((o, i) => ({ id: String(i + 1), label: rotuloBotao(o) })));
+    return true;
+  }
+  if (orc) return iniciarConversaContratar(chatId, orc);
+
+  // Nenhum orçamento neste telefone (ou o nº citado é de outro telefone): a equipe assume.
+  sessaoAguardandoOperador(chatId, true);
+  avisarLeadRespondeu(chatId, t, { semAvisoOperador: true, forcarContratar: true });
+  await sendText(chatId, "Que ótimo! ❤️ Já avisei a nossa equipe, que fala com você por aqui para seguir com a contratação. 🙌");
+  try {
+    await sendText(OPERADOR_TELEFONE_ID, `🟢 *Cliente quer CONTRATAR!*\n\n📱 ${chatId}\n\n` +
+      (r.numero_de_outro_telefone ? `Citou o orçamento nº ${numero}, que foi feito em OUTRO telefone. Confira antes de criar o evento.`
+                                  : "Não achei orçamento deste telefone no sistema.") +
+      "\n\nO lead foi para *Negociando* e o follow-up está pausado.");
+  } catch (e) { console.warn(`⚠️ aviso operador (contratar): ${e.message}`); }
   return true;
 }
 
@@ -3421,7 +3647,9 @@ async function handleIncomingMessage(message) {
          follow-up ou inexistente. "Quero contratar" avisa sempre. */
       const _sFl = sessions[chatId];
       const _noFluxoDoBot = !!(_sFl && _sFl.step && !["finalizado", "pausado_followup", "pausado_fluxo"].includes(_sFl.step));
+      const _passoContratar = !!(_sFl && /^contratar_/.test(_sFl.step || ""));
       if (!(marcaAtiva(chatId) && qualRespostaRapida(corpoMensagem)) && !clientePediuParar(corpoMensagem)
+          && !clienteQuerFechar(corpoMensagem) && !_passoContratar   // 13/11: o interceptor do "quero contratar" avisa o plugin
           && (!_noFluxoDoBot || clienteQuerContratar(corpoMensagem))) {
         avisarLeadRespondeu(chatId, corpoMensagem);
       }
@@ -5095,6 +5323,12 @@ async function handleIncomingMessage(message) {
   // Fica ANTES da criacao de sessao: sem isto o "1" de quem nao tinha sessao
   // abria o menu como "opcao 1 = orcamento".
   // ======================================================
+  // 13/11/2026: "quero contratar" (PDF, follow-up, frase) em QUALQUER estado da conversa
+  if (await tratarQueroContratar(chatId, corpoMensagem)) return;
+  // plugin sem a chave da conversão: o pedido segue avisando o lead como antes
+  // (a resposta rápida do follow-up tem caminho próprio logo abaixo: não avisa duas vezes)
+  if (clienteQuerFechar(corpoMensagem) && !(marcaAtiva(chatId) && qualRespostaRapida(corpoMensagem))) avisarLeadRespondeu(chatId, corpoMensagem);
+
   if (await tratarFollowupV2(chatId, corpoMensagem)) return;
 
   // ======================================================

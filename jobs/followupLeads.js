@@ -17,11 +17,11 @@
 const axios = require("axios");
 const cron = require("node-cron");
 const { esperaEntreEnvios } = require("../utils/intervaloEnvio.js");
-const { sendText } = require("../utils/index.js");
+const { sendText, sendButtonList } = require("../utils/index.js");
 const { sessions } = require("../utils/sessions");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
 // 13/11/2026: follow-up v2 (so com `v2: true` vindo do PhotoMusic Pro)
-const { montarMensagemV2 } = require("./followupTextosV2.js");
+const { montarMensagemV2, montarBotoesV2 } = require("./followupTextosV2.js");
 const { marcarFollowupEnviado } = require("../utils/followupRespostaRapida.js");
 
 const TIMEZONE = "America/Sao_Paulo";
@@ -405,10 +405,13 @@ async function executarFollowupLeads() {
           console.log(`   🚫 Follow-up NAO enviado para ${lead.nome} (${lead.telefone}): cliente recusou no bot.`);
           continue;
         }
-        const msg  = v2
-          ? montarMensagemV2(lead, { montarMensagemFollowup, tipoDoLead, blocoPreco, frasePrecoMenor, servicosDoLead, linhaMulti: linhaMultiDoLead })
-          : montarMensagemFollowup(lead);
-        await sendText(lead.telefone, msg);
+        const ajudaV2 = { montarMensagemFollowup, tipoDoLead, blocoPreco, frasePrecoMenor, servicosDoLead, linhaMulti: linhaMultiDoLead };
+        if (v2) {
+          const b = montarBotoesV2(lead, ajudaV2);   // 13/11: botões, "Quero contratar" primeiro
+          await sendButtonList(lead.telefone, b.pergunta, b.opcoes);
+        } else {
+          await sendText(lead.telefone, montarMensagemFollowup(lead));
+        }
         await registrarFollowup(lead.id, tipo, lead.estagio);
         // v2: marca o telefone para o "1/2/3" do cliente ser lido como resposta ao follow-up
         if (v2) marcarFollowupEnviado(lead.telefone, { leadId: lead.id, perfil: lead.perfil, nome: lead.nome });
