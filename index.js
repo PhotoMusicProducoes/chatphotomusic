@@ -40,6 +40,7 @@ const {
 const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require("./utils/pauseControl.js");
 
 const { sessions } = require("./utils/sessions");
+const { marcaAtiva, limparMarca, qualRespostaRapida, clientePediuParar } = require("./utils/followupRespostaRapida.js");
 const { ehEstrangeiroConhecido, lembrarEstrangeiro, numeroDeEntrada } = require("./utils/numeroEstrangeiro.js");
 const { resetSession } = require("./utils/resetSession");
 // 🤖 Camada de ENTENDIMENTO (Fase 1). Fica desligada até IA_ROTEADOR=1.
@@ -476,6 +477,8 @@ async function capturarClienteOrcamento(chatId, session) {
       // Corporativo: vai para a coluna `empresa` de pm_leads e de pm_orcamentos,
       // e é ela que nomeia o arquivo da proposta.
       empresa:        orc.empresa    || "",
+      // 13/11/2026: perfil (social|empresa|agencia) para o follow-up v2 escrever para quem e
+      perfilCliente:  orc.perfil     || "",
       email:          orc.email      || "",
       dia,
       mes,
@@ -1073,7 +1076,7 @@ function clienteQuerContratar(texto) {
       || /\bfechar\b[^.!?]*\bcontrat/.test(t);
 }
 
-async function avisarLeadRespondeu(telefone, texto) {
+async function avisarLeadRespondeu(telefone, texto, extra = {}) {
   const querContratar = clienteQuerContratar(texto);
   try {
     const resp = await axios.post(
@@ -1082,17 +1085,32 @@ async function avisarLeadRespondeu(telefone, texto) {
         telefone,
         contratar: querContratar,
         mensagem: String(texto || "").slice(0, 120),
+        // v2 (13/11/2026): plugin antigo ignora estes campos
+        parar: !!extra.parar,
+        resposta_rapida: extra.respostaRapida || "",
       },
       { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 6000 }
     );
     const data = resp.data || {};
+    /* v2: resposta comum que ACABOU de pausar o lead avisa o operador uma vez.
+       Se a sessao ja esta em pausado_followup, o guard dela e quem avisa. */
+    if (data.v2 && data.status === "pausado" && !data.ja_pausado && !extra.semAvisoOperador) {
+      const s = sessions[normalizarNumero(telefone)];
+      if (!s || s.step !== "pausado_followup") {
+        try {
+          await sendText(OPERADOR_TELEFONE_ID,
+            `📩 *Cliente respondeu ao follow-up*\n\n${data.nome ? "*" + data.nome + "*" : telefone}\n📱 ${telefone}\n_"${String(texto || "").slice(0, 120)}"_\n\n` +
+            `O follow-up automático foi *pausado*. Assuma a conversa por aqui. 🙌`);
+        } catch (e) { console.warn(`⚠️ aviso operador (resposta ao follow-up): ${e.message}`); }
+      }
+    }
     if (data.status === "negociando") {
       console.log(`🤝 Lead #${data.id} (${data.nome || "?"}) → Negociando: cliente deseja contratar.`);
     } else if (data.status === "pausado") {
       console.log(`⏸️ Lead #${data.id} (${data.nome || "?"}): follow-up pausado (cliente respondeu).`);
     }
     // Avisa o operador quando o cliente sinaliza que quer fechar.
-    if (querContratar && (data.status === "negociando" || data.status === "pausado")) {
+    if (querContratar && !extra.semAvisoOperador && (data.status === "negociando" || data.status === "pausado")) {
       const nome = data.nome ? `*${data.nome}*` : `o cliente ${telefone}`;
       await sendText(
         OPERADOR_TELEFONE_ID,
@@ -1104,6 +1122,78 @@ async function avisarLeadRespondeu(telefone, texto) {
     console.warn(`⚠️ avisarLeadRespondeu falhou (${telefone}): ${e.message}`);
     return null;
   }
+}
+
+/* ======================================================
+   FOLLOW-UP V2 - interceptor (13/11/2026 · RJN)
+   - "1/2/3" so vale com a marca de follow-up v2 enviado (7 dias);
+   - "parar" so vale se o PhotoMusic Pro estiver na v2 E achar o lead:
+     plugin antigo ou cliente sem lead = segue o fluxo de sempre.
+   Devolve true quando tratou (o handler para aqui).
+   ====================================================== */
+function sessaoAguardandoOperador(chatId, avisado) {
+  if (!sessions[chatId]) {
+    sessions[chatId] = {
+      step: "pausado_followup", menuInicialEnviado: true, orcamento: { servicosEnviados: [] },
+      servicosEnviados: [], ultimaInteracao: Date.now(), lembreteOrcamentoEnviado: true,
+    };
+  } else if (sessions[chatId].step !== "pausado_followup") {
+    sessions[chatId].stepAnterior = sessions[chatId].step;   // p/ o operador retomar com "continuar"
+    sessions[chatId].step = "pausado_followup";
+  }
+  sessions[chatId].avisouOperadorFollowup = !!avisado;
+  return sessions[chatId];
+}
+
+async function tratarFollowupV2(chatId, texto) {
+  const marca = marcaAtiva(chatId);
+  const rr = marca ? qualRespostaRapida(texto) : "";
+  const parar = !rr && clientePediuParar(texto);
+  if (!rr && !parar) return false;
+
+  const data = await avisarLeadRespondeu(chatId, texto, { respostaRapida: rr, parar, semAvisoOperador: true });
+  if (!data || !data.v2 || data.status === "sem_lead") return false;   // fluxo de sempre
+
+  const primeiro = String((marca && marca.nome) || data.nome || "").split(" ")[0];
+  const corp = marca && (marca.perfil === "empresa" || marca.perfil === "agencia");
+  const quem = data.nome ? `*${data.nome}*` : chatId;
+
+  if (parar) {
+    const s = sessaoAguardandoOperador(chatId, false);
+    s.optOutLembretes = true;
+    limparMarca(chatId);
+    if (!data.ja_bloqueado) {
+      await sendText(chatId, `Tudo bem${primeiro ? ", *" + primeiro + "*" : ""}! Não vamos mais enviar mensagens por aqui. ` +
+        "Se um dia precisar, é só nos chamar. Obrigado pela atenção. ❤️");
+      try {
+        await sendText(OPERADOR_TELEFONE_ID, `🚫 *Pediu para não receber mais mensagens*\n\n${quem}\n📱 ${chatId}\n_"${String(texto).slice(0, 120)}"_\n\n` +
+          "Contato BLOQUEADO no follow-up (não conta como perda comercial).");
+      } catch (e) { console.warn(`⚠️ aviso operador (parar): ${e.message}`); }
+    }
+    console.log(`🚫 ${chatId} pediu para parar: contato bloqueado (lead #${data.id}).`);
+    return true;
+  }
+
+  limparMarca(chatId);
+  sessaoAguardandoOperador(chatId, true);
+  const respostas = {
+    contratar: corp
+      ? `Perfeito${primeiro ? ", *" + primeiro + "*" : ""}! Já avisei a nossa equipe, que fala com você por aqui para formalizar a contratação. 🙌`
+      : `Que alegria${primeiro ? ", *" + primeiro + "*" : ""}! ❤️ Já avisei a nossa equipe, que fala com você por aqui para fechar tudo. 🙌`,
+    duvida: "Claro! Pode mandar a sua dúvida por aqui, que a nossa equipe já te responde. 😊",
+    agora_nao: "Tudo bem, obrigado por responder! 😊 Vou parar os lembretes por aqui. Quando quiser retomar, é só me chamar. ❤️",
+  };
+  const avisos = {
+    contratar: "🟢 *Cliente quer CONTRATAR!* (resposta rápida 1)\n\nO lead foi movido para *Negociando* e o follow-up foi pausado. Assuma a conversa. 🙌",
+    duvida: "❓ *Cliente tem uma DÚVIDA* (resposta rápida 2)\n\nO follow-up foi pausado. Responda por aqui.",
+    agora_nao: "⏸️ *Cliente respondeu \"Agora não\"* (resposta rápida 3)\n\nO follow-up foi pausado. Não é perda: decida no funil se marca como perdido ou retoma depois.",
+  };
+  await sendText(chatId, respostas[rr]);
+  try {
+    await sendText(OPERADOR_TELEFONE_ID, `${avisos[rr]}\n\n${quem}\n📱 ${chatId}`);
+  } catch (e) { console.warn(`⚠️ aviso operador (resposta rápida): ${e.message}`); }
+  console.log(`🔘 ${chatId} resposta rápida "${rr}" (lead #${data.id}).`);
+  return true;
 }
 
 // Operadores autorizados a enviar comandos (além da própria linha do bot,
@@ -3321,7 +3411,20 @@ async function handleIncomingMessage(message) {
       // O cliente respondeu → pausa o follow-up automático no funil do
       // PhotoMusic Pro (e move p/ Negociando + avisa operador se quer
       // contratar). Fire-and-forget para não atrasar o processamento.
-      avisarLeadRespondeu(chatId, corpoMensagem);
+      // v2: resposta rapida ao follow-up e pedido para parar sao tratados (e
+      // avisados ao plugin) pelo interceptor antes da criacao de sessao.
+      /* v2 (13/11/2026): quem esta RESPONDENDO AO PROPRIO BOT (menu pos-orcamento,
+         perguntas do orcamento) nao pausa o follow-up. Na lista de 46 leads
+         desativados, 24 foram pausados para sempre so por clicar "1/2/3" no menu
+         que chega logo depois do orcamento ("3" = "por enquanto e so").
+         Pausa quando o bot NAO esta conversando: sessao finalizada, pausada pelo
+         follow-up ou inexistente. "Quero contratar" avisa sempre. */
+      const _sFl = sessions[chatId];
+      const _noFluxoDoBot = !!(_sFl && _sFl.step && !["finalizado", "pausado_followup", "pausado_fluxo"].includes(_sFl.step));
+      if (!(marcaAtiva(chatId) && qualRespostaRapida(corpoMensagem)) && !clientePediuParar(corpoMensagem)
+          && (!_noFluxoDoBot || clienteQuerContratar(corpoMensagem))) {
+        avisarLeadRespondeu(chatId, corpoMensagem);
+      }
     }
   }
 
@@ -4986,6 +5089,13 @@ async function handleIncomingMessage(message) {
     console.log(`🚫 Cliente ${chatId} enviou mensagem durante envio manual. Ignorando até completar.`);
     return; // ✅ Apenas ignora, sem enviar mensagem
   }
+
+  // ======================================================
+  // FOLLOW-UP V2 (13/11/2026): resposta rapida 1/2/3 e pedido para parar.
+  // Fica ANTES da criacao de sessao: sem isto o "1" de quem nao tinha sessao
+  // abria o menu como "opcao 1 = orcamento".
+  // ======================================================
+  if (await tratarFollowupV2(chatId, corpoMensagem)) return;
 
   // ======================================================
   // CRIAÇÃO DE SESSÃO

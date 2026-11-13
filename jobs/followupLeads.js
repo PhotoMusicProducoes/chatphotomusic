@@ -20,6 +20,9 @@ const { esperaEntreEnvios } = require("../utils/intervaloEnvio.js");
 const { sendText } = require("../utils/index.js");
 const { sessions } = require("../utils/sessions");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
+// 13/11/2026: follow-up v2 (so com `v2: true` vindo do PhotoMusic Pro)
+const { montarMensagemV2 } = require("./followupTextosV2.js");
+const { marcarFollowupEnviado } = require("../utils/followupRespostaRapida.js");
 
 const TIMEZONE = "America/Sao_Paulo";
 
@@ -222,6 +225,28 @@ function tipoDoLead(lead) {
   return { 1: "24h", 2: "72h", 3: "7dias" }[lead.estagio] || "24h";
 }
 
+/* v2: as mesmas regras do montarMensagemFollowup (servico fora do orcamento
+   sai da lista; desconto do combo so INFORMA), em funcao para os textos por
+   perfil usarem sem copiar a regra. */
+function servicosDoLead(lead) {
+  const fora = (lead.precos && Array.isArray(lead.precos.nao_atende)) ? lead.precos.nao_atende : [];
+  return (fora.length && lead.servicos
+    ? String(lead.servicos).split(/\s*,\s*/).filter(n => !fora.includes(n)).join(", ")
+    : lead.servicos) || "nossos serviços";
+}
+function linhaMultiDoLead(lead) {
+  if (!lead.multiServicos) return "";
+  const desc = (lead.precos && Number(lead.precos.combo_desconto) > 0) ? Number(lead.precos.combo_desconto) : 200;
+  return `Esse valor já vem com o *desconto de ${brl(desc)}* por contratar mais de um serviço.\n\n`;
+}
+
+/* v2: o cliente disse "nao" ao bot (menu, lembrete ou desistiu do orcamento):
+   nao manda follow-up por cima. A marca vive na sessao (optOutLembretes). */
+function sessaoRecusou(telefone) {
+  const chave = acharSessaoPorTelefone(telefone);
+  return !!(chave && sessions[chave] && sessions[chave].optOutLembretes);
+}
+
 function montarMensagemFollowup(lead) {
   const nome       = (lead.nome || "").split(" ")[0] || "Cliente";
   const celebracao = lead.celebracao || "o seu evento";
@@ -364,7 +389,8 @@ async function executarFollowupLeads() {
     });
 
     const leads = resp.data?.leads || [];
-    console.log(`📋 ${leads.length} lead(s) com follow-up devido.`);
+    const v2 = resp.data?.v2 === true;   // PhotoMusic Pro com pm_followup_v2_ativo = 1
+    console.log(`📋 ${leads.length} lead(s) com follow-up devido.${v2 ? " (v2)" : ""}`);
 
     let enviados = 0, erros = 0;
     let idxEnvio = 0; // p/ o intervalo anti-bloqueio entre envios do mesmo ciclo
@@ -375,9 +401,17 @@ async function executarFollowupLeads() {
         // cliente — pausa especial / pausa do operador só calam o fluxo
         // conversacional do bot, não as mensagens proativas do sistema.
         const tipo = tipoDoLead(lead);
-        const msg  = montarMensagemFollowup(lead);
+        if (v2 && sessaoRecusou(lead.telefone)) {
+          console.log(`   🚫 Follow-up NAO enviado para ${lead.nome} (${lead.telefone}): cliente recusou no bot.`);
+          continue;
+        }
+        const msg  = v2
+          ? montarMensagemV2(lead, { montarMensagemFollowup, tipoDoLead, blocoPreco, frasePrecoMenor, servicosDoLead, linhaMulti: linhaMultiDoLead })
+          : montarMensagemFollowup(lead);
         await sendText(lead.telefone, msg);
         await registrarFollowup(lead.id, tipo, lead.estagio);
+        // v2: marca o telefone para o "1/2/3" do cliente ser lido como resposta ao follow-up
+        if (v2) marcarFollowupEnviado(lead.telefone, { leadId: lead.id, perfil: lead.perfil, nome: lead.nome });
 
         // Camada A: encerra o fluxo travado para a resposta não colidir
         encerrarFluxoLead(lead.telefone);
@@ -431,4 +465,4 @@ function inicializarFollowupLeads() {
   console.log("📨 Follow-up de leads agendado (a cada 30 min, 7h–20h).");
 }
 
-module.exports = { inicializarFollowupLeads, executarFollowupLeads };
+module.exports = { inicializarFollowupLeads, executarFollowupLeads, montarMensagemFollowup };
