@@ -479,6 +479,8 @@ async function executarLembreteOrcamento() {
       // 🚪 Quem DISSE que não quer mais atendimento nunca recebe lembrete nem
       // orçamento automático (caso Carlos, 22/10/2026: levou o lembrete e bloqueou).
       if (s.optOutLembretes) continue;
+      // 13/11/2026 (caso Gabriela): o operador ja mandou a proposta pelo gerador = nada de preliminar por cima
+      if (s.orcamentoManualEm) continue;
 
       // O passo "escolher serviço" é reaproveitado no "deseja mais serviços?":
       // se o cliente JÁ recebeu algum orçamento, não é abandono — não incomoda.

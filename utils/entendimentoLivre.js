@@ -109,4 +109,25 @@ function comRetroSugerido(ids, celebracaoId) {
 const MSG_RETRO_SUGERIDO =
   "✨ Aproveitei e incluí também o *Totem Retrô*, a nossa novidade, para você conhecer e comparar. 😊";
 
-module.exports = { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO };
+/* ── 5) RESPOSTA AUTOMATICA DO WHATSAPP BUSINESS DO CLIENTE (13/11/2026, caso Gabriela) ──────────────
+   A cliente tinha mensagem de ausencia ("Recebi sua mensagem... assim que possivel irei responder... Dias de
+   atendimento...") e o bot respondeu "Por favor, responda apenas 1 ou 2". Mensagem automatica NAO e resposta:
+   e ignorada em silencio (e nao pausa o follow-up). Precisa de 2 sinais (ou "mensagem automatica" escrito),
+   para nunca calar um cliente de verdade. */
+const SINAIS_AUTOMATICA = [
+  /\brecebi (a )?sua mensagem\b/, /\brecebemos (a )?sua mensagem\b/, /\bassim que poss[ií]vel\b/,
+  /\b(irei|vou|iremos) (te )?responder\b/, /\bresponderei\b/, /\bretornarei\b/, /\bretornaremos\b/,
+  /\bem breve (te )?(respond|retorn)/, /\b(dias|hor[aá]rios?) de atendimento\b/, /\bfora do hor[aá]rio\b/,
+  /\bno momento n[aã]o (posso|estou|consigo)\b/, /\bagradecemos (o |seu |pelo )?contato\b/,
+  /\bgrande demanda\b/, /\bate o final do dia\b/, /\bat[ée] o final do dia\b/, /\bevite [aá]udios?\b/,
+];
+function ehRespostaAutomatica(texto) {
+  const t = String(texto || "").toLowerCase();
+  if (t.length < 40) return false;
+  if (/\b(mensagem|resposta) autom[aá]tica\b/.test(t)) return true;
+  let n = 0;
+  for (const re of SINAIS_AUTOMATICA) if (re.test(t)) n++;
+  return n >= 2;
+}
+
+module.exports = { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO, ehRespostaAutomatica };

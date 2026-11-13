@@ -52,7 +52,7 @@ const {
 const { criarExtrator: criarExtratorIA } = require("./utils/iaExtrair.js");
 const { acharDataNoTexto, candidatosLocal } = require("./utils/dadosLivres.js");
 // 13/11/2026 (NAZ): ja contratou -> suporte; tirinha -> 3 servicos; data so com numeros. Ver o arquivo.
-const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO } = require("./utils/entendimentoLivre.js");
+const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO, ehRespostaAutomatica } = require("./utils/entendimentoLivre.js");
 // 13/11/2026 (NAZ): cliente que volta com orcamento em aberto (caso Luciana). Ver o arquivo.
 const { textoRetorno, opcaoRetorno, linhasOpcoesRetorno, linhaEvento,
         precisaPerguntarAssunto, itensAssunto, linhaItem, textoEscolherAssunto, escolhaItem } = require("./utils/clienteRetorno.js");
@@ -3974,7 +3974,30 @@ async function handleIncomingMessage(message) {
 
   // ignora mensagens enviadas pelo próprio bot
   if (isBot) {
+    /* 📄 ORÇAMENTO ENVIADO PELO GERADOR (13/11/2026, caso Gabriela): o PhotoMusic Pro manda pela mesma API e o
+       bot não sabia. A régua de 30 min / 1h mandaria o preliminar POR CIMA da proposta do operador. Link de
+       proposta que o próprio bot não mandou = proposta manual: a régua para (o follow-up assume). */
+    try {
+      const txtApi = String(corpoMensagem || "");
+      const linkOrc = (txtApi.match(/https?:\/\/\S*\/orcamentos\/orcamento-\d+[^\s]*\.pdf/i) || [])[0];
+      const sApi = sessions[chatId];
+      if (linkOrc && sApi) {
+        const doBot = Object.values((sApi.orcamento && sApi.orcamento.linksOrcamento) || {}).some(u => String(u) === linkOrc);
+        if (!doBot && !sApi.enviandoOrcamentos) {
+          sApi.orcamentoManualEm = Date.now();
+          console.log(`📄 ${chatId}: proposta enviada pelo gerador (${linkOrc.split("/").pop()}) - régua de abandono parada.`);
+        }
+      }
+    } catch (e) { console.warn(`⚠️ marca de orçamento manual: ${e.message}`); }
     console.log("⏭ Ignorando mensagem enviada pelo próprio bot.");
+    return;
+  }
+
+  /* 🤖 RESPOSTA AUTOMÁTICA DO WHATSAPP DO CLIENTE (13/11/2026, caso Gabriela: "Recebi sua mensagem... assim que
+     possível irei responder..."): não é resposta da pessoa. Ignora em silêncio (sem "responda 1 ou 2" e sem pausar
+     o follow-up como se ela tivesse respondido). Ver utils/entendimentoLivre.js. */
+  if (!isOperador && ehRespostaAutomatica(corpoMensagem)) {
+    console.log(`🤖 ${chatId}: resposta automática do WhatsApp do cliente - ignorada.`);
     return;
   }
 

@@ -89,6 +89,26 @@ const GABRIELA = "Olá, boa tarde. \nQueria saber o valor da plataforma 360° pa
   checar("a confirmação da opção 1 está na régua de abandono", lembrete.PASSOS_QUESTIONARIO ? lembrete.PASSOS_QUESTIONARIO.has("confirmar_opcao_menu") : true);
   checar("existe a pergunta de retomada da confirmação", lembrete.PERGUNTA_POR_PASSO && /orçamento/.test(lembrete.PERGUNTA_POR_PASSO.confirmar_opcao_menu || ""), JSON.stringify(lembrete.PERGUNTA_POR_PASSO && lembrete.PERGUNTA_POR_PASSO.confirmar_opcao_menu));
 
+  console.log("--- resposta automática do WhatsApp da cliente (a da clínica) ---");
+  const L = require("./utils/entendimentoLivre.js");
+  const AUTO = "Olá! Aqui é a Dra. Gabriela 😺🐶\n\nRecebi sua mensagem com sucesso e assim que possível irei responder.\nDevido a grande demanda, a resposta pode demorar um pouquinho, mas não se preocupe — todas as mensagens serão respondidas até o final do dia. 🥰\n\n📆 Dias de atendimento na clínica Vet Care:\n- 2ª e 6ªf: 10 às 17h\n\n•Evite áudios, por favor. 📝‼️";
+  checar("a mensagem da clínica é reconhecida como automática", L.ehRespostaAutomatica(AUTO));
+  checar("o pedido da Gabriela NÃO é automático", !L.ehRespostaAutomatica(GABRIELA));
+  checar("'Recebi o orçamento, obrigada! Vou ver com meu marido' NÃO é automático", !L.ehRespostaAutomatica("Recebi o orçamento, obrigada! Vou ver com meu marido e te retorno amanhã, tá bom?"));
+  checar("'Esta é uma mensagem automática' é automático", L.ehRespostaAutomatica("Esta é uma mensagem automática. Retornaremos o seu contato o quanto antes."));
+  novo();
+  await cliente("Oi");
+  await cliente("1");
+  r = await cliente(AUTO);
+  checar("na confirmação: automática é ignorada (sem 'responda apenas 1 ou 2')", r === "" && sess().step === "confirmar_opcao_menu", sess().step + " | " + r);
+
+  console.log("--- proposta enviada pelo GERADOR (mesma API) ---");
+  registro.length = 0;
+  await bot.handleIncomingMessage({ phone: CHAT, messageId: "gb-api-" + (++seq), fromMe: true, fromApi: true,
+    text: { message: "Se o arquivo não abrir no seu celular, é só clicar aqui: https://photomusic.com.br/wp-content/uploads/orcamentos/orcamento-674-BVhKgc6rvROcSXYHs6iCW7jS.pdf" } });
+  checar("a conversa fica marcada (régua de abandono para)", !!sess().orcamentoManualEm, JSON.stringify(Object.keys(sess())));
+  checar("nada é enviado à cliente por causa disso", registro.length === 0, registro.join(" | "));
+
   if (pausaAntes !== null) fs.writeFileSync(ARQ_PAUSA, pausaAntes); else if (fs.existsSync(ARQ_PAUSA)) fs.unlinkSync(ARQ_PAUSA);
   if (antes !== null) fs.writeFileSync(ARQ, antes); else if (fs.existsSync(ARQ)) fs.unlinkSync(ARQ);
   console.log(falhas ? `\n❌ ${falhas} falha(s)` : "\n✅ tudo certo");
