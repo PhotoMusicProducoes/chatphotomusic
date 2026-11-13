@@ -1027,6 +1027,19 @@ async function inferirCidadePorBairro(bairro) {
       }
       return { bairro: String(d.bairro), cidade: String(d.cidade), unico: false };
     }
+
+    /* 12/11/2026 (Mario): bairro FORA da tabela. O plugin pergunta ao Google em que cidade do RJ ele fica
+       (`sugestao_cidade`). So vira SUGESTAO: o bot confirma com 1 toque ("O bairro X fica em Y, certo?"),
+       nunca assume. O nome devolvido tem que ser igual ao digitado, e nomes que existem em muitas cidades
+       (Centro etc.) continuam perguntando a cidade. */
+    const sug = d.status === "nao_encontrado" ? d.sugestao_cidade : null;
+    if (sug && sug.bairro && sug.cidade) {
+      const normS = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+      if (normS(sug.bairro) === normS(bairro) && !BAIRROS_AMBIGUOS.has(normS(bairro))) {
+        return { bairro: String(sug.bairro), cidade: String(sug.cidade), unico: false, sugerido: true };
+      }
+    }
   } catch (e) {
     console.warn(`⚠️ inferirCidadePorBairro: ${e.message}`);
   }
