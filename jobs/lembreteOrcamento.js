@@ -72,6 +72,9 @@ const PASSOS_QUESTIONARIO = new Set([
   "orcamento_perfil", "orcamento_reuso", "orcamento_data_confirmar", "orcamento_bairro_confirmar", "orcamento_completar",
   // 13/11/2026 (NAZ): confirmar os convidados ditos antes e escolher entre os 3 servicos da tirinha.
   "orcamento_convidados_confirmar", "escolher_tirinha",
+  // 13/11/2026 (caso Gabriela, 3h parada): a confirmacao "Solicitar um orcamento? 1 - Sim" ficou fora da regua.
+  // So conta quando a opcao pendente e a 1 (orcamento); ver o filtro no laco.
+  "confirmar_opcao_menu",
   // 🚨 Passos novos (22/10/2026): os serviços agora são escolhidos LOGO DEPOIS
   // do nome, e a cidade ganhou uma confirmação. Entram aqui na mesma hora em
   // que nascem (a lição de 15/08).
@@ -150,6 +153,7 @@ const PERGUNTA_POR_PASSO = {
   "orcamento_data_confirmar": "A data que você comentou está certa? (1 - Sim, é essa / 2 - Outra data)",
   "orcamento_convidados_confirmar": "A quantidade de convidados que você comentou está certa? (1 - Sim, isso / 2 - Outro número)",
   "escolher_tirinha": "Qual serviço da foto tirinha você quer orçar? (1 - Foto Cabine / 2 - Totem Fotográfico / 3 - Totem Retrô / 4 - Todos)",
+  "confirmar_opcao_menu": "Vamos montar o seu orçamento? (1 - Sim, é isso / 2 - Quero outra opção)",
   "orcamento_bairro_confirmar": "O bairro que você comentou está certo? (1 - Sim, é aí / 2 - Outro bairro)",
   "orcamento_reuso": "Posso usar os dados da última vez? (1 - Sim, usar / 2 - Corrigir dados)",
   "orcamento_servicos_confirmar": "Os serviços que você escolheu estão certos? (1 - Sim, é isso / 2 - Trocar serviço / 3 - Adicionar outro serviço / 4 - Remover um serviço)",
@@ -189,6 +193,7 @@ const DESCRICAO_PASSO = {
   "orcamento_perfil": "tipo de cliente (festa, empresa ou agência)", "orcamento_reuso": "confirmar os dados da última vez",
   "orcamento_data_confirmar": "confirmar a data", "orcamento_bairro_confirmar": "confirmar o bairro", "orcamento_completar": "completar os dados do evento",
   "orcamento_convidados_confirmar": "confirmar os convidados", "escolher_tirinha": "escolher o serviço da tirinha",
+  "confirmar_opcao_menu": "confirmar que quer o orçamento (opção 1 do menu)",
   "orcamento_servicos_previa": "escolher os serviços de interesse",
   "orcamento_servicos_confirmar": "confirmar os serviços escolhidos",
   "orcamento_cidade_confirmar": "confirmar a cidade",
@@ -485,6 +490,8 @@ async function executarLembreteOrcamento() {
       // convidado/eucaristia, voltando ao hub). Só é abandono de verdade quando
       // o menu de boas-vindas FOI mesmo mostrado nesta rodada e o cliente sumiu.
       if (s.step === PASSO_MENU_INICIAL && !s.menuInicialEnviado) continue;
+      // confirmacao do menu so e abandono de ORCAMENTO quando a opcao pendente e a 1 (suporte, Eucaristia etc. ficam fora)
+      if (s.step === "confirmar_opcao_menu" && String(s.opcaoMenuPendente || "") !== "1") continue;
 
       /* 🚨 10/11/2026: quem JA RECEBEU os orcamentos e voltou ao menu (disse
          "Agora nao" ou "Nao" nos detalhes) nunca recebe "Vamos montar o seu

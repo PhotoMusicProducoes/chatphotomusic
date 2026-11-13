@@ -1974,6 +1974,59 @@ function dadoQueFalta(session) {
   return null;
 }
 
+/* 📝 PEDIDO COMPLETO JÁ NA PRIMEIRA MENSAGEM (13/11/2026, caso Gabriela 14h10):
+   "Queria saber o valor da plataforma 360° para uma festa em Laranjeiras dia 15/12 às 17:30h. Meu nome é Gabriela."
+   O bot mandou o MENU, ela respondeu 1, parou na confirmação e o texto dela se perdeu. Agora, texto de PEDIDO
+   (serviço citado ou pedido de valor) com detalhes pula o menu: usa o que veio (o mesmo do briefing livre) e
+   pergunta só o que falta. Quem já contratou, ou texto sem nada útil, segue o caminho de sempre. */
+async function iniciarOrcamentoPorBriefing(chatId, session, texto) {
+  try {
+    const t = String(texto || "").trim();
+    if (!session || !pareceBriefing(t) || jaContratou(t)) return false;
+    if (!detectarServicosNoTexto(t).length && !clientePedeValor(t)) return false;   // tem que ser pedido de orçamento
+    const antes = { step: session.step, menu: session.menuInicialEnviado, orc: session.orcamento };
+    session.orcamento = { servicosEnviados: [] };
+    session.step = "orcamento_nome";
+    const rb = await aplicarBriefingLivre(chatId, session, t);
+    if (!(rb.util >= 2 || rb.nome)) {   // não trouxe o suficiente: volta como estava
+      session.step = antes.step; session.menuInicialEnviado = antes.menu; session.orcamento = antes.orc;
+      return false;
+    }
+    session.orcamento.textoLivre = t;
+    // só o INÍCIO ("às 17:30h", "a partir das 19h"): guarda para lembrar na pergunta do horário (sem inventar duração)
+    if (!session.orcamento.horaInicio) {
+      const mi = t.toLowerCase().match(/(?:^|\s)(?:[àa]s|a partir das|come[cç]a [àa]s)\s*(\d{1,2})\s*(?:h|:)\s*(\d{2})?/);
+      if (mi && +mi[1] <= 23) session.orcamento.inicioInformado = `${String(mi[1]).padStart(2, "0")}:${mi[2] || "00"}`;
+    }
+    session.menuInicialEnviado = true;
+    session.opcaoMenuPendente = null;
+    session.servicosEnviados = [];
+    session.lembreteOrcamentoEnviado = false;
+    session.optOutLembretes = false;
+    console.log(`📝 ${chatId}: pedido completo na mensagem, orçamento direto (sem menu).`);
+    /* 💬 PEDIU O VALOR (ChatGPT, 13/11/2026): o preliminar de 4h e 5h sai NA HORA, com o que ela disse (nome,
+       serviço, data, horário, bairro); convidados e duração ficam como estimativa. O "Sim, quero" do convite
+       volta para completar SÓ o que falta (ver lembrete_retomar + orcamento_completar). */
+    if (clientePedeValor(t) && !rb.multiEvento) {
+      session.step = "orcamento_completar";
+      await enviarValorImediato(chatId, session, t);
+      return true;
+    }
+    await sendTyping(chatId);
+    await sendText(chatId, `${saudacaoPorHora()}! ❤️ Recebi o seu pedido, obrigado! Já anotei o que você me contou. 😊`);
+    if (rb.multiEvento && (session.eventosPendentes || []).length) {
+      await sendTyping(chatId);
+      await sendText(chatId, `Recebi as informações dos *dois eventos*! Vou montar uma proposta de cada, começando pelo de *${session.orcamento.convidados} convidados*.`);
+    }
+    if (rb.util >= 2) await completarBriefing(chatId, session);
+    else await seguirDepoisDoNome(chatId, session);
+    return true;
+  } catch (e) {
+    console.warn(`⚠️ orçamento pelo briefing: ${e.message}`);
+    return false;
+  }
+}
+
 async function completarBriefing(chatId, session) {
   const falta = dadoQueFalta(session);
   const orc = session.orcamento;
@@ -2013,7 +2066,10 @@ async function completarBriefing(chatId, session) {
     nome: "Só me diga o *seu nome* (só o nome mesmo), que eu sigo com o orçamento.",
     convidados: "Quantos convidados? (*Digite somente número*)",
     data: "Qual a data do evento? (Ex: *01/06/2026* ou *9 de setembro*)",
-    horario: "Qual o horário do evento? (Ex: *17h30 às 20h*)",
+    // 13/11/2026 (caso Gabriela): só o início foi dito ("às 17:30h"); a duração NÃO é inventada, só lembrada
+    horario: orc.inicioInformado
+      ? `Você comentou que começa às *${orc.inicioInformado}*. Até que horas vai? (Ex: *${orc.inicioInformado.replace(":", "h")} às 22h*)`
+      : "Qual o horário do evento? (Ex: *17h30 às 20h*)",
     local: "Qual o *bairro e a cidade* do evento? (Ex: *Flamengo, Rio de Janeiro*)",
   };
   await enviarPerguntaESalvar(chatId, session, PERG[falta] || PERG.local);
@@ -5716,6 +5772,8 @@ async function handleIncomingMessage(message) {
       return;
     }
     if (await tratarTirinha(chatId, sessions[chatId], corpoMensagem, detectarServicosNoTexto(corpoMensagem))) return;
+    // 📝 13/11/2026 (caso Gabriela): primeira mensagem já é o pedido completo = orçamento direto, sem menu
+    if (await iniciarOrcamentoPorBriefing(chatId, sessions[chatId], corpoMensagem)) return;
     // 🔁 13/11/2026 (caso Luciana): quem ja tem orcamento de evento futuro nao recebe o menu de cliente novo
     if (await tentarRetomarCliente(chatId, sessions[chatId])) return;
 
@@ -6043,7 +6101,9 @@ async function handleIncomingMessage(message) {
 
   /* 🤝 JA CONTRATOU = SUPORTE DIRETO (13/11/2026, caso Adrielen "fechou uma contratacao para o dia 28/11"):
      sem menu de boas-vindas e sem "confirme a opcao 4". Vale na primeira mensagem e no menu ja enviado. */
-  if (opcaoMenu === "" && jaContratou(texto)) {
+  // 🚨 "28/11" ou "15/12 às 17:30" deixam DÍGITOS em opcaoMenu: o teste certo é "não é uma opção de 1 a 7"
+  const ehOpcaoDoMenu = ["1", "2", "3", "4", "5", "6", "7"].includes(opcaoMenu);
+  if (!ehOpcaoDoMenu && jaContratou(texto)) {
     console.log(`🤝 ${chatId} disse que já contratou: suporte direto (opção 4), sem menu.`);
     session.menuInicialEnviado = true;
     session.opcaoMenuPendente = null;
@@ -6052,6 +6112,9 @@ async function handleIncomingMessage(message) {
     pausarCliente(chatIdNormalizado);
     return;
   }
+
+  // 📝 Pedido completo (serviço/valor + detalhes) = orçamento direto, sem menu (13/11/2026, caso Gabriela)
+  if (!ehOpcaoDoMenu && await iniciarOrcamentoPorBriefing(chatId, session, texto)) return;
 
   if (!session.menuInicialEnviado) {
     await mostrarMenuInicial(chatId);
@@ -6141,6 +6204,8 @@ async function handleIncomingMessage(message) {
        A Helena, presa nesta tela, escreveu "Orçamento para 3h". Repetir
        "responda 1 ou 2" é o pior que o bot pode fazer: o cliente falou.
        Antes do aviso seco, tentamos entender e REDIRECIONAR. */
+    // 📝 escreveu o pedido completo em vez de 1/2: usa o texto (13/11/2026, caso Gabriela)
+    if (await iniciarOrcamentoPorBriefing(chatId, session, corpoMensagem || "")) return;
     const _servConf = detectarServicosNoTexto(corpoMensagem || "");
     if (await tratarTirinha(chatId, session, corpoMensagem || "", _servConf)) { session.opcaoMenuPendente = null; return; }
     if (_servConf.length) {
@@ -6581,6 +6646,14 @@ const resumoEucaristia =
     const r = (corpoMensagem || "").trim().toLowerCase();
 
     if (r === "1" || r.startsWith("sim")) {
+      /* 13/11/2026 (caso Gabriela): o preliminar saiu a partir do PEDIDO COMPLETO da 1ª mensagem; continuar =
+         perguntar só o que ainda falta, com o que ela já disse guardado. */
+      if (session.lembreteRetomarStep === "orcamento_completar") {
+        await sendTyping(chatId);
+        await sendText(chatId, "Ótimo! ❤️ Já tenho o que você me contou. Só faltam alguns detalhes:");
+        await completarBriefing(chatId, session);
+        return;
+      }
       // Ver resolverRetomada: quem nunca interagiu COMEÇA, não "continua".
       const ret = resolverRetomada(session);
       session.step = ret.passo;
