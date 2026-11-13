@@ -1308,7 +1308,9 @@ function brlContratar(v) { return "R$ " + Number(v || 0).toLocaleString("pt-BR",
 
 // envia até 3 opções como botão, mais que isso como lista (o corpo sempre leva os números)
 async function perguntarOpcoes(chatId, pergunta, rotulos) {
-  const opcoes = rotulos.map((l, i) => ({ id: String(i + 1), label: String(l).slice(0, 24) }));
+  // 13/11/2026 (teste do Mario): o corte em 24 letras saía no texto numerado ("Cartão de crédito (até 1").
+  // O texto vai INTEIRO; rótulo comprido fica a cargo do WhatsApp só no botão.
+  const opcoes = rotulos.map((l, i) => ({ id: String(i + 1), label: String(l) }));
   if (opcoes.length <= 3) await sendButtonList(chatId, pergunta, opcoes);
   else await sendOptionList(chatId, pergunta, opcoes);
 }
@@ -1343,7 +1345,11 @@ async function perguntarProximoContratar(chatId) {
   const pgs = Object.keys(o.pagamentos || {});
   if (pgs.length && !c.pagto) {
     s.step = "contratar_pagamento";
-    return perguntarOpcoes(chatId, "Como você prefere pagar?", pgs.map(k => o.pagamentos[k]));
+    // rótulos curtos (cabem no botão); o detalhe do PIX parcelado vai na pergunta
+    const CURTO = { pix_avista: "PIX à vista", pix_parcelado: "PIX parcelado", cartao: "Cartão em até 10x" };
+    return perguntarOpcoes(chatId,
+      "Como você prefere pagar?" + (pgs.includes("pix_parcelado") ? "\n_(PIX parcelado: até a data do evento)_" : ""),
+      pgs.map(k => CURTO[k] || o.pagamentos[k]));
   }
   s.step = "contratar_confirmar";
   return sendButtonList(chatId, `Perfeito! Confere se está tudo certo:\n\n${resumoEscolhas(c)}`,

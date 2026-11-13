@@ -82,6 +82,8 @@ const simples = { id: 701, criado: "01/11/2026", data_evento: "20/12/2026", cele
   checar("resposta fora das opções: pede o número e repete a pergunta", /Responda com o número/.test(paraCliente(A)) && /5 horas/.test(paraCliente(A)), paraCliente(A));
   await cliente(A, "2");
   checar("pagamento: as formas da política (PIX à vista, cartão)", /pagar/.test(paraCliente(A)) && /PIX à vista/.test(paraCliente(A)) && /Cartão/.test(paraCliente(A)), paraCliente(A));
+  // 13/11/2026 (teste do Mario no ar): "PIX parcelado até o even" e "Cartão de crédito (até 1" saíam cortados
+  checar("opções de pagamento INTEIRAS, sem corte (\"Cartão em até 10x\")", /\*\d\* - Cartão em até 10x\b/.test(paraCliente(A)) && !/\(até 1$/m.test(paraCliente(A)) && !/até o even$/m.test(paraCliente(A)), paraCliente(A));
   await cliente(A, "1");
   const conf = paraCliente(A);
   /* 13/11/2026 (ChatGPT): alternativa com valor diferente = o cliente vê o TOTAL CORRETO antes de confirmar
