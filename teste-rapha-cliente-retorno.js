@@ -54,7 +54,7 @@ function novo(resp) {
   resposta = resp; falharRetorno = false; posts.length = 0;
 }
 const SITE = "Olá PhotoMusic Produções! 😊 Encontrei vocês pelo site e fiquei impressionado(a) com as avaliações! Quero saber sobre valores e disponibilidade para o meu evento.";
-const MENU = /Seja bem-vindo\(a\) à PhotoMusic Produções/;
+const MENU = /Como posso te ajudar hoje/;   // 13/11: o 1o menu abre com a apresentacao do Rapha
 
 (async () => {
   console.log("--- caso Luciana: volta pelo site ---");

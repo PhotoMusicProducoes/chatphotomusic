@@ -130,4 +130,70 @@ function ehRespostaAutomatica(texto) {
   return n >= 2;
 }
 
-module.exports = { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO, ehRespostaAutomatica };
+/* ── 6) CONVIDADOS EM PARTES (13/11/2026, caso real 18h43) ────────────────────────────────────────────
+   "20 criancas e 50 adultos" virava 2050 (o bot juntava os digitos). Agora: numeros separados SOMAM (70);
+   faixa ("entre 80 e 100", "80 a 100", "80-100", "80 ou 100") fica com o MAIOR; numero de idade ("15 anos")
+   nao conta. Devolve null sem numero. */
+function convidadosDaResposta(texto) {
+  const t = semAcento(texto);
+  const nums = [];
+  const re = /(\d{1,4})(?!\d)(\s*anos?\b)?/g;
+  let m;
+  while ((m = re.exec(t)) !== null) { if (!m[2]) nums.push({ n: Number(m[1]), i: m.index, fim: re.lastIndex }); }
+  if (!nums.length) return null;
+  if (nums.length === 1) return nums[0].n;
+  let faixa = /\bentre\b/.test(t);
+  for (let k = 1; k < nums.length && !faixa; k++) {
+    const meio = t.slice(nums[k - 1].fim, nums[k].i);
+    if (meio.length <= 20 && (/^\s*(a|ate|ou|-|–|\/)\s*$/.test(meio) || /\b(no maximo|maximo|no minimo|ate)\b/.test(meio))) faixa = true;
+  }
+  return faixa ? Math.max(...nums.map(x => x.n)) : nums.reduce((s, x) => s + x.n, 0);
+}
+
+/* ── 7) CELEBRACAO DITA EM TEXTO LIVRE (13/11/2026, caso real 18h36: "Aniversario da minha filha de 11 anos") ──
+   O bot perguntou "o que vai celebrar?" mesmo assim. Ids = os do menu: 1 15 anos · 2 Casamento · 3 Infantil ·
+   4 Adolescente · 5 Adulto · 6 Bodas · 7 Formatura · 8 Corporativo. Aniversario pela IDADE: ate 10 Infantil,
+   11 a 17 Adolescente (15 = festa de 15 anos), 18+ Adulto. "Aniversario" sem idade = null (nao adivinha). */
+function celebracaoDoTexto(texto) {
+  const t = semAcento(texto);
+  if (!t) return null;
+  if (/\b(casamento|casar|noivado|noivos|bodas? de casamento)\b/.test(t)) return /\bbodas\b/.test(t) ? { id: 6 } : { id: 2 };
+  if (/\bbodas\b/.test(t)) return { id: 6 };
+  if (/\b(debutante|quinze anos|15 anos)\b/.test(t)) return { id: 1, idade: 15 };
+  if (/\b(formatura|formando|formandos|colacao de grau)\b/.test(t)) return { id: 7 };
+  if (/\b(confraternizacao|evento corporativo|evento da empresa|festa da empresa|corporativo)\b/.test(t)) return { id: 8 };
+  if (/\b(aniversario|niver|festa)\b/.test(t)) {
+    const m = t.match(/\b(\d{1,2})\s*anos?\b/) || t.match(/\b(\d{1,2})\s*aninhos?\b/);
+    if (m) {
+      const idade = Number(m[1]);
+      if (idade === 15) return { id: 1, idade };
+      if (idade >= 1 && idade <= 10) return { id: 3, idade };
+      if (idade >= 11 && idade <= 17) return { id: 4, idade };
+      if (idade >= 18) return { id: 5, idade };
+    }
+    if (/\b(infantil|crianca|criancas|bebe|mesversario)\b/.test(t)) return { id: 3 };
+    /* Mario, 13/11/2026: "aniversario da minha filha" SEM idade = perguntar "quantos anos ela vai completar?"
+       (classifica Infantil/Adolescente/15 anos/Adulto pela resposta, sem mostrar a lista). */
+    const p = t.match(/\b(minha|meu|da minha|do meu)\s+(filha|filho|neta|neto|sobrinha|sobrinho|afilhada|afilhado|enteada|enteado)\b/);
+    if (p) return { perguntarIdade: p[2] };
+  }
+  return null;
+}
+
+/** Idade -> celebracao (mesma regra do texto livre). null = idade fora do razoavel. */
+function celebracaoDaIdade(idade) {
+  const n = Number(idade);
+  if (!(n >= 0 && n <= 120)) return null;
+  if (n === 15) return 1;
+  if (n <= 10) return 3;
+  if (n <= 17) return 4;
+  return 5;
+}
+
+/** "sua filha" / "seu filho" para a pergunta da idade. */
+function pronomeParente(parente) {
+  return /a$/.test(String(parente || "")) ? `sua ${parente}` : `seu ${parente}`;
+}
+
+module.exports = { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO, ehRespostaAutomatica,
+  convidadosDaResposta, celebracaoDoTexto, celebracaoDaIdade, pronomeParente };

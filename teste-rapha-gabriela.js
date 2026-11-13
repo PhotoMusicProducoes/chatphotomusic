@@ -47,7 +47,7 @@ async function cliente(texto) {
   return registro.join("\n");
 }
 function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); chamadasGerar.length = 0; CHAT = "55219942427" + String(10 + (++seq)).slice(-2); }
-const MENU = /Seja bem-vindo\(a\) à PhotoMusic Produções/;
+const MENU = /Como posso te ajudar hoje/;   // 13/11: o 1o menu abre com a apresentacao do Rapha
 const GABRIELA = "Olá, boa tarde. \nQueria saber o valor da plataforma 360° para uma festa em Laranjeiras dia 15/12 às 17:30h. \n\nMeu nome é Gabriela. \n\nAguardo retorno 😉";
 
 (async () => {
@@ -108,6 +108,71 @@ const GABRIELA = "Olá, boa tarde. \nQueria saber o valor da plataforma 360° pa
     text: { message: "Se o arquivo não abrir no seu celular, é só clicar aqui: https://photomusic.com.br/wp-content/uploads/orcamentos/orcamento-674-BVhKgc6rvROcSXYHs6iCW7jS.pdf" } });
   checar("a conversa fica marcada (régua de abandono para)", !!sess().orcamentoManualEm, JSON.stringify(Object.keys(sess())));
   checar("nada é enviado à cliente por causa disso", registro.length === 0, registro.join(" | "));
+
+  console.log("--- convidados em partes e celebração dita antes (caso real 18h36) ---");
+  const LV = require("./utils/entendimentoLivre.js");
+  const CV = (x) => LV.convidadosDaResposta(x);
+  checar("'20 crianças e 50 adultos' = 70 (não 2050)", CV("20 crianças e 50 adultos") === 70, CV("20 crianças e 50 adultos"));
+  checar("'70' = 70", CV("70") === 70);
+  checar("'entre 80 e 100' = 100 (faixa = o maior)", CV("entre 80 e 100") === 100, CV("entre 80 e 100"));
+  checar("'80 a 100 pessoas' = 100", CV("80 a 100 pessoas") === 100, CV("80 a 100 pessoas"));
+  checar("'uns 80, no máximo 100' = 100", CV("uns 80, no máximo 100") === 100, CV("uns 80, no máximo 100"));
+  checar("'30 adultos, 15 crianças e 5 bebês' = 50", CV("30 adultos, 15 crianças e 5 bebês") === 50, CV("30 adultos, 15 crianças e 5 bebês"));
+  checar("'100 pessoas, festa de 15 anos' = 100 (idade não conta)", CV("100 pessoas, festa de 15 anos") === 100, CV("100 pessoas, festa de 15 anos"));
+  checar("'não sei' = nada", CV("não sei") === null);
+  const CB = (x) => (LV.celebracaoDoTexto(x) || {}).id || 0;
+  checar("'Aniversário da minha filha de 11 anos' = Adolescente", CB("Aniversário da minha filha de 11 anos") === 4);
+  checar("'aniversário de 5 anos' = Infantil", CB("aniversário de 5 anos do meu filho") === 3);
+  checar("'festa de 15 anos' = 15 anos", CB("festa de 15 anos da Ana") === 1);
+  checar("'aniversário de 40 anos' = Adulto", CB("meu aniversário de 40 anos") === 5);
+  checar("'casamento' = Casamento", CB("orçamento para casamento") === 2);
+  checar("'bodas de prata' = Bodas", CB("bodas de prata dos meus pais") === 6);
+  checar("'aniversário' sem idade = não adivinha", CB("é um aniversário") === 0);
+  novo();
+  await cliente("Olá PhotoMusic Produções! 😊 Encontrei vocês pelo site e fiquei impressionado(a) com as avaliações! Quero saber sobre valores e disponibilidade para o meu evento.");
+  await cliente("Aniversário da minha filha de 11 anos");
+  checar("a celebração dita fica guardada (Adolescente, 11 anos)", (sess().dadosLivres || {}).celebracaoId === 4 && (sess().dadosLivres || {}).celebracaoIdade === 11, JSON.stringify(sess().dadosLivres));
+  let rr = "";
+  for (const t of ["1", "1", "Ana", "1", "0,2,5,7,8", "1"]) { rr = await cliente(t); if (sess().step === "orcamento_convidados" || sess().step === "orcamento_convidados_confirmar") break; }
+  checar("NÃO pergunta a celebração: anota 'Aniversário Adolescente (11 anos)' e vai aos convidados", /Anotei: \*Aniversário Adolescente\* \(11 anos\)/.test(rr) && sess().step === "orcamento_convidados" && !/o que vai celebrar/.test(rr), sess().step + " | " + rr);
+  rr = await cliente("20 crianças e 50 adultos");
+  checar("'20 crianças e 50 adultos' grava 70 convidados", (sess().orcamento || {}).convidados === 70, JSON.stringify((sess().orcamento || {}).convidados));
+
+  console.log("--- 'aniversário da minha filha' SEM idade: pergunta a idade ---");
+  checar("'aniversário da minha filha' pede a idade", (LV.celebracaoDoTexto("Aniversário da minha filha") || {}).perguntarIdade === "filha");
+  checar("idade 11 = Adolescente, 7 = Infantil, 15 = 15 anos, 30 = Adulto", [11, 7, 15, 30].map(LV.celebracaoDaIdade).join(",") === "4,3,1,5", [11, 7, 15, 30].map(LV.celebracaoDaIdade).join(","));
+  novo();
+  await cliente("Oi");
+  await cliente("Aniversário da minha filha");
+  for (const t of ["1", "1", "Ana", "1", "0", "1"]) { rr = await cliente(t); if (sess().step === "orcamento_celebracao_idade") break; }
+  checar("pergunta 'Quantos anos sua filha vai completar?' (sem a lista)", sess().step === "orcamento_celebracao_idade" && /Quantos anos sua filha vai completar/.test(rr) && !/o que vai celebrar/.test(rr), sess().step + " | " + rr);
+  rr = await cliente("11");
+  checar("respondeu 11: Aniversário Adolescente e vai aos convidados", (sess().orcamento || {}).celebracaoId === 4 && /Anotei: \*Aniversário Adolescente\* \(11 anos\)/.test(rr) && /orcamento_convidados/.test(sess().step), sess().step + " | " + rr);
+  novo();
+  await cliente("Oi");
+  await cliente("Aniversário do meu filho");
+  for (const t of ["1", "1", "Ana", "1", "0", "1"]) { rr = await cliente(t); if (sess().step === "orcamento_celebracao_idade") break; }
+  rr = await cliente("ainda não sei");
+  checar("sem número na resposta: mostra a lista de celebrações (não trava)", sess().step === "orcamento_celebracao" && /o que vai celebrar/.test(rr), sess().step + " | " + rr);
+
+  console.log("--- identidade do Rapha (uma vez por atendimento) ---");
+  const RAPHA = /Eu sou o \*Rapha\* 🤖📸, assistente virtual da PhotoMusic Produções/g;
+  novo();
+  r = await cliente("Oi, boa tarde");
+  checar("1o menu: o Rapha se apresenta como assistente virtual", (r.match(RAPHA) || []).length === 1 && MENU.test(r), r);
+  await cliente("1");
+  r = await cliente("2");   // "Quero outra opção": o menu volta
+  checar("menu de novo na mesma conversa: NÃO repete a apresentação", MENU.test(r) && !(r.match(RAPHA) || []).length, r);
+  novo();
+  const todas = [];
+  todas.push(await cliente(GABRIELA));
+  checar("pedido com preço na 1a mensagem: apresentação curta + valor, sem menu", (todas[0].match(RAPHA) || []).length === 1 && !MENU.test(todas[0]) && /PDF/.test(todas[0]), todas[0]);
+  todas.push(await cliente("1"));
+  checar("na mesma conversa a apresentação não se repete", (todas.join("\n").match(RAPHA) || []).length === 1);
+  novo(); r = await cliente("Eu sou a Adrielen que fechou uma contratação para o dia 28/11.");
+  checar("quem já contratou: apresentação curta e o suporte na mesma mensagem", (r.match(RAPHA) || []).length === 1 && /já tem um serviço contratado/.test(r), r);
+  const ID = require("./utils/identidadeRapha.js");
+  checar("identidade em fonte única (nome e função)", ID.NOME === "Rapha" && /assistente virtual/.test(ID.FUNCAO) && /encaminhar seu atendimento para nossa equipe/.test(ID.APRESENTACAO));
 
   if (pausaAntes !== null) fs.writeFileSync(ARQ_PAUSA, pausaAntes); else if (fs.existsSync(ARQ_PAUSA)) fs.unlinkSync(ARQ_PAUSA);
   if (antes !== null) fs.writeFileSync(ARQ, antes); else if (fs.existsSync(ARQ)) fs.unlinkSync(ARQ);

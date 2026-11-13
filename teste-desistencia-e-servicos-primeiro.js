@@ -109,7 +109,8 @@ checar("nenhuma bênção diz \"sua festa\"",
   [1, 2, 3, 4, 5, 6, 7, 8, 9].every(i => !/sua festa/i.test(msgAbencoarEvento(i))), "muita gente é convidada");
 checar("coração só vermelho", [1, 2, 3, 8].every(i => !/[💙💚💛🧡💜🖤🤍💗💖]/u.test(msgAbencoarEvento(i))), "");
 checar("a bênção sai ANTES das perguntas do evento (celebração e \"outros\")",
-  (fonte.match(/await abrirColetaDoEvento\(chatId, session\);/g) || []).length === 4, "");
+  // 13/11/2026: +1 caminho (celebração já dita em texto livre), também com a bênção antes das perguntas
+  (fonte.match(/await abrirColetaDoEvento\(chatId, session\);/g) || []).length === 5, "");
 checar("nomes dos serviços saem na ordem do menu", (() => {
   const t = listaNomesServicos([3, 1, 13]);
   return t.indexOf("Foto Cabine") < t.indexOf("Totem Retrô") && t.indexOf("Totem Retrô") < t.indexOf("Plataforma");

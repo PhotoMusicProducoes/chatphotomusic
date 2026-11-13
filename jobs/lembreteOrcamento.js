@@ -75,6 +75,8 @@ const PASSOS_QUESTIONARIO = new Set([
   // 13/11/2026 (caso Gabriela, 3h parada): a confirmacao "Solicitar um orcamento? 1 - Sim" ficou fora da regua.
   // So conta quando a opcao pendente e a 1 (orcamento); ver o filtro no laco.
   "confirmar_opcao_menu",
+  // 13/11/2026 (Mario): "quantos anos sua filha vai completar?"
+  "orcamento_celebracao_idade",
   // 🚨 Passos novos (22/10/2026): os serviços agora são escolhidos LOGO DEPOIS
   // do nome, e a cidade ganhou uma confirmação. Entram aqui na mesma hora em
   // que nascem (a lição de 15/08).
@@ -154,6 +156,7 @@ const PERGUNTA_POR_PASSO = {
   "orcamento_convidados_confirmar": "A quantidade de convidados que você comentou está certa? (1 - Sim, isso / 2 - Outro número)",
   "escolher_tirinha": "Qual serviço da foto tirinha você quer orçar? (1 - Foto Cabine / 2 - Totem Fotográfico / 3 - Totem Retrô / 4 - Todos)",
   "confirmar_opcao_menu": "Vamos montar o seu orçamento? (1 - Sim, é isso / 2 - Quero outra opção)",
+  "orcamento_celebracao_idade": "Quantos anos vai completar quem faz aniversário? (Digite só o número)",
   "orcamento_bairro_confirmar": "O bairro que você comentou está certo? (1 - Sim, é aí / 2 - Outro bairro)",
   "orcamento_reuso": "Posso usar os dados da última vez? (1 - Sim, usar / 2 - Corrigir dados)",
   "orcamento_servicos_confirmar": "Os serviços que você escolheu estão certos? (1 - Sim, é isso / 2 - Trocar serviço / 3 - Adicionar outro serviço / 4 - Remover um serviço)",
@@ -194,6 +197,7 @@ const DESCRICAO_PASSO = {
   "orcamento_data_confirmar": "confirmar a data", "orcamento_bairro_confirmar": "confirmar o bairro", "orcamento_completar": "completar os dados do evento",
   "orcamento_convidados_confirmar": "confirmar os convidados", "escolher_tirinha": "escolher o serviço da tirinha",
   "confirmar_opcao_menu": "confirmar que quer o orçamento (opção 1 do menu)",
+  "orcamento_celebracao_idade": "idade de quem faz aniversário",
   "orcamento_servicos_previa": "escolher os serviços de interesse",
   "orcamento_servicos_confirmar": "confirmar os serviços escolhidos",
   "orcamento_cidade_confirmar": "confirmar a cidade",

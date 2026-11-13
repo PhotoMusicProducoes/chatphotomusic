@@ -52,7 +52,10 @@ const {
 const { criarExtrator: criarExtratorIA } = require("./utils/iaExtrair.js");
 const { acharDataNoTexto, candidatosLocal } = require("./utils/dadosLivres.js");
 // 13/11/2026 (NAZ): ja contratou -> suporte; tirinha -> 3 servicos; data so com numeros. Ver o arquivo.
-const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO, ehRespostaAutomatica } = require("./utils/entendimentoLivre.js");
+const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO, ehRespostaAutomatica,
+        convidadosDaResposta, celebracaoDoTexto, celebracaoDaIdade, pronomeParente } = require("./utils/entendimentoLivre.js");
+// 13/11/2026 (NAZ): o Rapha se apresenta (uma vez por atendimento). Fonte unica da identidade.
+const { prefixoApresentacao } = require("./utils/identidadeRapha.js");
 // 13/11/2026 (NAZ): cliente que volta com orcamento em aberto (caso Luciana). Ver o arquivo.
 const { textoRetorno, opcaoRetorno, linhasOpcoesRetorno, linhaEvento,
         precisaPerguntarAssunto, itensAssunto, linhaItem, textoEscolherAssunto, escolhaItem } = require("./utils/clienteRetorno.js");
@@ -1499,8 +1502,32 @@ async function seguirDepoisDoNome(chatId, session) {
 }
 
 /** Depois dos servicos: social ve o menu de celebracoes; empresa/agencia vao direto para o corporativo. */
+/* Celebração já sabida (dita em texto livre ou pela idade): anota, abençoa e segue para os convidados. */
+async function anotarCelebracao(chatId, session, op, idade) {
+  session.orcamento.celebracao = celebracoes[op];
+  session.orcamento.celebracaoId = op;
+  await sendTyping(chatId);
+  await sendText(chatId, `Anotei: *${celebracoes[op]}*${idade ? " (" + idade + " anos)" : ""}! 🎉`);
+  await abrirColetaDoEvento(chatId, session);
+  await perguntarConvidados(chatId, session, "Quantos convidados?");
+}
+
 async function seguirParaCelebracao(chatId, session) {
   const perfil = session.orcamento.perfil || "social";
+  const dlC = session.dadosLivres || {};
+  if (perfil === "social" && dlC.celebracaoId && dlC.celebracaoId !== 8 && !dlC.celebracaoUsada) {
+    // 🎉 13/11/2026: ela já disse o que vai celebrar - anota e segue, sem a lista de celebrações
+    dlC.celebracaoUsada = true;
+    await anotarCelebracao(chatId, session, Number(dlC.celebracaoId), dlC.celebracaoIdade);
+    return;
+  }
+  if (perfil === "social" && dlC.celebracaoPerguntarIdade && !dlC.idadePerguntada) {
+    // 🎂 Mario, 13/11/2026: "aniversário da minha filha" sem idade -> pergunta a idade (classifica sozinho)
+    dlC.idadePerguntada = true;
+    session.step = "orcamento_celebracao_idade";
+    await enviarPerguntaESalvar(chatId, session, `Que alegria! 🎉 Quantos anos ${pronomeParente(dlC.celebracaoPerguntarIdade)} vai completar? (*Digite só o número*)`);
+    return;
+  }
   if (perfil === "social") {
     session.step = "orcamento_celebracao";
     await sendTyping(chatId);
@@ -1598,8 +1625,10 @@ function guardarConvidadosLivres(session, texto) {
     if (!session || session.step === "orcamento_convidados" || session.step === "orcamento_convidados_confirmar") return null;
     if (session.orcamento && session.orcamento.convidados) return null;
     const t = normalizarParaBusca(String(texto || ""));
-    if (!/\b\d{2,4}\s*(?:pessoas|convidados|convidado|pax)\b/.test(t)) return null;
-    const n = convidadosNaMensagem(texto);
+    if (!/\b\d{1,4}\s*(?:pessoas|convidados|convidado|pax|criancas|crianca|adultos|adulto)\b/.test(t)) return null;
+    // so os trechos "N pessoas/criancas/adultos" (data, hora e idade da frase nao entram); varios = soma
+    const partes = t.match(/\b\d{1,4}\s*(?:pessoas|convidados|convidado|pax|criancas|crianca|adultos|adulto)\b/g) || [];
+    const n = partes.length > 1 ? convidadosDaResposta(partes.join(" e ")) : convidadosNaMensagem(texto) || convidadosDaResposta(partes[0] || "");
     if (!n) return null;
     const dl = session.dadosLivres = session.dadosLivres || {};
     if (dl.convidados === n) return null;
@@ -1608,6 +1637,25 @@ function guardarConvidadosLivres(session, texto) {
     console.log(`📌 [dados livres] convidados ${n}`);
     return n;
   } catch (e) { console.warn(`⚠️ convidados livres: ${e.message}`); return null; }
+}
+
+/* 🎉 CELEBRAÇÃO DITA EM TEXTO LIVRE (13/11/2026, caso real 18h36: "Aniversário da minha filha de 11 anos").
+   Guarda e, na hora da pergunta, não pergunta: anota e segue (corrige no resumo final, como os outros dados). */
+function guardarCelebracaoLivre(session, texto) {
+  try {
+    if (!session || ["orcamento_celebracao", "orcamento_celebracao_outros"].includes(session.step)) return;
+    if (session.orcamento && session.orcamento.celebracaoId) return;
+    const c = celebracaoDoTexto(texto);
+    if (!c) return;
+    const dl = session.dadosLivres = session.dadosLivres || {};
+    if (c.perguntarIdade) {   // "aniversário da minha filha" sem idade: pergunta a idade na hora da celebração
+      if (!dl.celebracaoId) dl.celebracaoPerguntarIdade = c.perguntarIdade;
+      return;
+    }
+    dl.celebracaoId = c.id;
+    dl.celebracaoIdade = c.idade || null;
+    console.log(`📌 [dados livres] celebração ${c.id}${c.idade ? " (" + c.idade + " anos)" : ""}`);
+  } catch (e) { console.warn(`⚠️ celebração livre: ${e.message}`); }
 }
 
 async function perguntarConvidados(chatId, session, textoPadrao) {
@@ -1657,7 +1705,8 @@ async function tratarTirinha(chatId, session, texto, idsDetectados) {
   session.menuInicialEnviado = true;
   session.step = "escolher_tirinha";
   console.log(`🎞️ ${chatId} pediu tirinha: mostrando Cabine, Totem e Retro${session.tirinhaExtras.length ? " (+ " + session.tirinhaExtras.join(",") + ")" : ""}`);
-  await enviarPerguntaESalvar(chatId, session, textoEscolhaTirinha());
+  const prefT = prefixoApresentacao(session);   // 🤖 apresentação curta na 1a mensagem
+  await enviarPerguntaESalvar(chatId, session, (prefT ? `${saudacaoPorHora()}! 😊 ${prefT}` : "") + textoEscolhaTirinha());
   return true;
 }
 
@@ -1700,7 +1749,9 @@ async function tentarRetomarCliente(chatId, session) {
     session.retorno.ehEmpresa = orcs.some(o => o.corporativo || (o.perfil && o.perfil !== "social")) || eventos.some(e => e.corporativo);
     const nome = (orcs[0] && orcs[0].nome) || (eventos[0] && eventos[0].nome) || "";
     session.step = "retorno_escolher_assunto";
-    await enviarPerguntaESalvar(chatId, session, textoEscolherAssunto(itens, nome, session.retorno.ehEmpresa));
+    const prefR = prefixoApresentacao(session);   // 🤖 apresentação curta logo depois do "Olá, Nome!"
+    const txtR = textoEscolherAssunto(itens, nome, session.retorno.ehEmpresa);
+    await enviarPerguntaESalvar(chatId, session, prefR ? txtR.replace("\n\n", "\n\n" + prefR) : txtR);
     return true;
   }
   await apresentarRetorno(chatId, session, 0);
@@ -1729,7 +1780,9 @@ async function iniciarNovoOrcamentoRetorno(chatId, session, chatIdNormalizado) {
 async function apresentarRetorno(chatId, session, i) {
   session.retorno.idx = i;
   session.step = "retorno_opcao";
-  await enviarPerguntaESalvar(chatId, session, textoRetorno(session.retorno.orcamentos[i], { semSaudacao: !!session.retorno.itens }));
+  const txtRet = textoRetorno(session.retorno.orcamentos[i], { semSaudacao: !!session.retorno.itens });
+  const prefRet = session.retorno.itens ? "" : prefixoApresentacao(session);   // 🤖 uma vez, depois do "Olá, Nome!"
+  await enviarPerguntaESalvar(chatId, session, prefRet ? txtRet.replace("\n\n", "\n\n" + prefRet) : txtRet);
 }
 
 async function avisarOperadorRetorno(chatId, o, motivo, texto) {
@@ -2007,13 +2060,15 @@ async function iniciarOrcamentoPorBriefing(chatId, session, texto) {
     /* 💬 PEDIU O VALOR (ChatGPT, 13/11/2026): o preliminar de 4h e 5h sai NA HORA, com o que ela disse (nome,
        serviço, data, horário, bairro); convidados e duração ficam como estimativa. O "Sim, quero" do convite
        volta para completar SÓ o que falta (ver lembrete_retomar + orcamento_completar). */
+    const pref = prefixoApresentacao(session);   // 🤖 apresentação curta, uma vez, sem etapa nova
     if (clientePedeValor(t) && !rb.multiEvento) {
       session.step = "orcamento_completar";
+      if (pref) { await sendTyping(chatId); await sendText(chatId, `${saudacaoPorHora()}! 😊 ${pref.trim()}`); }
       await enviarValorImediato(chatId, session, t);
       return true;
     }
     await sendTyping(chatId);
-    await sendText(chatId, `${saudacaoPorHora()}! ❤️ Recebi o seu pedido, obrigado! Já anotei o que você me contou. 😊`);
+    await sendText(chatId, `${saudacaoPorHora()}! 😊 ${pref}Recebi o seu pedido, obrigado! Já anotei o que você me contou. ❤️`);
     if (rb.multiEvento && (session.eventosPendentes || []).length) {
       await sendTyping(chatId);
       await sendText(chatId, `Recebi as informações dos *dois eventos*! Vou montar uma proposta de cada, começando pelo de *${session.orcamento.convidados} convidados*.`);
@@ -2552,9 +2607,15 @@ async function mostrarMenuInicial(chatId) {
   // prova social (Google) já dentro do próprio menu. O texto é PROPOSITALMENTE
   // enxuto: se passar de ~600 caracteres o WhatsApp corta com "Ler mais" e
   // esconde justamente as opções do menu.
+  /* 🤖 13/11/2026 (Mario/ChatGPT): o Rapha se apresenta na 1a vez, como assistente virtual; menu repetido na mesma
+     conversa volta ao cabeçalho de sempre. Texto da apresentação: utils/identidadeRapha.js (fonte única). */
+  const sMenu = sessions[chatId] || (sessions[chatId] = {});
+  const abertura = sMenu.raphaApresentado
+    ? "*Olá! Seja bem-vindo(a) à PhotoMusic Produções!*\n\n"
+    : prefixoApresentacao(sMenu, false);
   await sendOptionList(
     chatId,
-    "*Olá! Seja bem-vindo(a) à PhotoMusic Produções!*\n\n" +
+    abertura +
       "*Somos a empresa de experiências fotográficas mais bem avaliada do Brasil*, com mais de " + avaliacoesTexto() + " avaliações 5 ⭐ no Google.\n\n" +
       "*Como posso te ajudar hoje?*",
     Object.keys(LABELS_MENU).map(k => ({ id: k, title: LABELS_MENU[k] })),
@@ -5790,13 +5851,17 @@ async function handleIncomingMessage(message) {
       console.log(`🤝 ${chatId} disse que já contratou (1ª mensagem): suporte direto, sem menu.`);
       sessions[chatId].menuInicialEnviado = true;
       await sendTyping(chatId);
-      await sendText(chatId, `${saudacaoPorHora()}! ❤️ Que bom falar com você!\n\nVocê já tem um serviço contratado com a gente. Como posso te ajudar?`);
+      await sendText(chatId, `${saudacaoPorHora()}! ❤️ ${prefixoApresentacao(sessions[chatId])}Que bom falar com você!\n\nVocê já tem um serviço contratado com a gente. Como posso te ajudar?`);
       pausarCliente(chatIdNormalizado);
       return;
     }
     if (await tratarTirinha(chatId, sessions[chatId], corpoMensagem, detectarServicosNoTexto(corpoMensagem))) return;
     // 📝 13/11/2026 (caso Gabriela): primeira mensagem já é o pedido completo = orçamento direto, sem menu
     if (await iniciarOrcamentoPorBriefing(chatId, sessions[chatId], corpoMensagem)) return;
+    // 📌 dados ditos já na 1ª mensagem (data, bairro, convidados, celebração) ficam guardados para só confirmar depois
+    await guardarDadosLivres(sessions[chatId], corpoMensagem);
+    guardarConvidadosLivres(sessions[chatId], corpoMensagem);
+    guardarCelebracaoLivre(sessions[chatId], corpoMensagem);
     // 🔁 13/11/2026 (caso Luciana): quem ja tem orcamento de evento futuro nao recebe o menu de cliente novo
     if (await tentarRetomarCliente(chatId, sessions[chatId])) return;
 
@@ -5987,6 +6052,7 @@ async function handleIncomingMessage(message) {
   // ======================================================
   // 👥 Convidados ditos em qualquer ponto antes da pergunta (13/11/2026, caso Sheila)
   const convidadosNovos = guardarConvidadosLivres(session, corpoMensagem);
+  guardarCelebracaoLivre(session, corpoMensagem);   // 🎉 "aniversário da minha filha de 11 anos" (13/11/2026)
 
   // 🔁 CLIENTE QUE VOLTA: qual evento (varios orcamentos em aberto) e o que fazer (13/11/2026, caso Luciana)
   if (session.step === "retorno_escolher_assunto") {
@@ -6131,7 +6197,7 @@ async function handleIncomingMessage(message) {
     session.menuInicialEnviado = true;
     session.opcaoMenuPendente = null;
     await sendTyping(chatId);
-    await sendText(chatId, `${saudacaoPorHora()}! ❤️ Que bom falar com você!\n\nVocê já tem um serviço contratado com a gente. Como posso te ajudar?`);
+    await sendText(chatId, `${saudacaoPorHora()}! ❤️ ${prefixoApresentacao(session)}Que bom falar com você!\n\nVocê já tem um serviço contratado com a gente. Como posso te ajudar?`);
     pausarCliente(chatIdNormalizado);
     return;
   }
@@ -6887,6 +6953,18 @@ const resumoEucaristia =
     return;
   }
 
+  // 🎂 RESPOSTA DA IDADE (Mario, 13/11/2026): "11" -> Aniversário Adolescente, sem a lista de celebrações
+  if (session.step === "orcamento_celebracao_idade") {
+    const mId = String(corpoMensagem || "").match(/\d{1,3}/);
+    const opId = mId ? celebracaoDaIdade(Number(mId[0])) : null;
+    if (opId) { await anotarCelebracao(chatId, session, opId, Number(mId[0])); return; }
+    // não respondeu com número: mostra a lista de celebrações de sempre (nunca trava a pessoa)
+    const dlI = session.dadosLivres || {};
+    dlI.celebracaoPerguntarIdade = null;
+    await seguirParaCelebracao(chatId, session);
+    return;
+  }
+
   if (session.step === "orcamento_celebracao") {
     const opcao = parseInt(corpoMensagem, 10);
 
@@ -6984,7 +7062,8 @@ const resumoEucaristia =
   }
 
   if (session.step === "orcamento_convidados") {
-    const convidados = parseInt(corpoMensagem.replace(/\D+/g, ""), 10);
+    // 13/11/2026 (caso real 18h43): "20 crianças e 50 adultos" virava 2050. Agora soma (faixa = o maior).
+    const convidados = convidadosDaResposta(corpoMensagem);
 
     if (isNaN(convidados) || convidados <= 0) {
       // 13/11/2026: o aviso seco nao dizia o que fazer; agora repete a pergunta com exemplo.
@@ -8337,7 +8416,7 @@ async function iniciarOrcamentoComServicosDitos(chatId, session, ids, opcoes = {
 
   await sendTyping(chatId);
   await sendText(chatId,
-    `${saudacaoPorHora()}! ❤️\n\n` +
+    `${saudacaoPorHora()}! ❤️\n\n` + prefixoApresentacao(session) +
     `Vi que você quer saber sobre *${comE}*. Para o valor sair *feito para o seu evento* ` +
     `(e não um valor genérico), preciso de algumas informações. São perguntas rapidinhas! 😊`
   );
@@ -8372,11 +8451,12 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids, opcoes = {})
      "vi que você quer saber sobre": ele já escolheu, não está perguntando. */
   /* Quem veio da PÁGINA DO SERVIÇO já leu tudo sobre ele. A abertura não
      repete a apresentação, só confirma que chegou e entrega o valor. */
+  const prefAb = prefixoApresentacao(session);   // 🤖 Rapha se apresenta (uma vez) sem atrasar o valor
   const textoAbertura = opcoes.origemSite
     ? `${saudacaoPorHora()}! ❤️
 
 ` +
-      `Que bom que você chegou pela nossa página de *${comE}*! 😊
+      prefAb + `Que bom que você chegou pela nossa página de *${comE}*! 😊
 
 ` +
       `Já te mando o valor sem você precisar esperar.
@@ -8387,7 +8467,7 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids, opcoes = {})
     ? `${saudacaoPorHora()}! ❤️
 
 ` +
-      `Recebi o seu pedido pelo catálogo: *${comE}*. Obrigado por escolher a ` +
+      prefAb + `Recebi o seu pedido pelo catálogo: *${comE}*. Obrigado por escolher a ` +
       `PhotoMusic! 😊
 
 ` +
@@ -8398,7 +8478,7 @@ async function enviarOrcamentoPadraoDetectado(chatId, session, ids, opcoes = {})
     : `${saudacaoPorHora()}! ❤️
 
 ` +
-      `Vi que você quer saber sobre *${comE}*, já te mando o valor ` +
+      prefAb + `Vi que você quer saber sobre *${comE}*, já te mando o valor ` +
       `sem você precisar esperar. 😊
 
 ` +
