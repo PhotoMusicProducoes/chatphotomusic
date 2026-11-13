@@ -3678,6 +3678,10 @@ async function handleIncomingMessage(message) {
       retomarCliente(normalizado);
       delete sessions[normalizado];
       await mostrarMenuInicial(normalizado);
+      /* 12/11/2026: o menu saiu por ORDEM DO OPERADOR, nao porque o cliente escreveu. Sem esta marca o job de
+         abandono achava que ele tinha escrito e mandava orcamento 1h depois, sem a pessoa ter pedido nada
+         (numero resetado por engano). Com `false`, o job nao envia orcamento a quem so recebeu o menu. */
+      if (sessions[normalizado]) sessions[normalizado].clienteEscreveuTexto = false;
       await sendText(destinoOperador, `🔄 Atendimento resetado para ${normalizado}`);
       return;
     }
