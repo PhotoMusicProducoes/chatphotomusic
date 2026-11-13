@@ -40,6 +40,7 @@ const {
 const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require("./utils/pauseControl.js");
 
 const { sessions } = require("./utils/sessions");
+const { clientePedeValor, clienteNaoSabe } = require("./utils/pedidoDeValor.js");
 const { marcaAtiva, limparMarca, qualRespostaRapida, clientePediuParar } = require("./utils/followupRespostaRapida.js");
 const { ehEstrangeiroConhecido, lembrarEstrangeiro, numeroDeEntrada } = require("./utils/numeroEstrangeiro.js");
 const { resetSession } = require("./utils/resetSession");
@@ -1596,6 +1597,49 @@ function notaPreliminar(orc, curto) {
   if (ref.length && !curto) n += " Como ainda não tenho esses dados, usei como referência " + ref.join(" e ") + " (estimativa).";
   if (semLocal) n += "\n🚗 O *deslocamento não está incluído*: ele é calculado quando você me disser o local do evento.";
   return n;
+}
+
+/* ======================================================
+   VALOR NA HORA (13/11/2026 · RJN, caso real 01h31 - Aniversário Adolescente)
+   "Só quero saber o valor" em qualquer pergunta do orçamento, e "não sei" nas
+   perguntas de dado do evento (convidados, data, horário, local), entregam o
+   MESMO preliminar do abandono (aprovado): só o serviço escolhido, ou o enxuto,
+   em 4h e 5h, até 200 convidados como estimativa, deslocamento a confirmar.
+   Tudo que o cliente já disse fica (celebração, nome, serviço) e a próxima
+   resposta continua o questionário de onde parou ("lembrete_retomar").
+   Nada muda no motor de preço nem nos PDFs.
+   ====================================================== */
+const PASSOS_DADO_DO_EVENTO = new Set([
+  "orcamento_convidados", "orcamento_dias", "orcamento_data", "orcamento_hora_inicio", "orcamento_hora_fim",
+  "orcamento_datas_multiplas", "orcamento_dia_data", "orcamento_dia_hora_inicio", "orcamento_dia_hora_fim",
+  "orcamento_bairro", "orcamento_cidade",
+]);
+// Texto livre onde "valor" é assunto do cliente, não pedido de preço.
+// (o NOME fica de fora de propósito: "Quanto custa?" não é nome, e era gravado como se fosse)
+const PASSOS_TEXTO_LIVRE = new Set(["orcamento_detalhes_texto", "orcamento_empresa", "orcamento_celebracao_outros", "orcamento_salao"]);
+
+function querValorAgora(session, texto) {
+  const step = session && session.step;
+  if (!step || PASSOS_TEXTO_LIVRE.has(step)) return false;
+  if (clientePedeValor(texto)) return true;
+  return PASSOS_DADO_DO_EVENTO.has(step) && clienteNaoSabe(texto);
+}
+
+async function enviarValorImediato(chatId, session) {
+  const orc = session.orcamento = session.orcamento || { servicosEnviados: [] };
+  const { PERGUNTA_POR_PASSO } = require("./jobs/lembreteOrcamento.js");
+  session.lembreteRetomarPergunta = PERGUNTA_POR_PASSO[session.step] || session.ultimaPerguntaNaoRespondida || "";
+  const previos = Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length ? [...orc.servicosPrevios] : null;
+  const ref = [];
+  if (!orc.convidados) ref.push("até 200 convidados");
+  console.log(`💬 ${chatId} pediu o valor / não sabe o dado em "${session.step}": preliminar na hora${previos ? " (serviço escolhido)" : " (enxuto)"}.`);
+  const textoAbertura =
+    "Claro! 😊 Você não precisa ter todos os detalhes definidos para conhecer nossos valores.\n\n" +
+    "Vou te apresentar uma estimativa inicial com opções de *4 e 5 horas*. 📸\n\n" +
+    "Depois, quando souber a quantidade de convidados, a data e o local, ajustamos o orçamento para o seu evento.\n\n" +
+    "Vou te mostrar as opções disponíveis! ❤️" +
+    (ref.length ? `\n\n_Estimativa: ${ref.join(", ")}._` : "");
+  await enviarOrcamentosAutomaticos(chatId, session, previos, { textoAbertura, enxuto: !previos });
 }
 
 /* Selecao do preliminar enxuto: Foto Cabine (1), Totem Retro (13), Plataforma 360 (3) e Som e DJ (7, so nas combinacoes). */
@@ -5225,6 +5269,13 @@ async function handleIncomingMessage(message) {
   // pausa, para nunca falar por cima de um atendimento manual.
   if (passoDeColetaDoOrcamento(session) && ehDesistencia(corpoMensagem, session.step)) {
     await tratarDesistenciaOrcamento(chatId, session);
+    return;
+  }
+
+  // 💬 PEDIU O VALOR ou NÃO SABE o dado (caso real 13/11/2026 01h31): entrega o
+  // preliminar NA HORA, sem insistir na pergunta e sem esperar os 60 minutos.
+  if (passoDeColetaDoOrcamento(session) && querValorAgora(session, corpoMensagem)) {
+    await enviarValorImediato(chatId, session);
     return;
   }
 
