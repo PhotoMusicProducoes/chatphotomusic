@@ -1611,6 +1611,48 @@ async function perguntarBairroEvento(chatId, session) {
   await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
 }
 
+/* 📅 "TEM VAGA NO DIA X?" (13/11/2026, teste do Mario 02h19): o bot consulta a agenda do PhotoMusic Pro
+   (rota publica /data-livre: livre / ultima disponibilidade / lotada; o texto NUNCA revela a agenda) e responde,
+   em vez de "Opcao invalida". So no menu inicial, so com palavra de disponibilidade E uma data valida e futura.
+   Qualquer falha na consulta = fluxo de sempre (o bot nunca fica mudo nem inventa disponibilidade). */
+const SLUG_DISPONIBILIDADE = { 1: "foto-cabine", 2: "totem", 3: "plataforma-360", 4: "foto-paparazzi", 5: "foto-lembranca", 6: "fotografia", 7: "som-dj", 13: "totem-retro" };
+
+function ehPerguntaDeDisponibilidade(texto) {
+  const t = normalizarParaBusca(String(texto || ""));
+  return /\b(vaga|vagas|disponibilidade|disponivel|disponiveis|livre|livres|agenda|sobrou|ocupad[oa]|atendem?|conseguem?|da pra|tem como|tem data)\b/.test(t);
+}
+
+async function responderDisponibilidade(chatId, session, texto) {
+  try {
+    if (!ehPerguntaDeDisponibilidade(texto)) return false;
+    const cand = acharDataNoTexto(texto);
+    const f = cand ? parsearDataFlex(cand) : null;
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    if (!f || f.date < hoje) return false;
+    const ids = (typeof detectarServicosNoTexto === "function" ? detectarServicosNoTexto(texto) : []).filter(id => SLUG_DISPONIBILIDADE[id]).slice(0, 3);
+    const consultas = ids.length ? ids : [null];
+    const respostas = await Promise.all(consultas.map(async id => {
+      const r = await axios.get(`${PM_API_BASE}/data-livre`, { params: { data: f.str, servico: id ? SLUG_DISPONIBILIDADE[id] : "" }, timeout: 6000 });
+      return { id, d: r.data || {} };
+    }));
+    if (respostas.some(r => !["livre", "ultima", "lotada"].includes(r.d.estado))) return false;
+    let corpo;
+    if (respostas.length === 1) {
+      corpo = `*${respostas[0].d.titulo}*\n\n${respostas[0].d.texto}`;
+    } else {
+      corpo = respostas.map(r => `• *${SERVICOS_NOMES[r.id]}*: ${r.d.titulo}`).join("\n") + "\n\nA data só fica reservada de verdade com o contrato assinado.";
+    }
+    await sendTyping(chatId);
+    await sendText(chatId, `📅 *${f.str}*\n\n${corpo}`);
+    await sendTyping(chatId);
+    await sendText(chatId, "Quer que eu monte o seu orçamento? É só digitar *1* (Solicitar um orçamento). 😊");
+    return true;
+  } catch (e) {
+    console.warn(`⚠️ disponibilidade: ${e.message}`);
+    return false;
+  }
+}
+
 function linhasOpcoesConfServicos(qtd) {
   return "*1* - Sim, é isso\n*2* - Trocar serviço\n*3* - Adicionar outro serviço" + (qtd > 1 ? "\n*4* - Remover um serviço" : "");
 }
@@ -5464,6 +5506,7 @@ async function handleIncomingMessage(message) {
      inválida", porque só sabia ler dígito. */
   const opcaoMenu = opcaoPorTitulo(texto, LABELS_MENU) || texto.replace(/\D+/g, "");
   await guardarDadosLivres(session, texto);   // data/bairro ditos em texto livre (13/11/2026)
+  if (session.step === "aguardando_opcao" && await responderDisponibilidade(chatId, session, texto)) return;   // "tem vaga dia 27?"
 
   /* ❤️ AGRADECIMENTO NÃO ABRE MENU (Mario, 15/10/2026).
      A Patrícia respondeu ao "feliz aniversário" com "💖💖💖💖" e recebeu o menu
