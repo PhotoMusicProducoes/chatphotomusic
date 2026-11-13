@@ -60,8 +60,6 @@ const T_DOIS = "Estou retomando o contato para solicitar um orçamento da cabine
   const o = sess().orcamento;
   checar("guardou serviço, convidados, data e horário que ela disse", (o.servicosPrevios || []).join() === "1" && o.convidados === 300 && /^17\/12\/\d{4}$/.test(o.data || "") && o.horaInicio === "17:30" && o.horaFim === "20:00", JSON.stringify(o));
   checar("evento corporativo reconhecido (celebração 'Evento Corporativo')", o.celebracaoId === 8, String(o.celebracaoId));
-  checar("confirma o serviço entendido (mantém a confirmação dos serviços)", sess().step === "orcamento_completar" && /Foto Cabine/.test(r) && /Está certo/.test(r), sess().step + " | " + r);
-  r = await cliente("1");
   checar("pergunta SÓ o que falta: o local (não repete nome, data, horário, convidados)", sess().step === "orcamento_completar" && /bairro e a cidade/i.test(r) && !/nome|Quantos convidados|Qual a data/i.test(r), sess().step + " | " + r);
   r = await cliente("Flamengo");
   checar("com o bairro, completa a cidade pela tabela e mostra o RESUMO com os dados dela", sess().step === "orcamento_confirmar" && /Flamengo/.test(r) && /17\/12/.test(r) && /300/.test(r), sess().step + " | " + r);
@@ -69,13 +67,26 @@ const T_DOIS = "Estou retomando o contato para solicitar um orçamento da cabine
   const p = pedidos[pedidos.length - 1] || {};
   checar("o orçamento sai com os dados reais (cabine, 300, 17/12, 17:30-20:00, Flamengo), não o genérico", (p.slugs || []).join() === "foto-cabine" && p.orc && p.orc.convidados === 300 && p.orc.horaInicio === "17:30" && p.orc.bairro === "Flamengo" && p.orc.celebracaoId === 8, JSON.stringify(p));
 
-  console.log("\n— CASO 3: dois eventos no mesmo texto (300 e 90 pessoas) —");
+  console.log("\n— CASO 3: dois eventos no mesmo texto (300 e 90 pessoas): uma proposta de cada, em sequência —");
   novo();
   sessions[CHAT] = { step: "lembrete_retomar", lembreteRetomarStep: "orcamento_nome", menuInicialEnviado: true, clienteEscreveuTexto: true,
     orcamento: { nome: "Raquel Coelho", servicosEnviados: [], situacao: "preliminar" } };
   r = await cliente(T_DOIS);
-  checar("reconhece 2 eventos: avisa o cliente e passa para a equipe (não pergunta o nome nem monta um orçamento errado)", /dois eventos/i.test(r) && sess().step === "aguardando_retorno" && pedidos.length === 0, sess().step + " | " + r);
-  checar("o operador recebe o texto do briefing", /Briefing com 2 eventos/.test(registro.join("\n")), registro.join("\n"));
+  checar("reconhece 2 eventos, diz que fará uma proposta de cada e começa pelo de 300", /dois eventos/i.test(r) && sess().orcamento.convidados === 300 && (sess().eventosPendentes || []).length === 1 && sess().eventosPendentes[0].convidados === 90, JSON.stringify(sess().eventosPendentes) + " | " + r);
+  checar("pergunta SÓ a data (o que falta): serviço, tipo, convidados, duração (4h) já vieram", sess().step === "orcamento_completar" && /data do evento/i.test(r), sess().step + " | " + r);
+  await cliente("04/12/2026");
+  await cliente("1");   // confirma o local sugerido
+  pedidos.length = 0;
+  r = await cliente("1");   // confirma o resumo
+  const p1 = pedidos[pedidos.length - 1] || {};
+  checar("1o orçamento: cabine, 300 convidados, 04/12, 4 horas, corporativo", (p1.slugs || []).join() === "foto-cabine" && p1.orc && p1.orc.convidados === 300 && /^04\/12/.test(p1.orc.data || "") && p1.orc.horas === 4 && p1.orc.celebracaoId === 8, JSON.stringify(p1));
+  checar("em seguida começa o 2o evento (90 convidados) e pergunta só a data", sess().step === "orcamento_completar" && sess().orcamento.convidados === 90 && /próximo evento/i.test(r) && /data do evento/i.test(r), sess().step + " | " + r);
+  await cliente("17/12/2026");
+  await cliente("Flamengo");   // o local do 2o evento nao veio claro no texto: o bot pergunta
+  pedidos.length = 0;
+  await cliente("1");
+  const p2 = pedidos[pedidos.length - 1] || {};
+  checar("2o orçamento: 90 convidados, 17/12, mesmo serviço e duração, sem repetir nome nem empresa", p2.orc && p2.orc.convidados === 90 && /^17\/12/.test(p2.orc.data || "") && p2.orc.nome === "Raquel Coelho" && p2.orc.horas === 4, JSON.stringify(p2));
 
   console.log("\n— CASO 4: ela NÃO responde o local: em 1h o orçamento sai com o que ela já disse (não o genérico) —");
   const DTF = Intl.DateTimeFormat; global.Intl.DateTimeFormat = function (l, o) { if (o && o.hour && !o.minute) return { format: () => "15" }; return new DTF(l, o); };

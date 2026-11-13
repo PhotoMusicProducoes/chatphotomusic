@@ -63,9 +63,9 @@ async function cliente(texto) {
   checar("com o nome certo, pergunta o perfil", sess().step === "orcamento_perfil" && sess().orcamento.nome === "Leidiana", sess().step);
   await cliente("1");
   const rConf = todas[todas.length - 1];
-  checar("NÃO pergunta quais serviços: vai à confirmação dos 2 que ela pediu", sess().step === "orcamento_servicos_confirmar" && /Foto Cabine/.test(rConf) && /Foto Lembrança/.test(rConf), sess().step);
-  await cliente("1");
-  checar("depois da confirmação, pergunta os dados do evento (celebração)", sess().step === "orcamento_celebracao", sess().step);
+  checar("serviço dito pelo NOME: não pergunta quais serviços nem pede confirmação, vai à celebração", sess().step === "orcamento_celebracao" && (sess().orcamento.servicosPrevios || []).length === 2, sess().step);
+  await cliente("4");
+  checar("depois da celebração, pergunta os convidados", sess().step === "orcamento_convidados", sess().step);
   checar("nada foi orçado ainda (o orçamento sai personalizado no fim)", (sess().orcamento.servicosEnviados || []).length === 0, JSON.stringify(sess().orcamento.servicosEnviados));
 
   devolverSessoes();

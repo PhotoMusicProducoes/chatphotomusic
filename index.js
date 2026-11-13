@@ -1435,6 +1435,9 @@ async function seguirParaServicos(chatId, session) {
   await sendText(chatId, "A *PhotoMusic Produções* está há 15 anos transformando eventos em memórias inesquecíveis.");
   const ja = session.orcamento && session.orcamento.servicosPrevios;
   if (Array.isArray(ja) && ja.length > 0) {
+    /* 13/11/2026 (Mario): servico dito pelo NOME, com clareza, nao precisa confirmar. A confirmacao fica so para o que veio
+       por NUMERO do menu ou por interpretacao da IA. */
+    if (session.orcamento.servicosPorNome) { await seguirParaCelebracao(chatId, session); return; }
     await mostrarConfirmacaoServicos(chatId, session);
     return;
   }
@@ -1663,6 +1666,7 @@ async function aplicarBriefingLivre(chatId, session, texto) {
   const original = session.orcamento = session.orcamento || { servicosEnviados: [] };
   const orc = JSON.parse(JSON.stringify(original));   // rascunho: so vira resposta se o texto trouxe algo util
   const r = { nome: false, servicos: false, convidados: false, data: false, horario: false, multiEvento: b.convidados.length > 1 };
+  const extras = [];   // eventos 2, 3... do mesmo texto (13/11/2026): cada um vira uma proposta, em sequencia
   if (b.nome && !orc.nome) { orc.nome = capitalizarPalavras(b.nome); r.nome = true; }
   if (b.empresa && !orc.empresa) orc.empresa = b.empresa;
   if (b.corporativo) {
@@ -1672,12 +1676,12 @@ async function aplicarBriefingLivre(chatId, session, texto) {
     orc.perfil = orc.perfil || "social"; orc.celebracaoId = b.celebracaoId; orc.celebracao = celebracoes[b.celebracaoId];
   }
   const ids = detectarServicosNoTexto(texto).filter(id => SERVICOS_NOMES[id]);
-  if (ids.length && !(Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length)) { orc.servicosPrevios = ids; r.servicos = true; }
-  if (b.convidados.length === 1 && !orc.convidados) { orc.convidados = b.convidados[0]; r.convidados = true; }
-  if (b.dataTxt && !orc.data) {
-    const f = parsearDataFlex(b.dataTxt); const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    if (f && f.date >= hoje) { orc.data = f.str; r.data = true; }
-  }
+  if (ids.length && !(Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length)) { orc.servicosPrevios = ids; orc.servicosPorNome = true; r.servicos = true; }
+  if (b.convidados.length >= 1 && !orc.convidados) { orc.convidados = b.convidados[0]; r.convidados = true; for (const n of b.convidados.slice(1)) extras.push({ convidados: n }); }
+  const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+  const datasOk = (b.datas || []).map(d => parsearDataFlex(d)).filter(f => f && f.date >= hoje0);
+  if (!orc.data && datasOk.length && (extras.length === 0 || datasOk.length > 1)) { orc.data = datasOk[0].str; r.data = true; }   // 1 data para 2 eventos e ambigua: nao assume
+  extras.forEach((e, i) => { if (datasOk.length > 1 && datasOk[i + 1]) e.data = datasOk[i + 1].str; });
   if (b.horario && !orc.horaInicio) {
     orc.horaInicio = b.horario.inicio; orc.horaFim = b.horario.fim;
     orc.duracao = calcularDuracaoEvento(b.horario.inicio, b.horario.fim);
@@ -1687,10 +1691,15 @@ async function aplicarBriefingLivre(chatId, session, texto) {
   if (r.util >= 1 || r.nome) {
     Object.assign(original, orc);   // confirma o rascunho
     const dl = session.dadosLivres = session.dadosLivres || {};
-    if (!dl.bairro) {
-      const achados = await Promise.all((b.local || []).slice(0, 3).map(c => inferirCidadePorBairro(c)));
-      const p = achados.find(Boolean);
-      if (p) { dl.bairro = p.bairro; dl.cidade = p.cidade; }
+    const achados = (await Promise.all((b.local || []).slice(0, 6).map(c => inferirCidadePorBairro(c)))).filter(Boolean);
+    const lugares = achados.filter((p, i) => achados.findIndex(q => q.bairro === p.bairro) === i);   // sem repetir
+    if (!dl.bairro && lugares[0]) { dl.bairro = lugares[0].bairro; dl.cidade = lugares[0].cidade; }
+    if (extras.length) {
+      extras.forEach((e, i) => { if (lugares.length === extras.length + 1 && lugares[i + 1]) { e.bairro = lugares[i + 1].bairro; e.cidade = lugares[i + 1].cidade; } });
+      session.eventosPendentes = extras;
+      session.eventoBase = JSON.parse(JSON.stringify({ nome: original.nome, empresa: original.empresa, perfil: original.perfil, celebracaoId: original.celebracaoId, celebracao: original.celebracao,
+        servicosPrevios: original.servicosPrevios, servicosPorNome: original.servicosPorNome, _servicosConfirmados: original._servicosConfirmados,
+        horaInicio: original.horaInicio, horaFim: original.horaFim, duracao: original.duracao, horas: original.horas }));
     }
   }
   return r;
@@ -1699,7 +1708,7 @@ async function aplicarBriefingLivre(chatId, session, texto) {
 function dadoQueFalta(session) {
   const orc = session.orcamento || {};
   if (!orc.nome) return "nome";
-  if (Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length && !orc._servicosConfirmados) return "servicos_confirmar";
+  if (Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length && !orc._servicosConfirmados && !orc.servicosPorNome) return "servicos_confirmar";
   if (!orc.celebracaoId) return "celebracao";
   if (!orc.convidados) return "convidados";
   if (!orc.data) return "data";
@@ -3255,7 +3264,21 @@ function montarMenuPosOrcamento(session) {
   return opcoes.map((o, i) => ({ ...o, id: String(i + 1) }));
 }
 
+/** Texto com 2+ eventos (13/11/2026, caso Raquel): termina a proposta de um e comeca a do proximo, reaproveitando o que e comum. */
+async function iniciarProximoEvento(chatId, session) {
+  const prox = (session.eventosPendentes || []).shift();
+  const base = session.eventoBase || {};
+  const { bairro, cidade, ...dados } = prox;
+  session.orcamento = Object.assign({ servicosEnviados: [] }, JSON.parse(JSON.stringify(base)), dados);
+  session.servicosEnviados = [];
+  session.dadosLivres = bairro && cidade ? { bairro, cidade } : {};
+  await sendTyping(chatId);
+  await sendText(chatId, `Pronto, a proposta do primeiro evento foi enviada! ❤️\n\nAgora vamos ao *próximo evento*, de *${prox.convidados} convidados*. 😊`);
+  await completarBriefing(chatId, session);
+}
+
 async function perguntarPosOrcamento(chatId, session) {
+  if (Array.isArray(session.eventosPendentes) && session.eventosPendentes.length) { await iniciarProximoEvento(chatId, session); return; }
   const opcoes = montarMenuPosOrcamento(session);
 
   // Sobrou só o "por enquanto é só": não há nada a oferecer, não pergunta.
@@ -5669,7 +5692,7 @@ async function handleIncomingMessage(message) {
     if (opcaoMenu === "") {
       const _serv1 = detectarServicosNoTexto(texto);
       if (_serv1.length) {
-        await iniciarOrcamentoComServicosDitos(chatId, session, _serv1);
+        await iniciarOrcamentoComServicosDitos(chatId, session, _serv1, { porNome: true });
         return;
       }
       /* 🤖 O detector não achou palavra nenhuma. A IA ainda pode entender
@@ -5696,7 +5719,7 @@ async function handleIncomingMessage(message) {
   if (opcaoMenu === "") {
     const _serv2 = detectarServicosNoTexto(texto);
     if (_serv2.length) {
-      await iniciarOrcamentoComServicosDitos(chatId, session, _serv2);
+      await iniciarOrcamentoComServicosDitos(chatId, session, _serv2, { porNome: true });
       return;
     }
   }
@@ -5750,7 +5773,7 @@ async function handleIncomingMessage(message) {
     const _servConf = detectarServicosNoTexto(corpoMensagem || "");
     if (_servConf.length) {
       session.opcaoMenuPendente = null;
-      await iniciarOrcamentoComServicosDitos(chatId, session, _servConf);
+      await iniciarOrcamentoComServicosDitos(chatId, session, _servConf, { porNome: true });
       return;
     }
     if (await tentarRoteadorIA(chatId, session, corpoMensagem || "")) {
@@ -6117,12 +6140,9 @@ const resumoEucaristia =
       /* 13/11/2026 (caso Raquel/Petrobras): usa nome, servico, data, horario, convidados e local que vieram no texto e
          pergunta SO o que falta. Dois eventos no mesmo texto (2 contagens de convidados) vai para a equipe. */
       const rb = await aplicarBriefingLivre(chatId, session, cru);
-      if (rb.multiEvento) {
+      if (rb.multiEvento && (session.eventosPendentes || []).length) {
         await sendTyping(chatId);
-        await sendText(chatId, "Recebi as informações dos *dois eventos*, obrigado! 😊 Vou passar para a nossa equipe montar as duas propostas e já te retornamos por aqui.");
-        try { await sendText(OPERADOR_TELEFONE_ID, `📋 *Briefing com 2 eventos* — ${chatId}\n\n${cru.slice(0, 600)}\n\nO bot NÃO montou orçamento: assuma o atendimento.`); } catch (e) {}
-        session.step = "aguardando_retorno";
-        return;
+        await sendText(chatId, `Recebi as informações dos *dois eventos*, obrigado! 😊 Vou montar uma proposta de cada, começando pelo de *${session.orcamento.convidados} convidados*.`);
       }
       if (rb.util >= 2) { await completarBriefing(chatId, session); return; }
       if (rb.nome) { await seguirDepoisDoNome(chatId, session); return; }
@@ -6220,16 +6240,9 @@ const resumoEucaristia =
     /* 13/11/2026 (caso Raquel): a pessoa respondeu o convite com um TEXTO LONGO (data, horario, convidados...): usa o que veio. */
     if (pareceBriefing(corpoMensagem)) {
       const rb = await aplicarBriefingLivre(chatId, session, corpoMensagem);
-      if (rb.multiEvento) {
+      if (rb.multiEvento && (session.eventosPendentes || []).length) {
         await sendTyping(chatId);
-        await sendText(chatId, "Recebi as informações dos *dois eventos*, obrigado! 😊 Vou passar para a nossa equipe montar as duas propostas e já te retornamos por aqui.");
-        try { await sendText(OPERADOR_TELEFONE_ID, `📋 *Briefing com 2 eventos* — ${chatId}
-
-${String(corpoMensagem).slice(0, 600)}
-
-O bot NÃO montou orçamento: assuma o atendimento.`); } catch (e) {}
-        session.step = "aguardando_retorno";
-        return;
+        await sendText(chatId, `Recebi as informações dos *dois eventos*, obrigado! 😊 Vou montar uma proposta de cada, começando pelo de *${session.orcamento.convidados} convidados*.`);
       }
       if (rb.util >= 1 || rb.nome) { await completarBriefing(chatId, session); return; }
     }
@@ -7828,7 +7841,7 @@ module.exports = {
  * questionario com o servico ja anotado (a confirmacao com trocar/adicionar continua).
  * Quem chega pela PAGINA DO SERVICO ou pelo CATALOGO continua recebendo o valor na hora.
  */
-async function iniciarOrcamentoComServicosDitos(chatId, session, ids) {
+async function iniciarOrcamentoComServicosDitos(chatId, session, ids, opcoes = {}) {
   const lista = (ids || []).slice(0, 6);
   const nomes = lista.map(id => SERVICOS_NOMES[id]).filter(Boolean);
   const comE = nomes.length > 1
@@ -7836,7 +7849,7 @@ async function iniciarOrcamentoComServicosDitos(chatId, session, ids) {
     : (nomes[0] || "nosso serviço");
   console.log(`🔎 Serviço citado por extenso por ${chatId}: ${lista.join(", ")} (${comE}) - abrindo o questionário`);
 
-  session.orcamento = { servicosEnviados: [], servicosPrevios: [...lista] };
+  session.orcamento = { servicosEnviados: [], servicosPrevios: [...lista], servicosPorNome: !!opcoes.porNome };
   session.servicosEnviados = [];
   session.lembreteOrcamentoEnviado = false;
   session.optOutLembretes = false;

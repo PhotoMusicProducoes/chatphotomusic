@@ -133,7 +133,7 @@ const idDe = (re) => Number(Object.keys(catalogo || {}).find(id => re.test(catal
   await cliente("Oi, boa tarde! Sou o Marlon, quero foto cabine para o meu casamento no dia 24/01/2027, em Magé, para uns 150 convidados");
   checar("Marlon: o texto livre já é aproveitado (nome, serviço, convidados, data) e o bot confirma o serviço entendido", sess().step === "orcamento_completar" && sess().orcamento.nome === "Marlon" && (sess().orcamento.servicosPrevios || []).join() === String(idCabine) && sess().orcamento.convidados === 150 && /^24\/01\/\d{4}$/.test(sess().orcamento.data || ""), `${sess().step} ${JSON.stringify(sess().orcamento)}`);
   checar("Marlon: casamento reconhecido sem perguntar a celebração", sess().orcamento.celebracaoId === 2 && sess().orcamento.perfil === "social", JSON.stringify(sess().orcamento));
-  checar("Marlon: a confirmação do serviço aparece", /Foto Cabine/.test(todas[todas.length - 1]) && /Está certo/.test(todas[todas.length - 1]), todas[todas.length - 1]);
+  checar("Marlon: serviço dito pelo nome NÃO pede confirmação: pergunta só o que falta (horário)", /horário/.test(todas[todas.length - 1]) && !/Está certo/.test(todas[todas.length - 1]), todas[todas.length - 1]);
 
   // Leidiana, anonimizada (sem perfil claro: a pergunta de perfil continua)
   zerar(); respostaModelo = { perfil: "", nome: "Leidiana", servicos: [idCabine, idLembranca], celebracao: "aniversário", convidados: 0, local: "", data_texto: "", confianca: 0.85 };
@@ -141,13 +141,13 @@ const idDe = (re) => Number(Object.keys(catalogo || {}).find(id => re.test(catal
   await cliente("Olá, meu nome é Leidiana e preciso de foto cabine e foto lembrança para um aniversário, pode me passar valores?");
   checar("Leidiana: nome e 2 serviços aproveitados; perfil não ficou claro, então PERGUNTA", sess().step === "orcamento_perfil" && sess().orcamento.nome === "Leidiana" && sess().orcamento.servicosPrevios.length === 2, `${sess().step} ${JSON.stringify(sess().orcamento.servicosPrevios)}`);
   await cliente("1");
-  checar("Leidiana: depois do perfil vai direto à confirmação dos 2 serviços", sess().step === "orcamento_servicos_confirmar", sess().step);
+  checar("Leidiana: depois do perfil serviços ditos pelo nome: vai direto à celebração, sem confirmar", sess().step === "orcamento_celebracao", sess().step);
 
   // Agencia
   zerar(); respostaModelo = { perfil: "agencia", nome: "Paula", servicos: [id360], celebracao: "evento de cliente", convidados: 300, local: "", data_texto: "", confianca: 0.9 };
   await ate(["oi", "1", "1"]);
   await cliente("Oi, aqui é a Paula, da Agência Alfa. Precisamos de plataforma 360 para um evento de um cliente nosso");
-  checar("Agência: perfil reconhecido, sem perguntar de novo", sess().orcamento.perfil === "agencia" && sess().step === "orcamento_servicos_confirmar", sess().step);
+  checar("Agência: perfil reconhecido, sem perguntar de novo", sess().orcamento.perfil === "agencia" && ["orcamento_empresa", "orcamento_convidados"].includes(sess().step), sess().step);
 
   // O modelo "inventa": servico inexistente, preco, nome estranho -> descartado/limpo
   zerar(); respostaModelo = { perfil: "social", nome: "x@mail.com 99", servicos: [9999, idCabine], celebracao: "festa", convidados: 99999, local: "", data_texto: "", confianca: 0.9, preco: "R$ 1,00" };

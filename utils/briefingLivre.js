@@ -38,6 +38,20 @@ function acharHorario(texto) {
   return null;
 }
 
+/** Todas as datas escritas no texto, na ordem ("04/12 e 17/12", "dia 4 de dezembro e 17 de dezembro"). */
+function acharTodasAsDatas(texto) {
+  const t = semAcentoLocal(texto);
+  const achados = [];
+  const re = new RegExp("\\b(?:dia\\s*)?(\\d{1,2})\\s*(?:de\\s+)?(" + MESES_LOCAL + ")(?:\\s+de\\s+(\\d{4}))?\\b|\\b(\\d{1,2})[\\/.\\-](\\d{1,2})(?:[\\/.\\-](\\d{2}|\\d{4}))?\\b", "g");
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    achados.push(m[2] ? `${m[1]} de ${m[2]}${m[3] ? " de " + m[3] : ""}` : `${m[4]}/${m[5]}${m[6] ? "/" + m[6] : ""}`);
+  }
+  return achados;
+}
+const MESES_LOCAL = "janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro";
+function semAcentoLocal(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+
 function acharConvidados(texto) {
   const t = limpar(texto).toLowerCase().replace(/(\d)\.(\d{3})\b/g, "$1$2");
   const achados = [];
@@ -66,6 +80,7 @@ function extrairBriefing(texto) {
     corporativo,
     convidados: acharConvidados(t),
     dataTxt: d1 || "",
+    datas: acharTodasAsDatas(t),
     horario,
     horas: horas >= 1 && horas <= 24 ? horas : 0,
     local: candidatosLocal(t),

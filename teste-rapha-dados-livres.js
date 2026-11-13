@@ -49,7 +49,7 @@ function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); todas.
 
   await cliente("Queria saber o valor da foto cabine");
   checar("abre o questionário com o serviço dito", sess().step === "orcamento_nome", sess().step);
-  await ate(["Mario", "1", "1", "4", "100"]);
+  await ate(["Mario", "1", "4", "100"]);
   checar("na pergunta da data: CONFIRMA a data que ele disse (não pergunta de novo)", sess().step === "orcamento_data_confirmar" && /27\/11/.test(todas[todas.length - 1]), sess().step + " | " + todas[todas.length - 1]);
   await cliente("1");
   checar("confirmou: a data fica gravada e segue para o horário", sess().step === "orcamento_hora_inicio" && /^27\/11\/\d{4}$/.test(sess().orcamento.data || ""), sess().step + " " + sess().orcamento.data);
@@ -60,7 +60,7 @@ function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); todas.
 
   // recusou: a pergunta normal segue
   novo();
-  await ate(["oi", "Vocês tem vaga para o dia 27 de novembro ? Esse mês! Ilha do governador", "Queria saber o valor da foto cabine", "Mario", "1", "1", "4", "100"]);
+  await ate(["oi", "Vocês tem vaga para o dia 27 de novembro ? Esse mês! Ilha do governador", "Queria saber o valor da foto cabine", "Mario", "1", "4", "100"]);
   await cliente("2");
   checar("'Outra data': pergunta a data normalmente", sess().step === "orcamento_data" && /Qual a data/.test(todas[todas.length - 1]), sess().step);
   await ate(["30/11/2026", "19h as 23h"]);
@@ -69,7 +69,7 @@ function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); todas.
 
   // a pessoa digita a data direto em vez de tocar no botao
   novo();
-  await ate(["oi", "Vocês tem vaga para o dia 27 de novembro ? Esse mês! Ilha do governador", "Queria saber o valor da foto cabine", "Mario", "1", "1", "4", "100"]);
+  await ate(["oi", "Vocês tem vaga para o dia 27 de novembro ? Esse mês! Ilha do governador", "Queria saber o valor da foto cabine", "Mario", "1", "4", "100"]);
   await cliente("30/11/2026");
   checar("digitou outra data em vez de tocar: a data digitada vale", sess().step === "orcamento_hora_inicio" && sess().orcamento.data === "30/11/2026", sess().step + " " + sess().orcamento.data);
 
