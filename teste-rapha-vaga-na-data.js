@@ -50,6 +50,8 @@ async function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); 
   checar("responde a disponibilidade em vez de 'Opção inválida'", /Temos disponibilidade/.test(r) && !/Opção inválida/.test(r), r);
   checar("mostra a data e convida a pedir o orçamento", /27\/11\/\d{4}/.test(r) && /digitar \*1\*/.test(r), r);
   checar("consultou a agenda UMA vez, com a data certa e sem serviço", chamadas.length === 1 && /^27\/11\/\d{4}$/.test(chamadas[0].data) && chamadas[0].servico === "", JSON.stringify(chamadas));
+  checar("diz que a EQUIPE confirma e NÃO promete reserva", /equipe confirma a disponibilidade final/.test(r) && !/reservad[ao] para você|garantid/i.test(r), r);
+  checar("encaminha para confirmação humana: o operador recebe a data, o serviço e o texto do cliente", /Consulta de disponibilidade/.test(r) && /27\/11/.test(r) && /vaga para o dia 27/.test(r), r);
   checar("continua no menu (o 1 começa o orçamento) e ainda guardou data e bairro", sess().step === "aguardando_opcao" && sess().dadosLivres && /27\/11/.test(sess().dadosLivres.data || ""), sess().step + " " + JSON.stringify(sess().dadosLivres));
 
   await novo(); estado = (p) => p.servico === "foto-cabine" ? "ultima" : "livre";

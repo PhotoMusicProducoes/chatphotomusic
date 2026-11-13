@@ -1648,6 +1648,20 @@ async function responderDisponibilidade(chatId, session, texto) {
     }
     await sendTyping(chatId);
     await sendText(chatId, `📅 *${f.str}*\n\n${corpo}`);
+    /* 13/11/2026 (ChatGPT): o sistema NAO garante disponibilidade (conta eventos ativos por DATA, sem horarios, sem pre-reservas
+       nem deslocamento de equipe). Nunca promete reserva: avisa que a EQUIPE confirma e encaminha para confirmacao humana. */
+    await sendTyping(chatId);
+    await sendText(chatId, "Essa é uma verificação inicial: nossa equipe confirma a disponibilidade final com você por aqui. 🙏");
+    try {
+      const resumo = respostas.map(r => `${r.id ? SERVICOS_NOMES[r.id] : "geral"}: ${r.d.estado}`).join(" | ");
+      await sendText(OPERADOR_TELEFONE_ID, `📅 *Consulta de disponibilidade* - ${chatId}
+Data: *${f.str}*
+Sistema: ${resumo}
+
+"${String(texto).slice(0, 300)}"
+
+Confirme a disponibilidade com o cliente (o sistema não considera horários nem pré-reservas).`);
+    } catch (e) { console.warn(`⚠️ aviso de disponibilidade ao operador: ${e.message}`); }
     await sendTyping(chatId);
     await sendText(chatId, "Quer que eu monte o seu orçamento? É só digitar *1* (Solicitar um orçamento). 😊");
     return true;
