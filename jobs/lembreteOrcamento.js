@@ -137,7 +137,7 @@ function textoEscolherServico() {
   const { linhasMenuServicos, TODOS_SERVICOS } = require("../index.js");
   return (
     "Falta só escolher os serviços que deseja orçamento " +
-    "(para mais de um, separe por vírgula, ex: *0,3,5*):\n\n" +
+    "(para mais de um, digite os números juntos ou separados por vírgula, ex: *035* ou *0,3,5*):\n\n" +
     linhasMenuServicos(TODOS_SERVICOS)
   );
 }
@@ -149,7 +149,7 @@ const PERGUNTA_POR_PASSO = {
   "orcamento_perfil": "O orçamento é para quem? (1 - Festa ou evento pessoal / 2 - Empresa / 3 - Agência de eventos)",
   "orcamento_data_confirmar": "A data que você comentou está certa? (1 - Sim, é essa / 2 - Outra data)",
   "orcamento_convidados_confirmar": "A quantidade de convidados que você comentou está certa? (1 - Sim, isso / 2 - Outro número)",
-  "escolher_tirinha": "Qual serviço da foto tirinha você quer orçar? (1 - Foto Cabine / 2 - Totem Fotográfico / 3 - Totem Retrô / todos)",
+  "escolher_tirinha": "Qual serviço da foto tirinha você quer orçar? (1 - Foto Cabine / 2 - Totem Fotográfico / 3 - Totem Retrô / 4 - Todos)",
   "orcamento_bairro_confirmar": "O bairro que você comentou está certo? (1 - Sim, é aí / 2 - Outro bairro)",
   "orcamento_reuso": "Posso usar os dados da última vez? (1 - Sim, usar / 2 - Corrigir dados)",
   "orcamento_servicos_confirmar": "Os serviços que você escolheu estão certos? (1 - Sim, é isso / 2 - Trocar serviço / 3 - Adicionar outro serviço / 4 - Remover um serviço)",

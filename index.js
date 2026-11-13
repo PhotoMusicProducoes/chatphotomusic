@@ -792,7 +792,7 @@ async function perguntarServicosPrevia(chatId, session) {
 
 function textoMenuServicosPrevia() {
   return "Para começar, me conta: *quais serviços você tem interesse?* " +
-    "(para mais de um, digite os números separados por vírgula, ex: *0,3,5 ou 124*)\n\n" +
+    "(para mais de um, digite os números juntos ou separados por vírgula, ex: *035* ou *0,3,5*)\n\n" +
     linhasMenuServicos(TODOS_SERVICOS) + "\n" +
     "*9* - *TODOS os serviços*";
 }
@@ -819,7 +819,7 @@ async function abrirColetaDoEvento(chatId, session) {
 
 function textoMenuServicos() {
   // A lista sai do EXIBICAO_PARA_ID, então menu e parser nunca discordam.
-  return "Agora escolha os serviços que deseja orçamento (para mais de um, digite os números separados por vírgula, ex: *0,3,5 ou 124*):\n\n" +
+  return "Agora escolha os serviços que deseja orçamento (para mais de um, digite os números juntos ou separados por vírgula, ex: *035* ou *0,3,5*):\n\n" +
     linhasMenuServicos(TODOS_SERVICOS) + "\n" +
     "*9* - *TODOS os serviços*";
 }
@@ -1638,9 +1638,12 @@ async function seguirAposConvidados(chatId, session) {
    tirinha e NAO disse qual dos tres, o bot mostra Foto Cabine, Totem Fotografico e Totem Retro e ele escolhe
    1, 2 ou os 3. Outro servico citado na mesma frase (ex.: 360) vai junto. Devolve true se assumiu a conversa. */
 function textoEscolhaTirinha() {
-  return "A *foto tirinha* sai em 3 serviços nossos 📸\n\n" +
-    SERVICOS_TIRINHA.map((id, i) => `*${i + 1}* - ${SERVICOS_NOMES[id]}`).join("\n") +
-    "\n\nQual você quer orçar? Pode escolher um, dois ou os três (ex.: *1*, *1 e 3* ou *todos*).";
+  return "A *foto tirinha* sai em 3 serviços nossos 📸\n\n" + linhasEscolhaTirinha() +
+    "\n\nQual você quer orçar? Para mais de um, digite os números juntos ou separados por vírgula (ex.: *13* ou *1,3*).";
+}
+/* 1, 2 e 3 = os servicos; 4 = todos (Mario, 13/11/2026). */
+function linhasEscolhaTirinha() {
+  return SERVICOS_TIRINHA.map((id, i) => `*${i + 1}* - ${SERVICOS_NOMES[id]}`).join("\n") + "\n*4* - *TODOS*";
 }
 
 async function tratarTirinha(chatId, session, texto, idsDetectados) {
@@ -5735,8 +5738,7 @@ async function handleIncomingMessage(message) {
       if (querValorAgora(session, txtT)) escolhidos = [...SERVICOS_TIRINHA];   // "quanto custa?" = mostra os 3
     }
     if (!escolhidos || !escolhidos.length) {
-      await sendText(chatId, "*⚠ Responda com o número da opção* (um, dois ou os três):\n" +
-        SERVICOS_TIRINHA.map((id, i) => `*${i + 1}* - ${SERVICOS_NOMES[id]}`).join("\n") + "\nou *todos*");
+      await sendText(chatId, "*⚠ Responda com o número da opção* (ex.: *1*, *13* ou *1,3*):\n" + linhasEscolhaTirinha());
       return;
     }
     const extras = Array.isArray(session.tirinhaExtras) ? session.tirinhaExtras : [];
@@ -6452,7 +6454,7 @@ const resumoEucaristia =
           "👉 *Exceto quando você contrata o Som Completo com DJ*, pois nesse caso a iluminação já está inclusa."
         );
         await sendTyping(chatId);
-        await sendText(chatId, "Escolha novamente os serviços desejados (ex: 0,3,5):\n\n" + linhasMenuServicos(TODOS_SERVICOS));
+        await sendText(chatId, "Escolha novamente os serviços desejados (ex: *035* ou *0,3,5*):\n\n" + linhasMenuServicos(TODOS_SERVICOS));
         return;
       }
       if (servicos.includes(7)) {
@@ -7770,7 +7772,7 @@ const resumoEucaristia =
           await sendTyping(chatId);
           await sendText(
             chatId,
-            "Escolha novamente os serviços desejados (ex: 0,3,5):\n\n" +
+            "Escolha novamente os serviços desejados (ex: *035* ou *0,3,5*):\n\n" +
             linhasMenuServicos(TODOS_SERVICOS)
           );
 

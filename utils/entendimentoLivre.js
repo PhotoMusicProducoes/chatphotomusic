@@ -64,7 +64,9 @@ function escolhaTirinha(texto) {
   }
   if (!ids.length) {
     const digitos = t.replace(/[^0-9]/g, "");
-    if (!digitos || /[04-9]/.test(digitos) || digitos.length > 3) return null;
+    // 1, 2 e 3 = os servicos (juntos ou com virgula: "13", "1,3", "123"); 4 = TODOS (Mario, 13/11/2026)
+    if (!digitos || /[05-9]/.test(digitos) || digitos.length > 4) return null;
+    if (digitos.includes("4")) return [...SERVICOS_TIRINHA];
     for (const d of digitos) {
       const id = SERVICOS_TIRINHA[Number(d) - 1];
       if (id && !ids.includes(id)) ids.push(id);

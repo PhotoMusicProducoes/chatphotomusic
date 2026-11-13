@@ -58,6 +58,12 @@ function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); CHAT =
   checar("escolha 'totem retro' = Retro", JSON.stringify(L.escolhaTirinha("totem retrô")) === "[13]");
   checar("escolha 'o totem' = Totem Fotografico", JSON.stringify(L.escolhaTirinha("o totem")) === "[2]");
   checar("escolha '5' = nao entendeu", L.escolhaTirinha("5") === null);
+  checar("escolha '4' = TODOS", JSON.stringify(L.escolhaTirinha("4")) === "[1,2,13]");
+  checar("escolha '1,2' = Cabine + Totem", JSON.stringify(L.escolhaTirinha("1,2")) === "[1,2]");
+  checar("escolha '123' = os 3", JSON.stringify(L.escolhaTirinha("123")) === "[1,2,13]");
+  checar("escolha '13' = Cabine + Retro", JSON.stringify(L.escolhaTirinha("13")) === "[1,13]");
+  checar("escolha '1,3' = Cabine + Retro", JSON.stringify(L.escolhaTirinha("1,3")) === "[1,13]");
+  checar("escolha '0' = nao entendeu", L.escolhaTirinha("0") === null);
   checar("data '15112026' -> 15/11/2026", L.dataSoNumeros("15112026") === "15/11/2026");
   checar("data '151126' -> 15/11/26", L.dataSoNumeros("151126") === "15/11/26");
   checar("data '15 11 2026' -> 15/11/2026", L.dataSoNumeros("15 11 2026") === "15/11/2026");
@@ -81,7 +87,7 @@ function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); CHAT =
   console.log("--- caso Sheila: tirinha + 59 pessoas + data so numeros ---");
   novo();
   r = await cliente("Bom dia qual o preço da foto tirinha?");
-  checar("pergunta qual dos 3 servicos da tirinha", sess().step === "escolher_tirinha" && /Foto Cabine/.test(r) && /Totem Fotográfico/.test(r) && /Totem Retrô/.test(r), sess().step + " | " + r);
+  checar("pergunta qual dos 3 servicos da tirinha", sess().step === "escolher_tirinha" && /Foto Cabine/.test(r) && /Totem Fotográfico/.test(r) && /Totem Retrô/.test(r) && /\*4\* - \*TODOS\*/.test(r), sess().step + " | " + r);
   r = await cliente("qualquer coisa");
   checar("resposta que nao e opcao: repete as 3 opcoes", sess().step === "escolher_tirinha" && /Responda com o número/.test(r), r);
   r = await cliente("1 e 3");
