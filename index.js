@@ -50,6 +50,7 @@ const {
   iaLigada: iaLigadaRoteador,
 } = require("./utils/roteadorIA.js");
 const { criarExtrator: criarExtratorIA } = require("./utils/iaExtrair.js");
+const { acharDataNoTexto, candidatosLocal } = require("./utils/dadosLivres.js");
 
 const {
   enviarFotoCabine,
@@ -1556,6 +1557,60 @@ async function extrairDaMensagemLivre(texto) {
   }
 }
 
+/* 📌 DATA E LOCAL DITOS EM TEXTO LIVRE (13/11/2026, caso do teste do Mario 02h19): "tem vaga para o dia 27 de novembro? ... Ilha do governador".
+   O bot guarda o que o cliente ja disse (data validada pelo parsearDataFlex; bairro conferido na tabela do plugin/Google) e,
+   quando chega a pergunta, so CONFIRMA com 1 toque em vez de perguntar de novo. Nunca assume: o cliente confirma ou corrige. */
+async function guardarDadosLivres(session, texto) {
+  try {
+    if (!session || !["aguardando_opcao", "confirmar_opcao_menu"].includes(session.step)) return;
+    const t = String(texto || "").trim();
+    if (t.length < 12 || /^[\d\s]+$/.test(t)) return;
+    const dl = session.dadosLivres = session.dadosLivres || {};
+    if (!dl.data) {
+      const cand = acharDataNoTexto(t);
+      const f = cand ? parsearDataFlex(cand) : null;
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      if (f && f.date >= hoje) dl.data = f.str;
+    }
+    if (!dl.bairro) {
+      const achados = await Promise.all(candidatosLocal(t).slice(0, 3).map(c => inferirCidadePorBairro(c)));
+      const p = achados.find(Boolean);
+      if (p) { dl.bairro = p.bairro; dl.cidade = p.cidade; }
+    }
+    if (dl.data || dl.bairro) console.log(`📌 [dados livres] ${JSON.stringify({ data: dl.data, bairro: dl.bairro, cidade: dl.cidade })}`);
+  } catch (e) { console.warn(`⚠️ dados livres: ${e.message}`); }
+}
+
+async function perguntarDataEvento(chatId, session, textoPadrao) {
+  const dl = session.dadosLivres;
+  if (dl && dl.data && !dl.dataUsada) {
+    dl.dataUsada = true;   // confirma UMA vez; se o cliente recusar, a pergunta normal segue
+    session.step = "orcamento_data_confirmar";
+    const perg = `Você comentou que o evento é no dia *${dl.data}*. Está certo?`;
+    await sendTyping(chatId);
+    await sendButtonList(chatId, perg, [{ id: "1", label: "Sim, é essa" }, { id: "2", label: "Outra data" }]);
+    session.ultimaPerguntaNaoRespondida = perg + "\n*1* - Sim, é essa\n*2* - Outra data";
+    return;
+  }
+  session.step = "orcamento_data";
+  await enviarPerguntaESalvar(chatId, session, textoPadrao);
+}
+
+async function perguntarBairroEvento(chatId, session) {
+  const dl = session.dadosLivres;
+  if (dl && dl.bairro && dl.cidade && !dl.bairroUsado) {
+    dl.bairroUsado = true;
+    session.step = "orcamento_bairro_confirmar";
+    const perg = `O evento é em *${dl.bairro}* (${dl.cidade}), certo?`;
+    await sendTyping(chatId);
+    await sendButtonList(chatId, perg, [{ id: "1", label: "Sim, é aí" }, { id: "2", label: "Outro bairro" }]);
+    session.ultimaPerguntaNaoRespondida = perg + "\n*1* - Sim, é aí\n*2* - Outro bairro";
+    return;
+  }
+  session.step = "orcamento_bairro";
+  await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+}
+
 function linhasOpcoesConfServicos(qtd) {
   return "*1* - Sim, é isso\n*2* - Trocar serviço\n*3* - Adicionar outro serviço" + (qtd > 1 ? "\n*4* - Remover um serviço" : "");
 }
@@ -1757,7 +1812,7 @@ async function avancarAposHoraFimDoDia(chatId, session) {
   session.orcamento.horas      = Number.parseInt(session.orcamento.duracao, 10) || 4;
 
   session.step = "orcamento_bairro";
-  await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+  await perguntarBairroEvento(chatId, session);
 }
 
 function parsearDataFlex(texto) {
@@ -2695,7 +2750,7 @@ async function aplicarDiasDoEvento(chatId, session, dias) {
 
   if (dias === 1) {
     session.step = "orcamento_data";
-    await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/06/2026* ou *9 de setembro*)");
+    await perguntarDataEvento(chatId, session, "Qual a data do evento? (Ex: *01/06/2026* ou *9 de setembro*)");
     return;
   }
 
@@ -5408,6 +5463,7 @@ async function handleIncomingMessage(message) {
      Helena respondeu "Solicitar um orçamento" e o bot devolveu "Opção
      inválida", porque só sabia ler dígito. */
   const opcaoMenu = opcaoPorTitulo(texto, LABELS_MENU) || texto.replace(/\D+/g, "");
+  await guardarDadosLivres(session, texto);   // data/bairro ditos em texto livre (13/11/2026)
 
   /* ❤️ AGRADECIMENTO NÃO ABRE MENU (Mario, 15/10/2026).
      A Patrícia respondeu ao "feliz aniversário" com "💖💖💖💖" e recebeu o menu
@@ -6274,7 +6330,7 @@ const resumoEucaristia =
     }
 
     session.step = "orcamento_data";
-    await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/02/2026* ou *9 de setembro*)");
+    await perguntarDataEvento(chatId, session, "Qual a data do evento? (Ex: *01/02/2026* ou *9 de setembro*)");
     return;
   }
 
@@ -6552,6 +6608,58 @@ const resumoEucaristia =
   // ======================================================
   // ORÇAMENTO — DATA
   // ======================================================
+  // ======================================================
+  // ORÇAMENTO — CONFIRMAR A DATA / O BAIRRO DITOS EM TEXTO LIVRE (13/11/2026)
+  // ======================================================
+  if (session.step === "orcamento_data_confirmar") {
+    const r = normalizarParaBusca(String(corpoMensagem || "")).trim();
+    const dl = session.dadosLivres || {};
+    const sim = /^1$/.test(r) || /^(sim|isso|e essa|essa mesma|certo|correto|ok)\b/.test(r);
+    const outra = /^2$/.test(r) || /^(nao|outra|errado|outro)\b/.test(r);
+    if (sim && dl.data) {
+      const f = parsearDataFlex(dl.data);
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      if (f && f.date >= hoje) {
+        session.orcamento.data = f.str;
+        session.step = "orcamento_hora_inicio";
+        await enviarPerguntaESalvar(chatId, session, "Qual o horário de início? (*Ex: 18:00 ou 18h*)");
+        return;
+      }
+    }
+    if (outra || sim) {
+      session.step = "orcamento_data";
+      await enviarPerguntaESalvar(chatId, session, "Qual a data do evento? (Ex: *01/06/2026* ou *9 de setembro*)");
+      return;
+    }
+    const dig = parsearDataFlex(corpoMensagem);   // o cliente ja digitou a data certa
+    if (dig) { session.step = "orcamento_data"; }   // cai no passo normal logo abaixo, que valida e grava
+    else {
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n*1* - Sim, é essa\n*2* - Outra data");
+      return;
+    }
+  }
+
+  if (session.step === "orcamento_bairro_confirmar") {
+    const r = normalizarParaBusca(String(corpoMensagem || "")).trim();
+    const dl = session.dadosLivres || {};
+    const sim = /^1$/.test(r) || /^(sim|isso|e aqui|e ai|certo|correto|ok)\b/.test(r);
+    const outro = /^2$/.test(r) || /^(nao|outro|errado|outra)\b/.test(r);
+    if (sim && dl.bairro && dl.cidade) {
+      session.orcamento.bairro = dl.bairro;
+      session.orcamento.cidade = dl.cidade;
+      session.orcamento._localOrigem = "cliente";
+      session.step = "orcamento_salao";
+      await enviarPerguntaESalvar(chatId, session, "Qual o nome do *salão/local* do evento?\nSe ainda não tiver definido, responda *pular*.");
+      return;
+    }
+    if (outro || sim) {
+      session.step = "orcamento_bairro";
+      await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+      return;
+    }
+    session.step = "orcamento_bairro";   // digitou outro bairro: o passo normal trata ESTA mensagem
+  }
+
   if (session.step === "orcamento_data") {
     const dataFlex = parsearDataFlex(corpoMensagem);
 
@@ -6593,7 +6701,7 @@ const resumoEucaristia =
       await sendText(chatId, `⏰ Anotado: das *${intervalo.inicio}* às *${intervalo.fim}*.`);
 
       session.step = "orcamento_bairro";
-      await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+      await perguntarBairroEvento(chatId, session);
       return;
     }
 
@@ -6680,7 +6788,7 @@ const resumoEucaristia =
 
     session.step = "orcamento_bairro";
 
-    await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+    await perguntarBairroEvento(chatId, session);
     return;
   }
 
@@ -6699,7 +6807,7 @@ const resumoEucaristia =
 
     if (nao) {
       session.step = "orcamento_bairro";
-      await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+      await perguntarBairroEvento(chatId, session);
       return;
     }
 
@@ -6737,7 +6845,7 @@ const resumoEucaristia =
     ];
 
     session.step = "orcamento_bairro";
-    await enviarPerguntaESalvar(chatId, session, "Qual o *bairro* do evento?");
+    await perguntarBairroEvento(chatId, session);
     return;
   }
 
