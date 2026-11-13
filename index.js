@@ -3342,6 +3342,7 @@ async function handleIncomingMessage(message) {
       corpoNormalizado.startsWith("retomar") ||
       corpoNormalizado.startsWith("liberar") ||
       corpoNormalizado.startsWith("resetar") ||
+      corpoNormalizado.startsWith("limparsessao") ||
       corpoNormalizado.startsWith("respondercliente") ||
       corpoNormalizado.startsWith("responder") ||
       corpoNormalizado.startsWith("#")
@@ -3651,6 +3652,20 @@ async function handleIncomingMessage(message) {
         await mostrarMenuInicial(normalizado);
         await sendText(destinoOperador, `▶ Atendimento retomado para ${normalizado} (sem contexto anterior)`);
       }
+      return;
+    }
+
+    // ======================================================
+    // LIMPAR SESSAO (12/11/2026): como o resetar, mas NAO envia nada ao cliente (nem o menu).
+    // COMANDO: limparsessao 21 99999-8888   - para testes: o proximo "oi" recebe o menu como num 1o contato.
+    // ======================================================
+    if (corpoNormalizado.startsWith("limparsessao")) {
+      if (!numero) { await sendText(destinoOperador, "⚠ Formato: *limparsessao 21 99999-8888*"); return; }
+      const normalizadoLS = normalizarNumero(numero);
+      retomarCliente(normalizadoLS);
+      const tinha = !!sessions[normalizadoLS];
+      delete sessions[normalizadoLS];
+      await sendText(destinoOperador, `🧹 Sessão limpa para ${normalizadoLS}${tinha ? "" : " (não havia sessão)"}. Nada foi enviado ao cliente.`);
       return;
     }
 
