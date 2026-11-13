@@ -2267,7 +2267,7 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos, opcoes = {}) {
       const _jaTinha = Object.keys(orc.linksOrcamento || {}).length > 0;
       try {
         orc.orcamentoAutomatico = await enviarOrcamentoGerado(chatId, session, listaServicos, {
-          segundaRodada: _jaTinha
+          segundaRodada: _jaTinha, situacao: "definitivo"
         });
       } catch (e) {
         console.error("⚠️ [Multi-dia] orçamento gerado não saiu:", e.message);
@@ -2326,7 +2326,7 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos, opcoes = {}) {
     const _jaTinhaOrcamento = Object.keys(session.orcamento?.linksOrcamento || {}).length > 0;
     if (geradosAgora.length) {
       await enviarOrcamentoGerado(chatId, session, listaServicos, {
-        segundaRodada: _jaTinhaOrcamento
+        segundaRodada: _jaTinhaOrcamento, situacao: "definitivo"
       });
     }
 
@@ -7492,7 +7492,7 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
     const gerados = lista.filter(id => usaOrcamentoGerado(id, clb));
     gerados.forEach(id => registrarServicoEnviado(session, id));
     try {
-      if (gerados.length) await enviarOrcamentoGerado(chatId, session, lista, enxuto ? { modelo: "preliminar_enxuto" } : {});
+      if (gerados.length) await enviarOrcamentoGerado(chatId, session, lista, enxuto ? { modelo: "preliminar_enxuto", situacao: "preliminar" } : { situacao: "preliminar" });
     } catch (e) {
       console.error("⚠️ orçamento gerado não saiu (preliminar):", e.message);
     }

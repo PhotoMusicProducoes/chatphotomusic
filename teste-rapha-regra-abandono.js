@@ -84,6 +84,7 @@ function zerar() { Object.keys(sessions).forEach(k => delete sessions[k]); todas
   const g1 = chamadasGerar[chamadasGerar.length - 1] || { slugs: [], opcoes: {} };
   checar("PRELIMINAR ENXUTO: pede ao plugin só Foto Cabine, Totem Retrô, Plataforma 360 e Som e DJ", JSON.stringify(g1.slugs.slice().sort()) === JSON.stringify(["foto-cabine", "plataforma-360", "som-dj", "totem-retro"]), JSON.stringify(g1.slugs));
   checar("PRELIMINAR ENXUTO: manda o modelo preliminar_enxuto", g1.opcoes.modelo === "preliminar_enxuto", JSON.stringify(g1.opcoes));
+  checar("preliminar: marca a situação \"preliminar\" (métricas)", g1.opcoes.situacao === "preliminar", JSON.stringify(g1.opcoes));
   checar("PRELIMINAR ENXUTO: a mensagem fala em serviços principais, combinações e 4 e 5 horas", /serviços principais e combinações/.test(rTodos) && /4 e 5 horas/.test(rTodos), rTodos.slice(0, 300));
   checar("estimativas NÃO viram resposta do cliente; o nome informado é preservado", sess().orcamento.nome === "Marlon" && sess().orcamento.convidados === undefined && sess().orcamento.horas === undefined && sess().orcamento.celebracaoId === undefined, JSON.stringify(sess().orcamento).slice(0, 220));
   checar("estado preliminar, esperando o cliente voltar", sess().orcamento.situacao === "preliminar" && sess().step === "lembrete_retomar", `${sess().orcamento.situacao} / ${sess().step}`);
@@ -97,6 +98,7 @@ function zerar() { Object.keys(sessions).forEach(k => delete sessions[k]); todas
   checar("só o serviço escolhido foi orçado", (sess().orcamento.servicosEnviados || []).length === 1, JSON.stringify(sess().orcamento.servicosEnviados));
   const g2 = chamadasGerar[chamadasGerar.length - 1];
   checar("serviço escolhido: pede SÓ ele e NÃO usa o modelo enxuto", g2.slugs.join() === "foto-cabine" && !g2.opcoes.modelo, JSON.stringify(g2));
+  checar("serviço escolhido no abandono: situação \"preliminar\" também", g2.opcoes.situacao === "preliminar", JSON.stringify(g2.opcoes));
 
   checar("dados informados preservados (nome e serviço)", sess().orcamento.nome === "Marlon" && (sess().orcamento.servicosPrevios || []).length === 1);
 

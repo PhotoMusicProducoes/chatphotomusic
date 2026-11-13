@@ -202,7 +202,7 @@ async function enviarOrcamentoGerado(chatId, session, idsPedidos, opcoes = {}) {
   // cliente lia "Segue o arquivo" seguido de "Estou finalizando".
   let dados;
   try {
-    dados = await gerarOrcamento(session, chatId, slugs, opcoes.modelo ? { modelo: opcoes.modelo } : {});
+    dados = await gerarOrcamento(session, chatId, slugs, { modelo: opcoes.modelo || undefined, situacao: opcoes.situacao || undefined });
   } catch (erro) {
     console.error(`🚨 [orcamentoGerado] Falhou para ${chatId} [${slugs.join(", ")}]: ${erro.codigo} — ${erro.message}`);
 

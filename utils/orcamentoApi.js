@@ -116,6 +116,10 @@ async function gerarOrcamento(session, chatId, slugs, opcoes = {}) {
   console.log(`🧾 [orcamentoApi] Pedindo orçamento de [${slugs.join(", ")}] para ${chatId}`);
 
   try {
+    /* 12/11/2026 (metricas): grava `perfil_cliente` (social|empresa|agencia) e `modelo_orcamento` (preliminar|definitivo; o plugin
+      troca para preliminar_enxuto se de fato aplicar o PDF enxuto) no briefing do orcamento. Orcamentos antigos ficam intactos. */
+    if (orc.perfil) corpo.perfil_cliente = orc.perfil;
+    if (opcoes.situacao) corpo.modelo_orcamento = opcoes.situacao;
     const resp = await axios.post(`${PM_API_BASE}/orcamento`, opcoes.modelo ? Object.assign({}, corpo, { modelo: opcoes.modelo }) : corpo, {
       timeout: TIMEOUT_MS,
       headers: {
