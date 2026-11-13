@@ -40,7 +40,7 @@ const {
 const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require("./utils/pauseControl.js");
 
 const { sessions } = require("./utils/sessions");
-const { clientePedeValor, clienteNaoSabe } = require("./utils/pedidoDeValor.js");
+const { clientePedeValor, clienteNaoSabe, convidadosNaMensagem } = require("./utils/pedidoDeValor.js");
 const { marcaAtiva, limparMarca, qualRespostaRapida, clientePediuParar } = require("./utils/followupRespostaRapida.js");
 const { ehEstrangeiroConhecido, lembrarEstrangeiro, numeroDeEntrada } = require("./utils/numeroEstrangeiro.js");
 const { resetSession } = require("./utils/resetSession");
@@ -1625,8 +1625,13 @@ function querValorAgora(session, texto) {
   return PASSOS_DADO_DO_EVENTO.has(step) && clienteNaoSabe(texto);
 }
 
-async function enviarValorImediato(chatId, session) {
+async function enviarValorImediato(chatId, session, texto) {
   const orc = session.orcamento = session.orcamento || { servicosEnviados: [] };
+  // Várias intenções numa mensagem só ("150 pessoas, quanto fica?"): o dado que veio junto fica guardado.
+  if (session.step === "orcamento_convidados" && !orc.convidados) {
+    const conv = convidadosNaMensagem(texto);
+    if (conv) orc.convidados = conv;
+  }
   const { PERGUNTA_POR_PASSO } = require("./jobs/lembreteOrcamento.js");
   session.lembreteRetomarPergunta = PERGUNTA_POR_PASSO[session.step] || session.ultimaPerguntaNaoRespondida || "";
   const previos = Array.isArray(orc.servicosPrevios) && orc.servicosPrevios.length ? [...orc.servicosPrevios] : null;
@@ -5275,7 +5280,7 @@ async function handleIncomingMessage(message) {
   // 💬 PEDIU O VALOR ou NÃO SABE o dado (caso real 13/11/2026 01h31): entrega o
   // preliminar NA HORA, sem insistir na pergunta e sem esperar os 60 minutos.
   if (passoDeColetaDoOrcamento(session) && querValorAgora(session, corpoMensagem)) {
-    await enviarValorImediato(chatId, session);
+    await enviarValorImediato(chatId, session, corpoMensagem);
     return;
   }
 
