@@ -53,6 +53,8 @@ const { criarExtrator: criarExtratorIA } = require("./utils/iaExtrair.js");
 const { acharDataNoTexto, candidatosLocal } = require("./utils/dadosLivres.js");
 // 13/11/2026 (NAZ): ja contratou -> suporte; tirinha -> 3 servicos; data so com numeros. Ver o arquivo.
 const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO } = require("./utils/entendimentoLivre.js");
+// 13/11/2026 (NAZ): cliente que volta com orcamento em aberto (caso Luciana). Ver o arquivo.
+const { textoRetorno, textoEscolherEvento, opcaoRetorno, escolhaEvento, linhasOpcoesRetorno, linhaEvento } = require("./utils/clienteRetorno.js");
 const { extrairBriefing } = require("./utils/briefingLivre.js");
 
 const {
@@ -1656,6 +1658,142 @@ async function tratarTirinha(chatId, session, texto, idsDetectados) {
   console.log(`🎞️ ${chatId} pediu tirinha: mostrando Cabine, Totem e Retro${session.tirinhaExtras.length ? " (+ " + session.tirinhaExtras.join(",") + ")" : ""}`);
   await enviarPerguntaESalvar(chatId, session, textoEscolhaTirinha());
   return true;
+}
+
+/* ======================================================
+   🔁 CLIENTE QUE VOLTA COM ORCAMENTO EM ABERTO (13/11/2026, NAZ, caso Luciana / orc. 415)
+   ======================================================
+   Recebeu o orcamento em 13/10, ficou sem follow-up e voltou pelo site um mes depois: o bot mandou o menu de
+   cliente novo. Agora a PRIMEIRA mensagem consulta o PhotoMusic Pro (/cliente-retorno, so leitura, SEM valores).
+   Com orcamento de evento futuro: oferece ver o orcamento, atualizar, ver a disponibilidade (agenda), contratar
+   ou falar com a equipe. Bloqueado, ja contratou, sem orcamento ou falha na consulta = fluxo de sempre. */
+async function buscarClienteRetorno(chatId) {
+  try {
+    const r = await axios.get(`${PM_API_BASE}/cliente-retorno`, {
+      params: { telefone: chatId }, headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 5000,
+    });
+    return r && r.data ? r.data : null;
+  } catch (e) {
+    console.warn(`⚠️ cliente-retorno: ${e.message}`);
+    return null;
+  }
+}
+
+async function tentarRetomarCliente(chatId, session) {
+  const d = await buscarClienteRetorno(chatId);
+  if (!d || d.ativo !== true || d.bloqueado || d.contratou) return false;
+  const orcs = Array.isArray(d.orcamentos) ? d.orcamentos.filter(o => o && o.id) : [];
+  if (!orcs.length) return false;
+  session.retorno = { orcamentos: orcs, idx: null };
+  session.retornoInvalidas = 0;
+  session.menuInicialEnviado = true;
+  console.log(`🔁 ${chatId} voltou com ${orcs.length} orçamento(s) em aberto: ${orcs.map(o => o.id).join(", ")}`);
+  if (orcs.length > 1) {
+    session.step = "retorno_escolher_evento";
+    await enviarPerguntaESalvar(chatId, session, textoEscolherEvento(orcs));
+    return true;
+  }
+  await apresentarRetorno(chatId, session, 0);
+  return true;
+}
+
+async function apresentarRetorno(chatId, session, i) {
+  session.retorno.idx = i;
+  session.step = "retorno_opcao";
+  await enviarPerguntaESalvar(chatId, session, textoRetorno(session.retorno.orcamentos[i]));
+}
+
+async function avisarOperadorRetorno(chatId, o, motivo, texto) {
+  try {
+    await sendText(OPERADOR_TELEFONE_ID,
+      `🔁 *Cliente voltou* - ${chatId}\n` +
+      `${motivo}\n\n` +
+      `Orçamento nº *${o.id}*${o.criado ? " (" + o.criado + ")" : ""}: ${linhaEvento(o)}` +
+      (o.nome ? `\nNome: ${o.nome}` : "") +
+      (texto ? `\n\n"${String(texto).slice(0, 200)}"` : "") +
+      "\n\nO bot parou neste número: assuma o atendimento por aqui.");
+  } catch (e) { console.warn(`⚠️ aviso de retorno ao operador: ${e.message}`); }
+}
+
+async function executarOpcaoRetorno(chatId, session, op, chatIdNormalizado, texto) {
+  const o = session.retorno.orcamentos[session.retorno.idx || 0];
+
+  if (op === "1") {   // ver o orcamento anterior (o PDF dele, como foi enviado)
+    if (o.pdf) {
+      await sendTyping(chatId);
+      await sendText(chatId, `Aqui está o seu orçamento nº *${o.id}*${o.criado ? ", de " + o.criado : ""}: 📄\n${o.pdf}\n\n` +
+        "_Os valores são os da data do orçamento. Para ver o valor de hoje, responda *2*._");
+      await sendTyping(chatId);
+      await sendText(chatId, "Posso te ajudar em mais alguma coisa?\n\n" + linhasOpcoesRetorno());
+      return;
+    }
+    await sendText(chatId, "Não encontrei o arquivo desse orçamento, então vou montar ele atualizado para você. 😊");
+    op = "2";
+  }
+
+  if (op === "2") {   // atualizar: questionario com os dados do orcamento anterior so para CONFIRMAR, preco do motor de hoje
+    const ids = [];
+    for (const nome of (o.servicos || [])) {
+      for (const id of detectarServicosNoTexto(nome)) if (SERVICOS_NOMES[id] && !ids.includes(id)) ids.push(id);
+    }
+    session.retorno = null;
+    const dl = session.dadosLivres = Object.assign({}, session.dadosLivres || {});
+    const f = o.data_evento ? parsearDataFlex(o.data_evento) : null;
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    if (f && f.date >= hoje) { dl.data = f.str; dl.dataUsada = false; }
+    if (o.bairro && o.cidade) { dl.bairro = o.bairro; dl.cidade = o.cidade; dl.bairroUsado = false; }
+    if (Number(o.convidados) >= 10) { dl.convidados = Number(o.convidados); dl.convidadosUsado = false; }
+    session.orcamento = { servicosEnviados: [], servicosPrevios: ids.length ? ids : null, servicosPorNome: ids.length > 0 };
+    session.servicosEnviados = [];
+    session.lembreteOrcamentoEnviado = false;
+    session.optOutLembretes = false;
+    await sendTyping(chatId);
+    await sendText(chatId, "Ótimo! Vou atualizar o seu orçamento com os valores de hoje. Os dados do evento eu já tenho, você só confirma. 😊");
+    if (o.nome) {
+      session.clienteConhecido = {
+        nome: capitalizarPalavras(o.nome), perfil: o.corporativo ? "empresa" : "social", empresa: o.empresa || "",
+        ondeEncontrou: (session.clienteConhecido && session.clienteConhecido.ondeEncontrou) || "", atualizadoEm: Date.now(),
+      };
+      await oferecerReuso(chatId, session);
+      return;
+    }
+    session.step = "orcamento_nome";
+    await enviarPerguntaESalvar(chatId, session, PERGUNTA_NOME);
+    return;
+  }
+
+  if (op === "3") {   // disponibilidade: SO pela agenda (/data-livre); sem resposta da agenda, a equipe confirma
+    session.retorno = null;
+    session.step = "aguardando_opcao";
+    session.menuInicialEnviado = true;
+    if (o.data_evento && await responderDisponibilidade(chatId, session, `tem vaga dia ${o.data_evento} ${(o.servicos || []).join(" e ")}`)) return;
+    await sendTyping(chatId);
+    await sendText(chatId, "Vou pedir para a nossa equipe confirmar a disponibilidade da sua data e te responder por aqui. 🙏");
+    await avisarOperadorRetorno(chatId, o, "Pediu a *DISPONIBILIDADE* da data (a agenda não respondeu sozinha).", texto);
+    pausarCliente(chatIdNormalizado);
+    return;
+  }
+
+  if (op === "4") {   // quer contratar: lead vai para Negociando e a equipe assume
+    avisarLeadRespondeu(chatId, `quero contratar o orçamento ${o.id}`).catch(() => {});
+    await sendTyping(chatId);
+    await sendText(chatId, `Que alegria! ❤️ Vou chamar a nossa equipe para finalizar a contratação do seu orçamento nº *${o.id}*. Em instantes alguém te responde por aqui.`);
+    await avisarOperadorRetorno(chatId, o, "*QUER CONTRATAR* o orçamento.", texto);
+    pausarCliente(chatIdNormalizado);
+    return;
+  }
+
+  if (op === "5") {   // falar com a equipe
+    await sendTyping(chatId);
+    await sendText(chatId, "Claro! Vou chamar alguém da nossa equipe para falar com você. Em instantes te respondemos por aqui. 😊");
+    await avisarOperadorRetorno(chatId, o, "Pediu para *FALAR COM A EQUIPE*.", texto);
+    pausarCliente(chatIdNormalizado);
+    return;
+  }
+
+  // "6" - outro evento ou outro assunto: segue o fluxo normal (menu de boas-vindas)
+  session.retorno = null;
+  await mostrarMenuInicial(chatId);
 }
 
 async function perguntarDataEvento(chatId, session, textoPadrao) {
@@ -5549,6 +5687,8 @@ async function handleIncomingMessage(message) {
       return;
     }
     if (await tratarTirinha(chatId, sessions[chatId], corpoMensagem, detectarServicosNoTexto(corpoMensagem))) return;
+    // 🔁 13/11/2026 (caso Luciana): quem ja tem orcamento de evento futuro nao recebe o menu de cliente novo
+    if (await tentarRetomarCliente(chatId, sessions[chatId])) return;
 
     await mostrarMenuInicial(chatId);
     return;
@@ -5737,6 +5877,32 @@ async function handleIncomingMessage(message) {
   // ======================================================
   // 👥 Convidados ditos em qualquer ponto antes da pergunta (13/11/2026, caso Sheila)
   const convidadosNovos = guardarConvidadosLivres(session, corpoMensagem);
+
+  // 🔁 CLIENTE QUE VOLTA: qual evento (varios orcamentos em aberto) e o que fazer (13/11/2026, caso Luciana)
+  if (session.step === "retorno_escolher_evento") {
+    const orcsR = (session.retorno && session.retorno.orcamentos) || [];
+    const e = escolhaEvento(corpoMensagem, orcsR.length);
+    if (e === "outro" || !orcsR.length) { session.retorno = null; await mostrarMenuInicial(chatId); return; }
+    if (e === null) {
+      await sendText(chatId, "*⚠ Responda com o número do evento:*\n" +
+        orcsR.map((o, i) => `*${i + 1}* - ${linhaEvento(o)}`).join("\n") + `\n*${orcsR.length + 1}* - É outro evento ou outro assunto`);
+      return;
+    }
+    await apresentarRetorno(chatId, session, e);
+    return;
+  }
+  if (session.step === "retorno_opcao" && session.retorno && Array.isArray(session.retorno.orcamentos)) {
+    const opR = opcaoRetorno(corpoMensagem);
+    if (!opR) {
+      session.retornoInvalidas = (session.retornoInvalidas || 0) + 1;
+      if (session.retornoInvalidas >= 3) { session.retorno = null; await mostrarMenuInicial(chatId); return; }
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n" + linhasOpcoesRetorno());
+      return;
+    }
+    session.retornoInvalidas = 0;
+    await executarOpcaoRetorno(chatId, session, opR, chatIdNormalizado, corpoMensagem);
+    return;
+  }
 
   // 🎞️ ESCOLHA ENTRE OS 3 SERVICOS DA TIRINHA (13/11/2026)
   if (session.step === "escolher_tirinha") {
