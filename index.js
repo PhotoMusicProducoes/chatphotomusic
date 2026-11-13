@@ -1276,6 +1276,17 @@ function totalDaEscolha(c) {
   return total;
 }
 
+/* 13/11/2026 (decisão do ChatGPT): orçamento ANTIGO (feito antes de a conversão entrar no ar) também
+   inicia a contratação, mas o valor dele NÃO é confirmado pelo bot: o cliente vê o valor da proposta
+   com a data dela e o aviso de que a equipe confere preços e condições; o operador é alertado.
+   Nenhum valor é atualizado. Orçamento novo segue com o valor da proposta. */
+const INICIO_CONVERSAO = new Date(2026, 10, 14);   // 14/11/2026
+function orcamentoAntigo(o) {
+  const m = String((o && o.criado) || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return true;   // sem data: trata como antigo (confere)
+  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) < INICIO_CONVERSAO;
+}
+
 function resumoEscolhas(c) {
   const o = c.orc;
   const pg = (o.pagamentos || {})[c.pagto];
@@ -1289,7 +1300,8 @@ function resumoEscolhas(c) {
     (c.horas ? `\n⏱️ Duração: *${c.horas}h*` : "") +
     (pg ? `\n💳 Pagamento: *${pg}*` : "") +
     (tot !== null
-      ? `\n💰 Total${esc ? " com " + esc.servico : " da proposta"}: *${brlContratar(tot)}*`
+      ? `\n💰 Total${esc ? " com " + esc.servico : " da proposta"}: *${brlContratar(tot)}*` +
+        (orcamentoAntigo(o) ? `\n_Valor da proposta de ${o.criado || "antes"}: a equipe confere os valores e as condições com você antes de confirmar._` : "")
       : "\n💰 Valor conforme o seu orçamento (a equipe confirma com você)");
 }
 function brlContratar(v) { return "R$ " + Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -1372,6 +1384,7 @@ async function concluirQueroContratar(chatId, orc, mudar, textoCliente) {
       `🟢 *Cliente quer CONTRATAR!*${mudar ? " (pediu ajuste)" : ""}\n\n${primeiro ? "*" + primeiro + "*\n" : ""}📱 ${chatId}\n` +
       (escolhas ? `\n${escolhas}\n` : "") +
       (mudar && textoCliente ? `\nPediu: "${String(textoCliente).slice(0, 100)}"\n` : "") +
+      (orc && orcamentoAntigo(orc) ? `\n⚠️ *ORÇAMENTO ANTIGO* (de ${orc.criado || "data desconhecida"}): confira preços e condições antes de confirmar com o cliente.\n` : "") +
       (orc && !escolhaEhDaProposta(c)
         ? "\n⚠️ Escolha diferente da proposta: ajuste o valor pelo PDF ao criar o evento." +
           (totalDaEscolha(c) !== null ? ` O cliente viu o total de *${brlContratar(totalDaEscolha(c))}*.` : " O cliente NÃO viu valor: confirme com ele.") + "\n"

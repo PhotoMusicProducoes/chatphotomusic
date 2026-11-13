@@ -93,8 +93,10 @@ const simples = { id: 701, criado: "01/11/2026", data_evento: "20/12/2026", cele
   checar("confirmação com as escolhas e o TOTAL CORRETO com a Foto Cabine (alternativa)",
     /Foto Cabine/.test(conf) && /Premium/.test(conf) && /5h/.test(conf) && /PIX à vista/.test(conf) &&
     totalEsperado !== null && conf.includes(`Total com Foto Cabine: *${brlT(totalEsperado)}*`), conf + " | esperado " + totalEsperado);
+  checar("orçamento ANTIGO (de 01/11): avisa que a equipe confere valores e condições antes de confirmar", /a equipe confere os valores e as condições/.test(conf), conf);
   await cliente(A, "1");
   const fim = paraCliente(A), op = paraOperador();
+  checar("operador recebe o alerta de ORÇAMENTO ANTIGO", /ORÇAMENTO ANTIGO/.test(op), op);
   checar("cliente: próximo passo é o formulário já preenchido", /formulário/.test(fim) && /já preenchido/.test(fim), fim);
   const link = (op.match(/https:\/\/\S+pm_evento_do_orcamento\S+/) || [""])[0];
   checar("operador recebe as escolhas e o link do evento com elas", /CONTRATAR/.test(op) && /orc=576/.test(link) && /opcao=foto-cabine/.test(link) && /pacote=Premium/.test(link) && /horas=5/.test(link) && /pagto=pix_avista/.test(link), op);
@@ -115,13 +117,14 @@ const simples = { id: 701, criado: "01/11/2026", data_evento: "20/12/2026", cele
 
   const V = "5521900007300";
   Object.keys(sessions).forEach(k => delete sessions[k]);
-  plugin = { ativo: true, orcamentos: [simples, Object.assign({}, simples, { id: 702, data_evento: "10/01/2027" })] };
+  plugin = { ativo: true, orcamentos: [simples, Object.assign({}, simples, { id: 702, data_evento: "10/01/2027", criado: "20/11/2026" })] };
   await cliente(V, "quero contratar");
   checar("vários orçamentos sem nº: pergunta QUAL", /mais de um orçamento/.test(paraCliente(V)) && /701/.test(paraCliente(V)) && /702/.test(paraCliente(V)), paraCliente(V));
   await cliente(V, "2");
   checar("escolheu o 2º: segue a conversa com o nº 702", sessions[V]._contratar && sessions[V]._contratar.orc.id === 702, JSON.stringify(sessions[V]._contratar));
   await cliente(V, "2");   // pacote e duração únicos: a próxima pergunta já é o pagamento (2 = cartão)
   checar("pacote e duração da proposta: confirmação mostra o total EXATO", /Total da proposta: \*R\$ 2\.297,00\*/.test(paraCliente(V)), paraCliente(V));
+  checar("orçamento NOVO (de 20/11): sem o aviso de orçamento antigo", !/a equipe confere os valores e as condições/.test(paraCliente(V)), paraCliente(V));
   await cliente(V, "2");
   checar("'Quero mudar algo': a equipe assume, operador avisado com o pedido de ajuste", /o que você quer mudar/.test(paraCliente(V)) && /pediu ajuste/.test(paraOperador()), paraOperador());
 
