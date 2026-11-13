@@ -1239,14 +1239,56 @@ async function buscarOrcamentosDoCliente(telefone, numero) {
 /* ---- a conversa de contratação: equipamento -> pacote -> duração -> pagamento -> confirmação ----
    Pedido do Mario (13/11): é o que ele precisa para criar o evento e mandar o formulário.
    As opções são as MESMAS do PDF (vêm do PhotoMusic Pro). Nenhum preço novo é mostrado:
-   o valor exato só aparece quando a escolha é a da própria proposta; senão, "conforme o PDF". */
+   o valor exato só aparece quando a escolha é a da própria proposta; senão, "conforme o PDF".
+
+   🧩 VÁRIOS SERVIÇOS (Mario, 13/11/2026, teste no ar): pedir orçamento de 2, 3 ou 4 serviços NÃO
+   quer dizer contratar todos. Regras dele:
+   - FOTO IMPRESSA (Foto Cabine, Totem Retrô, Totem Fotográfico, Foto Lembrança): contrata UMA só.
+   - Os outros (Plataforma 360, Som e DJ...): todos, alguns ou um, junto ou não com a foto.
+   - PACOTE é de cada serviço (Premium/Tirinha/Gold é da foto; o Som tem os pacotes dele).
+   - Casamento e 15 anos: perguntar o GUESTBOOK (as festas que mais contratam).
+   Com o PhotoMusic Pro antigo (sem o slug dos serviços), segue o caminho de antes. */
+const FOTO_IMPRESSA = ["foto-cabine", "totem-retro", "totem", "foto-lembranca"];
+
+// Nome INTEIRO (sem o "Pacote" da frente): "2 Caixas Ativas" está dentro de "2 Caixas Ativas + 2 Subgrave"
+// e NÃO é o mesmo pacote (achado no teste de 13/11/2026).
 function igualSemPacote(a, b) {
-  const n = s => normalizarParaBusca(String(s || "")).replace(/^pacote\s+/, "").trim();
-  return !!a && !!b && (n(a).includes(n(b)) || n(b).includes(n(a)));
+  // "Pacote Premium B" (mais de 200 convidados) = "Premium", como no PDF
+  const n = s => normalizarParaBusca(String(s || "")).replace(/\s+/g, " ").trim().replace(/^pacote\s+/, "").replace(/\sb$/, "").trim();
+  return !!a && !!b && n(a) === n(b);
+}
+
+// O PhotoMusic Pro novo manda o slug de cada serviço e os pacotes de cada um.
+function temServicosDetalhados(o) {
+  return Array.isArray(o.itens) && o.itens.length > 0 && o.itens.every(i => i.slug) && !!o.pacotes_servico;
+}
+function servicosDoOrc(o) {
+  const a = (o.itens || []).map(i => ({ slug: i.slug, servico: i.servico, pacote: i.pacote, valor: Number(i.valor) }));
+  for (const x of (o.opcoes || [])) if (!a.some(y => y.slug === x.slug)) a.push({ slug: x.slug, servico: x.servico, pacote: x.pacote, valor: Number(x.valor) });
+  return a;
+}
+const nomeServico = (o, slug) => (servicosDoOrc(o).find(s => s.slug === slug) || {}).servico || slug;
+
+// A escolha do cliente é exatamente a da proposta? (mesmos serviços, mesmos pacotes, mesma duração)
+function mesmaComposicao(c) {
+  const o = c.orc;
+  if (!temServicosDetalhados(o)) return true;
+  const escolhidos = c.servicos || [];
+  const fixos = (o.itens || []).map(i => i.slug);
+  if (!fixos.every(sl => escolhidos.includes(sl))) return false;
+  const daOpcao = escolhidos.filter(sl => !fixos.includes(sl));
+  if ((o.opcoes || []).length ? daOpcao.length !== 1 : daOpcao.length !== 0) return false;
+  for (const sl of escolhidos) {
+    const p = (c.pacotes || {})[sl];
+    const item = servicosDoOrc(o).find(s => s.slug === sl);
+    if (p && item && !igualSemPacote(item.pacote, p)) return false;
+  }
+  return true;
 }
 
 function escolhaEhDaProposta(c) {
   const o = c.orc;
+  if (!mesmaComposicao(c)) return false;
   if (c.opcao && Array.isArray(o.opcoes) && o.opcoes.length) {
     const menor = Math.min(...o.opcoes.map(x => Number(x.valor)));
     const esc = o.opcoes.find(x => x.slug === c.opcao);
@@ -1259,10 +1301,11 @@ function escolhaEhDaProposta(c) {
 
 /* 💰 TOTAL DA ESCOLHA (ChatGPT, 13/11/2026: "alternativa com valor diferente = informar o total correto antes da
    confirmação"). Com alternativas (Cabine / Totem / Retrô / Lembrança), o total gravado no orçamento é o do cenário
-   MAIS BARATO (o motor soma só a menor); o da escolhida = total + (valor dela - o menor). Pacote ou duração
+   MAIS BARATO (o motor soma só a menor); o da escolhida = total + (valor dela - o menor). Serviços, pacote ou duração
    diferentes da proposta: null (esse valor só sai certo pelo motor; a equipe confirma). Nada é recalculado. */
 function totalDaEscolha(c) {
   const o = c.orc;
+  if (!mesmaComposicao(c)) return null;
   if (c.pacote && !(o.itens || []).concat(o.opcoes || []).some(i => igualSemPacote(i.pacote, c.pacote))) return null;
   if (c.horas && o.horas_proposta && Number(c.horas) !== Number(o.horas_proposta)) return null;
   const total = Number(o.total || 0);
@@ -1291,12 +1334,18 @@ function resumoEscolhas(c) {
   const o = c.orc;
   const pg = (o.pagamentos || {})[c.pagto];
   const esc = (o.opcoes || []).find(x => x.slug === c.opcao);
-  const linhas = (o.itens || []).map(i => `• ${i.servico}`);
-  if (esc) linhas.unshift(`• ${esc.servico}`);
+  let linhas;
+  if (temServicosDetalhados(o) && Array.isArray(c.servicos)) {
+    linhas = c.servicos.map(sl => `• ${nomeServico(o, sl)}${(c.pacotes || {})[sl] ? " · Pacote *" + c.pacotes[sl] + "*" : ""}`);
+  } else {
+    linhas = (o.itens || []).map(i => `• ${i.servico}`);
+    if (esc) linhas.unshift(`• ${esc.servico}`);
+  }
   const tot = totalDaEscolha(c);
   return `*Orçamento nº ${o.id}*${o.celebracao ? " · " + o.celebracao : ""}${o.data_evento ? " · " + o.data_evento : ""}\n` +
     linhas.join("\n") +
     (c.pacote ? `\n📦 Pacote: *${c.pacote}*` : "") +
+    (c.guestbook ? "\n📖 GuestBook: *sim* (a equipe confirma o valor)" : "") +
     (c.horas ? `\n⏱️ Duração: *${c.horas}h*` : "") +
     (pg ? `\n💳 Pagamento: *${pg}*` : "") +
     (tot !== null
@@ -1324,23 +1373,103 @@ function lerEscolha(texto, rotulos) {
   return i;
 }
 
+// Vários números numa resposta ("1 e 3", "1,2", "todos"). Devolve índices válidos (sem repetir).
+function lerVarias(texto, rotulos, idxTodos) {
+  const t = normalizarParaBusca(String(texto || ""));
+  if (/\b(todos|todas|tudo|os dois|as duas|os tres|ambos)\b/.test(t)) return rotulos.map((_, i) => i).filter(i => i !== idxTodos);
+  const nums = (t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= rotulos.length).map(n => n - 1);
+  if (nums.includes(idxTodos)) return rotulos.map((_, i) => i).filter(i => i !== idxTodos);
+  const porNome = rotulos.map((r, i) => (i !== idxTodos && normalizarParaBusca(String(r)) && t.includes(normalizarParaBusca(String(r)))) ? i : -1).filter(i => i >= 0);
+  return [...new Set(nums.concat(porNome))].filter(i => i !== idxTodos);
+}
+
+const ehSim = t => /^(1|sim|s|quero|pode|isso|claro|com certeza|ok)\b/.test(normalizarParaBusca(String(t || "")).trim());
+const ehNao = t => /^(2|nao|n|nao quero|sem|dispenso)\b/.test(normalizarParaBusca(String(t || "")).trim());
+
+// Perguntas dos serviços (caminho novo): foto impressa -> outros serviços -> pacote de cada um -> GuestBook
+async function perguntarServicosContratar(chatId) {
+  const s = sessions[chatId]; const c = s._contratar; const o = c.orc;
+  const todos = servicosDoOrc(o);
+  const fotos = todos.filter(x => FOTO_IMPRESSA.includes(x.slug));
+  const outros = todos.filter(x => !FOTO_IMPRESSA.includes(x.slug));
+
+  if (!c.fotoDecidida) {
+    if (fotos.length >= 2) {
+      s.step = "contratar_foto";
+      c._rotFoto = fotos.map(x => x.servico).concat(outros.length ? ["Nenhuma, só os outros serviços"] : []);
+      return perguntarOpcoes(chatId,
+        `Que ótimo! ❤️ No seu orçamento nº ${o.id} há *${fotos.length} opções de foto impressa*, e se contrata *uma* delas. Qual você quer?\n\n` +
+        fotos.map((x, i) => `*${i + 1}* ${x.servico}${x.pacote && x.pacote !== x.servico ? " - " + x.pacote : ""}: ${brlContratar(x.valor)}`).join("\n"),
+        c._rotFoto);
+    }
+    c.fotoDecidida = true;
+    c._fotoUnica = fotos.length === 1;
+  }
+
+  if (!Array.isArray(c.servicos)) {
+    // candidatos: os outros serviços (e a foto, quando o orçamento só tem uma e ela não foi escolhida acima)
+    const cand = (c._fotoUnica ? fotos : []).concat(outros);   // a foto impressa primeiro, como no orçamento
+    const ja = c.foto ? [c.foto] : [];
+    if (cand.length === 0) { c.servicos = ja; }
+    else if (cand.length === 1 && ja.length === 0) { c.servicos = [cand[0].slug]; }
+    else if (cand.length === 1) {
+      s.step = "contratar_mais";
+      c._cand = cand.map(x => x.slug);
+      return sendButtonList(chatId, `Quer contratar também *${cand[0].servico}*?`, [{ id: "1", label: "Sim, quero" }, { id: "2", label: "Não, só a foto" }]);
+    } else {
+      s.step = "contratar_servicos";
+      c._cand = cand.map(x => x.slug);
+      c._rotServ = cand.map(x => x.servico).concat(["Todos"]);
+      return perguntarOpcoes(chatId,
+        (ja.length ? `Perfeito, *${nomeServico(o, c.foto)}*! ` : "Que ótimo! ❤️ ") +
+        "Quais " + (ja.length ? "outros " : "") + "serviços você quer contratar? Pode escolher mais de um: responda os números (ex.: *1 e 2*).",
+        c._rotServ);
+    }
+  }
+
+  // pacote de cada serviço escolhido que tem mais de um pacote
+  c.pacotes = c.pacotes || {};
+  const semPacote = c.servicos.find(sl => ((o.pacotes_servico || {})[sl] || []).length > 1 && !c.pacotes[sl]);
+  if (semPacote) {
+    s.step = "contratar_pacote_srv";
+    c._pacAtual = semPacote;
+    return perguntarOpcoes(chatId,
+      `Qual *pacote* de *${nomeServico(o, semPacote)}* você quer? (os valores de cada um estão no seu orçamento)`,
+      o.pacotes_servico[semPacote]);
+  }
+  return null;   // serviços resolvidos
+}
+
 // qual é a próxima pergunta (ou a confirmação)
 async function perguntarProximoContratar(chatId) {
   const s = sessions[chatId]; const c = s._contratar; const o = c.orc;
   if (!o.pacote_definido && !(o.opcoes || []).length) return concluirQueroContratar(chatId, o, false);
-  if ((o.opcoes || []).length && !c.opcao) {
-    s.step = "contratar_opcao";
-    return perguntarOpcoes(chatId, `Que ótimo! ❤️ No seu orçamento nº ${o.id} você tem opções de equipamento de foto. Qual você quer?\n\n` +
-      o.opcoes.map((x, i) => `*${i + 1}* ${x.servico}${x.pacote && x.pacote !== x.servico ? " - " + x.pacote : ""}: ${brlContratar(x.valor)}`).join("\n"),
-      o.opcoes.map(x => x.servico));
-  }
-  if ((o.pacotes || []).length && !c.pacote) {
-    s.step = "contratar_pacote";
-    return perguntarOpcoes(chatId, "Qual *pacote* você escolheu? (os valores de cada um estão na página de Pacotes do seu orçamento)", o.pacotes);
+  if (temServicosDetalhados(o)) {
+    const r = await perguntarServicosContratar(chatId);
+    if (r !== null) return r;
+  } else {
+    if ((o.opcoes || []).length && !c.opcao) {
+      s.step = "contratar_opcao";
+      return perguntarOpcoes(chatId, `Que ótimo! ❤️ No seu orçamento nº ${o.id} você tem opções de equipamento de foto. Qual você quer?\n\n` +
+        o.opcoes.map((x, i) => `*${i + 1}* ${x.servico}${x.pacote && x.pacote !== x.servico ? " - " + x.pacote : ""}: ${brlContratar(x.valor)}`).join("\n"),
+        o.opcoes.map(x => x.servico));
+    }
+    if ((o.pacotes || []).length && !c.pacote) {
+      s.step = "contratar_pacote";
+      return perguntarOpcoes(chatId, "Qual *pacote* você escolheu? (os valores de cada um estão na página de Pacotes do seu orçamento)", o.pacotes);
+    }
   }
   if ((o.duracoes || []).length && !c.horas) {
     s.step = "contratar_duracao";
     return perguntarOpcoes(chatId, "E qual *duração* do serviço?", o.duracoes.map(h => `${h} horas`));
+  }
+  // GuestBook: casamento e 15 anos, com foto impressa escolhida
+  const temFoto = Array.isArray(c.servicos) ? c.servicos.some(sl => FOTO_IMPRESSA.includes(sl)) : !!c.opcao;
+  if (o.guestbook_sugerir && temFoto && c.guestbook === undefined) {
+    s.step = "contratar_guestbook";
+    return sendButtonList(chatId,
+      `Deseja incluir o *GuestBook*? 📖 Os convidados colam a foto impressa num álbum e deixam um recado: é um dos itens mais pedidos em ${o.celebracao || "festas como a sua"}. (O valor está no seu orçamento.)`,
+      [{ id: "1", label: "Sim, quero" }, { id: "2", label: "Não, obrigado" }]);
   }
   const pgs = Object.keys(o.pagamentos || {});
   if (pgs.length && !c.pagto) {
@@ -1374,10 +1503,12 @@ async function concluirQueroContratar(chatId, orc, mudar, textoCliente) {
   avisarLeadRespondeu(chatId, `quero contratar o orçamento nº ${orc ? orc.id : "?"}`, { semAvisoOperador: true, forcarContratar: true });
   const primeiro = String(((s.orcamento || {}).nome) || "").split(" ")[0];
   const corp = orc && !!orc.empresa;
-  const q = orc ? [["opcao", c.opcao], ["pacote", c.pacote], ["horas", c.horas || ""], ["pagto", c.pagto]]
+  const pacotesQ = Object.keys(c.pacotes || {}).map(sl => `${sl}:${c.pacotes[sl]}`).join("|");
+  const q = orc ? [["opcao", c.opcao], ["pacote", c.pacote], ["servicos", Array.isArray(c.servicos) ? c.servicos.join(",") : ""],
+    ["pacotes", pacotesQ], ["guestbook", c.guestbook ? "1" : ""], ["horas", c.horas || ""], ["pagto", c.pagto]]
     .filter(([, v]) => v).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join("") : "";
   const link = orc ? `${PM_ADMIN_BASE}/wp-admin/admin-post.php?action=pm_evento_do_orcamento&orc=${orc.id}${q}` : "";
-  const escolhas = orc && (c.opcao || c.pacote || c.horas || c.pagto) ? resumoEscolhas(c) : (orc ? resumoOrcamento(orc) : "");
+  const escolhas = orc && (c.opcao || c.pacote || c.horas || c.pagto || Array.isArray(c.servicos)) ? resumoEscolhas(c) : (orc ? resumoOrcamento(orc) : "");
   if (mudar) {
     await sendText(chatId, "Claro! Me conta o que você quer mudar, que a nossa equipe ajusta com você por aqui. 😊");
   } else {
@@ -1391,7 +1522,9 @@ async function concluirQueroContratar(chatId, orc, mudar, textoCliente) {
       (escolhas ? `\n${escolhas}\n` : "") +
       (mudar && textoCliente ? `\nPediu: "${String(textoCliente).slice(0, 100)}"\n` : "") +
       (orc && orcamentoAntigo(orc) ? `\n⚠️ *ORÇAMENTO ANTIGO* (de ${orc.criado || "data desconhecida"}): confira preços e condições antes de confirmar com o cliente.\n` : "") +
-      (orc && !escolhaEhDaProposta(c)
+      (orc && !mesmaComposicao(c) ? "\n⚠️ O cliente escolheu *serviços ou pacotes diferentes da proposta*: confira os valores e o desconto de combo ao criar o evento.\n" : "") +
+      (orc && c.guestbook ? "\n📖 Quer o *GuestBook*: inclua no evento.\n" : "") +
+      (orc && mesmaComposicao(c) && !escolhaEhDaProposta(c)
         ? "\n⚠️ Escolha diferente da proposta: ajuste o valor pelo PDF ao criar o evento." +
           (totalDaEscolha(c) !== null ? ` O cliente viu o total de *${brlContratar(totalDaEscolha(c))}*.` : " O cliente NÃO viu valor: confirme com ele.") + "\n"
         : "") +
@@ -1415,28 +1548,60 @@ async function tratarQueroContratar(chatId, texto, opc = {}) {
     const c = s._contratar;
     if (!c) return false;
     const o = c.orc;
-    const mapa = {
-      contratar_opcao:     [(o.opcoes || []).map(x => x.servico), i => { c.opcao = o.opcoes[i].slug; }],
-      contratar_pacote:    [o.pacotes || [], i => { c.pacote = o.pacotes[i]; }],
-      contratar_duracao:   [(o.duracoes || []).map(h => `${h} horas`), i => { c.horas = o.duracoes[i]; }],
-      contratar_pagamento: [Object.values(o.pagamentos || {}), i => { c.pagto = Object.keys(o.pagamentos)[i]; }],
+    const naoEntendi = async () => {   // repete a pergunta uma vez, depois a equipe assume
+      c.erros = (c.erros || 0) + 1;
+      if (c.erros >= 2) return concluirQueroContratar(chatId, o, true, t);
+      await sendText(chatId, "Não entendi 😅 Responda com o número da opção, por favor.");
+      await perguntarProximoContratar(chatId);
+      return true;
     };
     if (s.step === "contratar_confirmar") {
       const n = normalizarParaBusca(t);
       if (t === "1" || /^sim\b|^esta certo|^isso\b|^confirm/.test(n)) return concluirQueroContratar(chatId, o, false);
       return concluirQueroContratar(chatId, o, true, t === "2" ? "" : t);
     }
-    const [rotulos, gravar] = mapa[s.step] || [null, null];
-    if (!rotulos) return false;
-    const i = lerEscolha(t, rotulos);
-    if (i < 0) {   // respondeu outra coisa: repete a pergunta uma vez, depois a equipe assume
-      c.erros = (c.erros || 0) + 1;
-      if (c.erros >= 2) return concluirQueroContratar(chatId, o, true, t);
-      await sendText(chatId, "Não entendi 😅 Responda com o número da opção, por favor.");
-      await perguntarProximoContratar(chatId);
-      return true;
+    if (s.step === "contratar_foto") {
+      const i = lerEscolha(t, c._rotFoto || []);
+      if (i < 0) return naoEntendi();
+      const fotos = servicosDoOrc(o).filter(x => FOTO_IMPRESSA.includes(x.slug));
+      c.foto = i < fotos.length ? fotos[i].slug : "";
+      c.opcao = c.foto && (o.opcoes || []).some(x => x.slug === c.foto) ? c.foto : "";
+      c.fotoDecidida = true;
+    } else if (s.step === "contratar_mais") {
+      if (ehSim(t)) c.servicos = [c.foto].concat(c._cand).filter(Boolean);
+      else if (ehNao(t)) c.servicos = [c.foto].filter(Boolean);
+      else return naoEntendi();
+    } else if (s.step === "contratar_servicos") {
+      const idx = lerVarias(t, c._rotServ || [], (c._rotServ || []).length - 1);
+      if (!idx.length) return naoEntendi();
+      c.servicos = [c.foto].filter(Boolean).concat(idx.map(i => c._cand[i]));
+    } else if (s.step === "contratar_pacote_srv") {
+      const lista = (o.pacotes_servico || {})[c._pacAtual] || [];
+      const i = lerEscolha(t, lista);
+      if (i < 0) return naoEntendi();
+      c.pacotes = c.pacotes || {};
+      c.pacotes[c._pacAtual] = lista[i];
+    } else if (s.step === "contratar_guestbook") {
+      if (ehSim(t)) c.guestbook = true;
+      else if (ehNao(t)) c.guestbook = false;
+      else return naoEntendi();
+    } else {
+      const mapa = {
+        contratar_opcao:     [(o.opcoes || []).map(x => x.servico), i => { c.opcao = o.opcoes[i].slug; }],
+        contratar_pacote:    [o.pacotes || [], i => { c.pacote = o.pacotes[i]; }],
+        contratar_duracao:   [(o.duracoes || []).map(h => `${h} horas`), i => { c.horas = o.duracoes[i]; }],
+        contratar_pagamento: [Object.values(o.pagamentos || {}), i => { c.pagto = Object.keys(o.pagamentos)[i]; }],
+      };
+      const [rotulos, gravar] = mapa[s.step] || [null, null];
+      if (!rotulos) return false;
+      // pagamento: aceita também os rótulos curtos do botão
+      const CURTO = { pix_avista: "PIX à vista", pix_parcelado: "PIX parcelado", cartao: "Cartão em até 10x" };
+      let i = lerEscolha(t, rotulos);
+      if (i < 0 && s.step === "contratar_pagamento") i = lerEscolha(t, Object.keys(o.pagamentos || {}).map(k => CURTO[k] || o.pagamentos[k]));
+      if (i < 0) return naoEntendi();
+      gravar(i);
     }
-    gravar(i);
+    c.erros = 0;
     await perguntarProximoContratar(chatId);
     return true;
   }

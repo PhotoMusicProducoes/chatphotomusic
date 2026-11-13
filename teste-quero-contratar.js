@@ -72,10 +72,12 @@ const simples = { id: 701, criado: "01/11/2026", data_evento: "20/12/2026", cele
   await cliente(A, "Oi! Quero seguir com o orçamento nº 576 (Foto Cabine, 27/11/2026).");
   const p1 = paraCliente(A);
   checar("conversa ENCERRADA: o bot responde na hora (antes ficava calado)", p1 !== "", p1);
-  checar("pergunta o equipamento com os valores da proposta (Cabine x Totem)", /equipamento/.test(p1) && /Foto Cabine/.test(p1) && /Totem/.test(p1) && /2\.297,00/.test(p1) && /2\.197,00/.test(p1), p1);
+  checar("pergunta a foto impressa (é UMA) com os valores da proposta (Cabine x Totem)", /foto impressa/.test(p1) && /Foto Cabine/.test(p1) && /Totem/.test(p1) && /2\.297,00/.test(p1) && /2\.197,00/.test(p1), p1);
   checar("procurou o orçamento pelo telefone e pelo nº citado", gets.some(g => /orcamentos-do-cliente/.test(g[0]) && g[1].numero === 576), JSON.stringify(gets));
   await cliente(A, "1");
-  checar("pacote: Premium, Tirinha e Gold, como no PDF", /pacote/i.test(paraCliente(A)) && /Premium/.test(paraCliente(A)) && /Tirinha/.test(paraCliente(A)) && /Gold/.test(paraCliente(A)), paraCliente(A));
+  checar("13/11 (Mario): pergunta se quer também a Plataforma 360 (contratar parte é possível)", /Quer contratar também \*Plataforma 360/.test(paraCliente(A)), paraCliente(A));
+  await cliente(A, "1");
+  checar("pacote DA Foto Cabine: Premium, Tirinha e Gold, como no PDF (sem os \"B\")", /pacote\* de \*Foto Cabine\*/.test(paraCliente(A)) && /Premium/.test(paraCliente(A)) && /Tirinha/.test(paraCliente(A)) && /Gold/.test(paraCliente(A)) && !/ B\b/.test(paraCliente(A)), paraCliente(A));
   await cliente(A, "Premium");
   checar("duração: 4 ou 5 horas, como no PDF", /duração/.test(paraCliente(A)) && /4 horas/.test(paraCliente(A)) && /5 horas/.test(paraCliente(A)), paraCliente(A));
   await cliente(A, "talvez");
@@ -101,7 +103,7 @@ const simples = { id: 701, criado: "01/11/2026", data_evento: "20/12/2026", cele
   checar("operador recebe o alerta de ORÇAMENTO ANTIGO", /ORÇAMENTO ANTIGO/.test(op), op);
   checar("cliente: próximo passo é o formulário já preenchido", /formulário/.test(fim) && /já preenchido/.test(fim), fim);
   const link = (op.match(/https:\/\/\S+pm_evento_do_orcamento\S+/) || [""])[0];
-  checar("operador recebe as escolhas e o link do evento com elas", /CONTRATAR/.test(op) && /orc=576/.test(link) && /opcao=foto-cabine/.test(link) && /pacote=Premium/.test(link) && /horas=5/.test(link) && /pagto=pix_avista/.test(link), op);
+  checar("operador recebe as escolhas e o link do evento com elas", /CONTRATAR/.test(op) && /orc=576/.test(link) && /opcao=foto-cabine/.test(link) && /servicos=plataforma-360%2Cfoto-cabine|servicos=foto-cabine%2Cplataforma-360/.test(link) && /pacotes=foto-cabine%3APremium/.test(link) && /horas=5/.test(link) && /pagto=pix_avista/.test(link), op);
   checar("operador é avisado que a escolha difere da proposta (Cabine x Totem do total)", /diferente da proposta/.test(op), op);
   checar("lead vai para Negociando (UMA chamada ao plugin)", posts.filter(p => /lead-cliente-respondeu/.test(p[0]) && p[1].contratar === true).length === 1, JSON.stringify(posts));
   checar("sessão fica com a equipe (não volta a fazer perguntas)", sessions[A].step === "pausado_followup");
