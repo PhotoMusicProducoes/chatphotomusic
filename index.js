@@ -3090,6 +3090,12 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
   const opcoes  = session._menuPos || montarMenuPosOrcamento(session);
   const escolha = opcoes.find(o => o.id === String(corpoMensagem).trim());
 
+  if (!escolha && await reenviarOrcamentoPedido(chatId, session, corpoMensagem)) {
+    session.tentativasInvalidasPos = 0;
+    await sendButtonList(chatId, "Posso te ajudar em mais alguma coisa?", opcoes.map(o => ({ id: o.id, label: o.label })));
+    return;
+  }
+
   if (!escolha) {
     session.tentativasInvalidasPos = (session.tentativasInvalidasPos || 0) + 1;
     if (session.tentativasInvalidasPos >= 3) {
@@ -3267,6 +3273,28 @@ async function reenviarOrcamentoDoServico(chatId, session, servico) {
     // Falha no reenvio não pode derrubar o lote de detalhes.
     console.error(`⚠️ Reenvio do orçamento (${nome}):`, e.message);
   }
+}
+
+/* 📄 PEDIU DE NOVO O ORÇAMENTO QUE JÁ RECEBEU (caso real 13/11/2026 01h58).
+   O operador mandou Foto Cabine e depois Plataforma 360; a cliente não achou o
+   da 360 e escreveu "Quero do 360". O menu pós-orçamento respondeu "Não entendi"
+   (e na conversa encerrada a mensagem era ignorada calada). Agora: o nome de um
+   serviço JÁ ORÇADO, ou "não achei / manda de novo", reenvia o PDF dele.
+   Devolve true quando reenviou. */
+const PEDE_REENVIO = /\b(nao (achei|encontrei|consegui (abrir|baixar|ver|achar)|abre|abriu|apareceu|chegou)|manda de novo|envia de novo|reenvia|de novo o|outra vez|cade o (orcamento|pdf|arquivo))\b/;
+async function reenviarOrcamentoPedido(chatId, session, texto) {
+  const links = (session && session.orcamento && session.orcamento.linksOrcamento) || {};
+  const comLink = Object.keys(links).map(Number).filter(id => links[id]);
+  if (!comLink.length) return false;
+  const t = normalizarParaBusca(texto);
+  let alvo = detectarServicosNoTexto(texto).filter(id => comLink.includes(id));
+  if (!alvo.length && PEDE_REENVIO.test(t)) alvo = comLink;          // "não achei" sem dizer qual: todos
+  if (!alvo.length) return false;
+  session._pdfsEnviadosNoLote = new Set();                           // orçamento único de vários serviços sai uma vez
+  for (const id of alvo) await reenviarOrcamentoDoServico(chatId, session, id);
+  delete session._pdfsEnviadosNoLote;
+  console.log(`📄 ${chatId} pediu de novo o orçamento: reenviado ${alvo.join(", ")}.`);
+  return true;
 }
 
 // Envia SÓ os detalhes (fotos/vídeos) de um serviço — sem repetir o preço.
@@ -5211,6 +5239,8 @@ async function handleIncomingMessage(message) {
       await processarOrcamentoPos(chatId, sFin, corpoMensagem);
       return;
     }
+    // 13/11/2026: pediu de novo o orçamento que já recebeu ("quero do 360", "não achei")
+    if (await reenviarOrcamentoPedido(chatId, sFin, corpoMensagem)) return;
     console.log(`ℹ️ Sessão finalizada para ${chatId}. Mensagem ignorada.`);
     return;
   }
