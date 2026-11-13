@@ -64,7 +64,19 @@ function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); CHAT =
   checar("escolha '13' = Cabine + Retro", JSON.stringify(L.escolhaTirinha("13")) === "[1,13]");
   checar("escolha '1,3' = Cabine + Retro", JSON.stringify(L.escolhaTirinha("1,3")) === "[1,13]");
   checar("escolha '0' = nao entendeu", L.escolhaTirinha("0") === null);
-  checar("data '15112026' -> 15/11/2026", L.dataSoNumeros("15112026") === "15/11/2026");
+  console.log("--- Totem Retro junto (Mario, 13/11) ---");
+  const RJ = (ids, clb) => JSON.stringify(L.comRetroSugerido(ids, clb));
+  checar("pediu Totem Fotografico -> + Totem Retro logo depois", RJ([2], 1) === "[2,13]", RJ([2], 1));
+  checar("Totem + 360 -> Retro entra depois do Totem", RJ([2, 3], 5) === "[2,13,3]", RJ([2, 3], 5));
+  checar("Cabine num CASAMENTO -> + Totem Retro", RJ([1], 2) === "[1,13]", RJ([1], 2));
+  checar("Cabine + 360 num casamento -> Retro depois da Cabine", RJ([1, 3], 2) === "[1,13,3]", RJ([1, 3], 2));
+  checar("Cabine em 15 anos -> NAO inclui", RJ([1], 1) === "[1]", RJ([1], 1));
+  checar("Cabine sem celebracao (preliminar) -> NAO inclui", RJ([1], null) === "[1]", RJ([1], null));
+  checar("ja pediu o Retro -> nao duplica", RJ([2, 13], 2) === "[2,13]", RJ([2, 13], 2));
+  checar("so 360 -> nada muda", RJ([3], 2) === "[3]", RJ([3], 2));
+  checar("mensagem fala da novidade", /Totem Retrô/.test(L.MSG_RETRO_SUGERIDO) && /novidade/.test(L.MSG_RETRO_SUGERIDO));
+
+  checar("data '15112026' -> 15/11/2026",L.dataSoNumeros("15112026") === "15/11/2026");
   checar("data '151126' -> 15/11/26", L.dataSoNumeros("151126") === "15/11/26");
   checar("data '15 11 2026' -> 15/11/2026", L.dataSoNumeros("15 11 2026") === "15/11/2026");
   checar("'80' nao vira data", L.dataSoNumeros("80") === null);

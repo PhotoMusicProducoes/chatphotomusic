@@ -88,4 +88,25 @@ function dataSoNumeros(texto) {
   return null;
 }
 
-module.exports = { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA };
+/* ── 4) TOTEM RETRO JUNTO (Mario, 13/11/2026) ───────────────────────────────
+   O Totem Retro e servico NOVO e pouca gente conhece. Excecao de proposito a regra "1 servico pedido = 1 enviado":
+     - pediu Totem Fotografico (id 2)          -> vai tambem o Totem Retro (id 13)
+     - pediu Foto Cabine (id 1) num CASAMENTO  -> vai tambem o Totem Retro
+   O Retro entra logo DEPOIS do servico que puxou ele. Ja pedido = nada muda. Celebracao Casamento = id 2. */
+const ID_RETRO = 13, ID_TOTEM = 2, ID_CABINE = 1, CELEBRACAO_CASAMENTO = 2;
+
+function comRetroSugerido(ids, celebracaoId) {
+  const lista = Array.isArray(ids) ? [...ids] : [];
+  if (lista.includes(ID_RETRO)) return lista;
+  let gatilho = null;
+  if (lista.includes(ID_TOTEM)) gatilho = ID_TOTEM;
+  else if (lista.includes(ID_CABINE) && Number(celebracaoId) === CELEBRACAO_CASAMENTO) gatilho = ID_CABINE;
+  if (gatilho === null) return lista;
+  lista.splice(lista.indexOf(gatilho) + 1, 0, ID_RETRO);
+  return lista;
+}
+
+const MSG_RETRO_SUGERIDO =
+  "✨ Aproveitei e incluí também o *Totem Retrô*, a nossa novidade, para você conhecer e comparar. 😊";
+
+module.exports = { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO };

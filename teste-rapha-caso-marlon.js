@@ -78,7 +78,9 @@ async function cliente(texto) {
   checar("nenhum áudio, print, vídeo ou foto de serviço ANTES do PDF", (iAval === -1 || iAval > iPdf) && (iFoto === -1 || iFoto > iPdf), `aval ${iAval}, foto ${iFoto}, pdf ${iPdf}`);
   checar("sem nome e foto do serviço antes do PDF (<<<< FOTO CABINE >>>>)", saida.slice(0, iPdf + 1).every(l => !/<<<</.test(l)));
   checar("o resumo traz o deslocamento para Magé (aproximado)", saida.some(l => /Magé/.test(l)) || true);
-  checar("estado final: orçamento definitivo, serviço enviado uma vez", sess().orcamento.situacao === "definitivo" && (sess().orcamento.servicosEnviados || []).length === 1, JSON.stringify(sess().orcamento.servicosEnviados) + " / " + sess().orcamento.situacao);
+  // 13/11/2026 (Mario): Foto Cabine em CASAMENTO leva tambem o Totem Retro (servico novo), cada um enviado uma vez.
+  checar("estado final: orçamento definitivo, Cabine + Totem Retrô (casamento), cada um uma vez", sess().orcamento.situacao === "definitivo" && JSON.stringify(sess().orcamento.servicosEnviados || []) === "[1,13]", JSON.stringify(sess().orcamento.servicosEnviados) + " / " + sess().orcamento.situacao);
+  checar("avisa que incluiu o Totem Retrô, a novidade", todas.some(t => /incluí também o \*Totem Retrô\*/.test(t)));
   checar("oferece 'Quero mais detalhes' para as avaliações e vídeos (sob pedido)", todas.some(t => /Quero mais detalhes/.test(t)));
 
   // o cliente pergunta "Orçamento??" depois de receber: o bot NAO ignora nem repete a fila antiga

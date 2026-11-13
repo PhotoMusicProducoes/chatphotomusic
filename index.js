@@ -52,7 +52,7 @@ const {
 const { criarExtrator: criarExtratorIA } = require("./utils/iaExtrair.js");
 const { acharDataNoTexto, candidatosLocal } = require("./utils/dadosLivres.js");
 // 13/11/2026 (NAZ): ja contratou -> suporte; tirinha -> 3 servicos; data so com numeros. Ver o arquivo.
-const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA } = require("./utils/entendimentoLivre.js");
+const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO } = require("./utils/entendimentoLivre.js");
 const { extrairBriefing } = require("./utils/briefingLivre.js");
 
 const {
@@ -2630,6 +2630,18 @@ async function enviarMultiplosOrcamentos(chatId, listaServicos, opcoes = {}) {
     await sendText(chatId, "Pronto! ❤️ Segue a sua *proposta atualizada*, com os dados do seu evento. Ela substitui o orçamento preliminar.");
   } else if (!orc.situacao) {
     orc.situacao = "definitivo";
+  }
+
+  /* ✨ TOTEM RETRO JUNTO (Mario, 13/11/2026): pediu Totem Fotografico, ou Foto Cabine num casamento, recebe
+     tambem o Totem Retro (servico novo, pouca gente conhece). Regra em utils/entendimentoLivre.js. */
+  if (!opcoes.todos) {
+    const comRetro = comRetroSugerido(listaServicos, orc.celebracaoId);
+    if (comRetro.length > listaServicos.length) {
+      console.log(`✨ ${chatId}: Totem Retrô incluído junto (${listaServicos.join(",")} -> ${comRetro.join(",")})`);
+      listaServicos = comRetro;
+      await sendTyping(chatId);
+      await sendText(chatId, MSG_RETRO_SUGERIDO);
+    }
   }
 
   // ==============================================================
@@ -8169,7 +8181,17 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
   const semListaPropria = !(Array.isArray(listaServicos) && listaServicos.length);
   const corporativo = orc.perfil === "empresa" || orc.perfil === "agencia" || (!estimados.celebracaoId && Number(orc.celebracaoId) === 8);
   const enxuto = !!opcoes.enxuto && semListaPropria && !corporativo;
-  const lista = enxuto ? [...SERVICOS_ENXUTO] : (semListaPropria ? [...TODOS_SERVICOS] : listaServicos);
+  let lista = enxuto ? [...SERVICOS_ENXUTO] : (semListaPropria ? [...TODOS_SERVICOS] : listaServicos);
+  let retroIncluido = false;
+  // ✨ Totem Retro junto do Totem Fotografico (e da Cabine no casamento) - Mario, 13/11/2026
+  if (!enxuto && !semListaPropria) {
+    const comRetro = comRetroSugerido(lista, estimados.celebracaoId ? null : orc.celebracaoId);
+    if (comRetro.length > lista.length) {
+      console.log(`✨ ${chatId}: Totem Retrô incluído junto no envio automático (${lista.join(",")} -> ${comRetro.join(",")})`);
+      lista = comRetro;
+      retroIncluido = true;   // a nota vai DEPOIS da abertura, sem trocar a abertura padrao
+    }
+  }
 
   try {
     if (envioFoiInterrompido(chatId)) {
@@ -8183,6 +8205,7 @@ async function enviarOrcamentosAutomaticos(chatId, session, listaServicos = null
       : `${ola} ❤️\n\nVi que a gente não terminou o seu orçamento e não quero te deixar esperando. Já te mando os valores. 😊`));
     // o que e estimativa e o deslocamento (sem a celebracao "Outros" escrita ao cliente)
     await sendText(chatId, notaPreliminar(Object.assign({}, orc, orcAntes), !!opcoes.textoAbertura));
+    if (retroIncluido) await sendText(chatId, MSG_RETRO_SUGERIDO);
 
     /* 📄 ENVIO COMERCIAL (12/11/2026): PRIMEIRO o PDF e o link alternativo.
        Avaliacoes, depoimentos e videos ficam no "Quero mais detalhes". */
