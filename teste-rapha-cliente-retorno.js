@@ -107,9 +107,31 @@ const MENU = /Seja bem-vindo\(a\) à PhotoMusic Produções/;
   const OUTRO = Object.assign({}, LUCIANA, { id: 520, celebracao: "Casamento", data_evento: "10/10/2027", servicos: ["Plataforma 360º"] });
   novo({ ativo: true, orcamentos: [OUTRO, LUCIANA] });
   r = await cliente("Oi, boa tarde");
-  checar("pergunta QUAL evento antes de tudo", sess().step === "retorno_escolher_evento" && /Casamento/.test(r) && /15 anos/.test(r), sess().step + " | " + r);
+  checar("pergunta o ASSUNTO: os 2 orçamentos + novo evento + outro assunto", sess().step === "retorno_escolher_assunto" && /Casamento/.test(r) && /15 anos/.test(r) && /novo evento/.test(r) && /Outro assunto/.test(r), sess().step + " | " + r);
   r = await cliente("2");
-  checar("escolheu o 2: mostra o da Luciana (15 anos)", sess().step === "retorno_opcao" && /15 anos/.test(r) && /03\/04\/2027/.test(r), r);
+  checar("escolheu o 2: mostra o da Luciana (15 anos), sem repetir a saudação", sess().step === "retorno_opcao" && /15 anos/.test(r) && /03\/04\/2027/.test(r) && !/Que bom receber/.test(r), r);
+
+  console.log("--- AGÊNCIA: pode ser outro evento ---");
+  const AGENCIA = Object.assign({}, LUCIANA, { id: 601, nome: "Carla Eventos", perfil: "agencia", corporativo: true, empresa: "Carla Eventos",
+    celebracao: "Evento Corporativo", data_evento: "20/12/2026", servicos: ["Plataforma 360º"] });
+  novo({ ativo: true, orcamentos: [AGENCIA], eventos: [] });
+  r = await cliente("Bom dia, preciso de um orçamento");
+  checar("agência com 1 orçamento: PERGUNTA se é o mesmo evento ou outro", sess().step === "retorno_escolher_assunto" && /Orçamento de/.test(r) && /outro cliente, outra data ou outro serviço/.test(r), sess().step + " | " + r);
+  r = await cliente("2");
+  checar("novo evento: começa limpo e só confirma nome e tipo (agência)", sess().step === "orcamento_reuso" && /Carla/.test(r) && /Agência/.test(r), sess().step + " | " + r);
+  checar("novo evento: NÃO traz data, local, convidados nem serviço do pedido antigo", !(sess().orcamento || {}).servicosPrevios && !((sess().dadosLivres || {}).data) && !((sess().dadosLivres || {}).convidados), JSON.stringify({ o: sess().orcamento, dl: sess().dadosLivres }));
+
+  console.log("--- EVENTO CONTRATADO ---");
+  const EVENTO = { id: 288, data_evento: "28/11/2026", motivo: "Aniversário da Adrielen", corporativo: false, nome: "Adrielen" };
+  novo({ ativo: true, contratou: true, eventos: [EVENTO], orcamentos: [] });
+  r = await cliente("Olá, bom dia");
+  checar("tem evento contratado: pergunta se é sobre ele ou um novo orçamento", sess().step === "retorno_escolher_assunto" && /Meu evento contratado/.test(r) && /28\/11\/2026/.test(r) && /novo evento/.test(r) && !MENU.test(r), sess().step + " | " + r);
+  r = await cliente("1");
+  checar("escolheu o evento: chama a equipe e o bot para", /ajudar com o seu evento/.test(r) && /Cliente com evento contratado/.test(r) && estaPausado(CHAT), r);
+  novo({ ativo: true, contratou: true, eventos: [EVENTO], orcamentos: [] });
+  await cliente("Olá, bom dia");
+  r = await cliente("2");
+  checar("contratado que quer NOVO orçamento: começa o orçamento (confirma nome e tipo)", sess().step === "orcamento_reuso" && /Adrielen/.test(r), sess().step + " | " + r);
 
   console.log("--- quando NAO retoma (fluxo de sempre) ---");
   novo({ ativo: true, bloqueado: true, orcamentos: [LUCIANA] });
@@ -117,7 +139,7 @@ const MENU = /Seja bem-vindo\(a\) à PhotoMusic Produções/;
   checar("contato bloqueado: menu normal", MENU.test(r), r);
   novo({ ativo: true, contratou: true, orcamentos: [LUCIANA] });
   r = await cliente(SITE);
-  checar("já tem evento contratado: menu normal", MENU.test(r), r);
+  checar("plugin antigo (contratou sem a lista de eventos): menu normal", MENU.test(r), r);
   novo({ ativo: true, orcamentos: [] });
   r = await cliente(SITE);
   checar("sem orçamento: menu normal", MENU.test(r), r);

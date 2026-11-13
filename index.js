@@ -54,7 +54,8 @@ const { acharDataNoTexto, candidatosLocal } = require("./utils/dadosLivres.js");
 // 13/11/2026 (NAZ): ja contratou -> suporte; tirinha -> 3 servicos; data so com numeros. Ver o arquivo.
 const { jaContratou, mencionaTirinha, escolhaTirinha, dataSoNumeros, SERVICOS_TIRINHA, comRetroSugerido, MSG_RETRO_SUGERIDO } = require("./utils/entendimentoLivre.js");
 // 13/11/2026 (NAZ): cliente que volta com orcamento em aberto (caso Luciana). Ver o arquivo.
-const { textoRetorno, textoEscolherEvento, opcaoRetorno, escolhaEvento, linhasOpcoesRetorno, linhaEvento } = require("./utils/clienteRetorno.js");
+const { textoRetorno, opcaoRetorno, linhasOpcoesRetorno, linhaEvento,
+        precisaPerguntarAssunto, itensAssunto, linhaItem, textoEscolherAssunto, escolhaItem } = require("./utils/clienteRetorno.js");
 const { extrairBriefing } = require("./utils/briefingLivre.js");
 
 const {
@@ -1681,26 +1682,54 @@ async function buscarClienteRetorno(chatId) {
 
 async function tentarRetomarCliente(chatId, session) {
   const d = await buscarClienteRetorno(chatId);
-  if (!d || d.ativo !== true || d.bloqueado || d.contratou) return false;
+  if (!d || d.ativo !== true || d.bloqueado) return false;
   const orcs = Array.isArray(d.orcamentos) ? d.orcamentos.filter(o => o && o.id) : [];
-  if (!orcs.length) return false;
-  session.retorno = { orcamentos: orcs, idx: null };
+  const eventos = Array.isArray(d.eventos) ? d.eventos.filter(e => e && e.id) : [];
+  // plugin antigo (sem a lista de eventos): quem ja contratou segue no fluxo de sempre
+  if (d.contratou && !eventos.length) return false;
+  if (!orcs.length && !eventos.length) return false;
+  session.retorno = { orcamentos: orcs, eventos, idx: null, itens: null };
   session.retornoInvalidas = 0;
   session.menuInicialEnviado = true;
-  console.log(`🔁 ${chatId} voltou com ${orcs.length} orçamento(s) em aberto: ${orcs.map(o => o.id).join(", ")}`);
-  if (orcs.length > 1) {
-    session.step = "retorno_escolher_evento";
-    await enviarPerguntaESalvar(chatId, session, textoEscolherEvento(orcs));
+  console.log(`🔁 ${chatId} voltou: ${eventos.length} evento(s) contratado(s), ${orcs.length} orçamento(s) em aberto (${orcs.map(o => o.id).join(", ")})`);
+  /* 13/11/2026 (Mario): evento contratado, empresa/agência ou mais de um assunto = PERGUNTA o assunto (a agência
+     volta para outro evento; o pedido anterior pode ter desistido). Social com um orçamento só vai direto nele. */
+  if (precisaPerguntarAssunto(orcs, eventos)) {
+    const itens = itensAssunto(orcs, eventos);
+    session.retorno.itens = itens;
+    session.retorno.ehEmpresa = orcs.some(o => o.corporativo || (o.perfil && o.perfil !== "social")) || eventos.some(e => e.corporativo);
+    const nome = (orcs[0] && orcs[0].nome) || (eventos[0] && eventos[0].nome) || "";
+    session.step = "retorno_escolher_assunto";
+    await enviarPerguntaESalvar(chatId, session, textoEscolherAssunto(itens, nome, session.retorno.ehEmpresa));
     return true;
   }
   await apresentarRetorno(chatId, session, 0);
   return true;
 }
 
+/* Novo orçamento de quem já é conhecido: aproveita SÓ nome, tipo e empresa (com 1 toque para confirmar).
+   Data, local, convidados e serviço do pedido antigo NÃO entram: é outro evento. */
+async function iniciarNovoOrcamentoRetorno(chatId, session, chatIdNormalizado) {
+  const r = session.retorno || {};
+  const base = (r.orcamentos || [])[0];
+  const ev = (r.eventos || [])[0];
+  const nome = (base && base.nome) || (ev && ev.nome) || "";
+  const perfil = base ? (base.perfil || (base.corporativo ? "empresa" : "social")) : (ev && ev.corporativo ? "empresa" : "social");
+  session.retorno = null;
+  session.dadosLivres = {};
+  if (nome) {
+    session.clienteConhecido = {
+      nome: capitalizarPalavras(nome), perfil, empresa: (base && base.empresa) || "",
+      ondeEncontrou: (session.clienteConhecido && session.clienteConhecido.ondeEncontrou) || "", atualizadoEm: Date.now(),
+    };
+  }
+  await executarOpcaoMenu(chatId, session, "1", chatIdNormalizado);   // começa limpo; com o nome, só confirma nome e tipo
+}
+
 async function apresentarRetorno(chatId, session, i) {
   session.retorno.idx = i;
   session.step = "retorno_opcao";
-  await enviarPerguntaESalvar(chatId, session, textoRetorno(session.retorno.orcamentos[i]));
+  await enviarPerguntaESalvar(chatId, session, textoRetorno(session.retorno.orcamentos[i], { semSaudacao: !!session.retorno.itens }));
 }
 
 async function avisarOperadorRetorno(chatId, o, motivo, texto) {
@@ -5879,16 +5908,38 @@ async function handleIncomingMessage(message) {
   const convidadosNovos = guardarConvidadosLivres(session, corpoMensagem);
 
   // 🔁 CLIENTE QUE VOLTA: qual evento (varios orcamentos em aberto) e o que fazer (13/11/2026, caso Luciana)
-  if (session.step === "retorno_escolher_evento") {
-    const orcsR = (session.retorno && session.retorno.orcamentos) || [];
-    const e = escolhaEvento(corpoMensagem, orcsR.length);
-    if (e === "outro" || !orcsR.length) { session.retorno = null; await mostrarMenuInicial(chatId); return; }
-    if (e === null) {
-      await sendText(chatId, "*⚠ Responda com o número do evento:*\n" +
-        orcsR.map((o, i) => `*${i + 1}* - ${linhaEvento(o)}`).join("\n") + `\n*${orcsR.length + 1}* - É outro evento ou outro assunto`);
+  if (session.step === "retorno_escolher_assunto") {
+    const itensR = (session.retorno && session.retorno.itens) || [];
+    if (!itensR.length) { session.retorno = null; await mostrarMenuInicial(chatId); return; }
+    const k = escolhaItem(corpoMensagem, itensR);
+    if (k === null) {
+      session.retornoInvalidas = (session.retornoInvalidas || 0) + 1;
+      if (session.retornoInvalidas >= 3) { session.retorno = null; await mostrarMenuInicial(chatId); return; }
+      await sendText(chatId, "*⚠ Responda com o número da opção:*\n" +
+        itensR.map((it, i) => `*${i + 1}* - ${linhaItem(it, session.retorno.ehEmpresa)}`).join("\n"));
       return;
     }
-    await apresentarRetorno(chatId, session, e);
+    session.retornoInvalidas = 0;
+    const it = itensR[k];
+    if (it.tipo === "evento") {   // evento contratado = suporte (equipe assume)
+      await sendTyping(chatId);
+      await sendText(chatId, `Que bom! ❤️ Vou chamar a nossa equipe para te ajudar com o seu evento${it.e.data_evento ? " de *" + it.e.data_evento + "*" : ""}. Em instantes te respondemos por aqui.`);
+      try {
+        await sendText(OPERADOR_TELEFONE_ID, `🔁 *Cliente com evento contratado* - ${chatId}\n` +
+          `Evento nº *${it.e.id}*: ${[it.e.motivo, it.e.data_evento].filter(Boolean).join(" · ")}` + (it.e.nome ? `\nContratante: ${it.e.nome}` : "") +
+          "\n\nPediu suporte sobre o evento. O bot parou neste número: assuma o atendimento por aqui.");
+      } catch (e) { console.warn(`⚠️ aviso de evento contratado ao operador: ${e.message}`); }
+      session.retorno = null;
+      pausarCliente(chatIdNormalizado);
+      return;
+    }
+    if (it.tipo === "orcamento") {
+      await apresentarRetorno(chatId, session, session.retorno.orcamentos.indexOf(it.o));
+      return;
+    }
+    if (it.tipo === "novo") { await iniciarNovoOrcamentoRetorno(chatId, session, chatIdNormalizado); return; }
+    session.retorno = null;   // outro assunto
+    await mostrarMenuInicial(chatId);
     return;
   }
   if (session.step === "retorno_opcao" && session.retorno && Array.isArray(session.retorno.orcamentos)) {

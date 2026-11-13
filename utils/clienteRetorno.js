@@ -46,12 +46,13 @@ function linhasOpcoesRetorno() {
 }
 
 /** Mensagem de boas-vindas de quem volta (proposta do ChatGPT, 13/11/2026). */
-function textoRetorno(o) {
+function textoRetorno(o, opcoes = {}) {
   const nome = primeiroNome(o.nome);
   const serv = juntarE(o.servicos);
   const local = localDoOrcamento(o);
-  let txt = `Olá${nome ? ", *" + nome + "*" : ""}! 😊 Que bom receber seu contato novamente!\n\n`;
-  txt += `Vi que você já pediu um orçamento${serv ? " de *" + serv + "*" : ""}`;
+  // semSaudacao: a pessoa ja foi cumprimentada na lista de assuntos (13/11/2026)
+  let txt = opcoes.semSaudacao ? "" : `Olá${nome ? ", *" + nome + "*" : ""}! 😊 Que bom receber seu contato novamente!\n\n`;
+  txt += `${opcoes.semSaudacao ? "Esse é o orçamento" : "Vi que você já pediu um orçamento"}${serv ? " de *" + serv + "*" : ""}`;
   if (o.celebracao && o.celebracao !== "Outros") txt += ` para *${o.celebracao}*`;
   if (o.data_evento) txt += `, previsto para *${o.data_evento}*`;
   if (local) txt += `, em *${local}*`;
@@ -59,13 +60,53 @@ function textoRetorno(o) {
   return txt;
 }
 
-/** Mais de um orcamento em aberto: pergunta qual evento antes de tudo. */
-function textoEscolherEvento(orcs, nomeCliente) {
-  const nome = primeiroNome(nomeCliente || (orcs[0] && orcs[0].nome));
-  return `Olá${nome ? ", *" + nome + "*" : ""}! 😊 Que bom receber seu contato novamente!\n\n` +
-    "Encontrei mais de um orçamento seu. Sobre qual evento você quer falar?\n\n" +
-    orcs.map((o, i) => `*${i + 1}* - ${linhaEvento(o)}`).join("\n") +
-    `\n*${orcs.length + 1}* - É outro evento ou outro assunto`;
+/* ── LISTA DE ASSUNTOS (Mario, 13/11/2026) ──────────────────────────────────
+   Ter evento contratado ou orcamento antigo NAO decide sozinho o assunto: a agencia/empresa volta para OUTRO evento
+   (o pedido anterior pode ter desistido ou fechado com outra empresa). Entao, quando ha evento contratado, quando e
+   empresa/agencia ou quando ha mais de um assunto, o bot PERGUNTA. Social com um orcamento so vai direto nele. */
+
+/** Precisa perguntar o assunto antes? (senao vai direto na proposta do unico orcamento social) */
+function precisaPerguntarAssunto(orcs, eventos) {
+  const o = orcs || [], e = eventos || [];
+  if (e.length) return true;
+  if (o.length !== 1) return o.length > 1;
+  return !!(o[0].corporativo || (o[0].perfil && o[0].perfil !== "social"));
+}
+
+/** Itens da lista, na ordem: eventos contratados, orcamentos em aberto, novo orcamento, outro assunto. */
+function itensAssunto(orcs, eventos) {
+  const itens = [];
+  (eventos || []).forEach(e => itens.push({ tipo: "evento", e }));
+  (orcs || []).forEach(o => itens.push({ tipo: "orcamento", o }));
+  itens.push({ tipo: "novo" }, { tipo: "outro" });
+  return itens;
+}
+
+function linhaItem(it, ehEmpresa) {
+  if (it.tipo === "evento") return `🎉 Meu evento contratado: ${[it.e.motivo, it.e.data_evento].filter(Boolean).join(" · ")}`;
+  if (it.tipo === "orcamento") return `📄 Orçamento de ${linhaEvento(it.o)}${it.o.criado ? " (enviado em " + it.o.criado + ")" : ""}`;
+  if (it.tipo === "novo") return ehEmpresa ? "✨ Um novo evento (outro cliente, outra data ou outro serviço)" : "✨ Um novo evento ou novo orçamento";
+  return "Outro assunto";
+}
+
+function textoEscolherAssunto(itens, nomeCliente, ehEmpresa) {
+  const nome = primeiroNome(nomeCliente);
+  return `Olá${nome ? ", *" + nome + "*" : ""}! 😊 Que bom falar com você de novo!\n\n` +
+    "Sobre o que você quer falar?\n\n" +
+    itens.map((it, i) => `*${i + 1}* - ${linhaItem(it, ehEmpresa)}`).join("\n");
+}
+
+/** Resposta da lista: indice (0..n-1) ou null. Aceita o numero ou palavras ("novo", "contratado", "outro"). */
+function escolhaItem(texto, itens) {
+  const t = semAcento(texto).trim();
+  const m = t.match(/^\*?(\d{1,2})\*?\b/);
+  if (m) { const n = Number(m[1]); return n >= 1 && n <= itens.length ? n - 1 : null; }
+  const achar = (tipo) => { const i = itens.findIndex(x => x.tipo === tipo); return i >= 0 ? i : null; };
+  if (/\b(novo|nova|outro evento|outra data|outro servico|outro cliente)\b/.test(t)) return achar("novo");
+  if (/\b(contratad|meu evento|minha festa|suporte)\b/.test(t)) return achar("evento");
+  if (/\b(orcamento|proposta)\b/.test(t) && itens.filter(x => x.tipo === "orcamento").length === 1) return achar("orcamento");
+  if (/\b(outro assunto|outra coisa)\b/.test(t)) return achar("outro");
+  return null;
 }
 
 /** Resposta ao menu de retorno: "1".."6", o titulo da opcao ou palavras-chave; null se nao entendeu. */
@@ -84,17 +125,5 @@ function opcaoRetorno(texto) {
   return null;
 }
 
-/** Escolha do evento quando ha varios: indice (0..n-1), "outro" ou null. */
-function escolhaEvento(texto, qtd) {
-  const t = semAcento(texto).trim();
-  const m = t.match(/^\*?(\d)\*?\b/);
-  if (m) {
-    const n = Number(m[1]);
-    if (n >= 1 && n <= qtd) return n - 1;
-    if (n === qtd + 1) return "outro";
-  }
-  if (/\b(outro evento|outro assunto|outra coisa)\b/.test(t)) return "outro";
-  return null;
-}
-
-module.exports = { textoRetorno, textoEscolherEvento, opcaoRetorno, escolhaEvento, linhasOpcoesRetorno, localDoOrcamento, linhaEvento, primeiroNome, OPCOES_RETORNO };
+module.exports = { textoRetorno, opcaoRetorno, linhasOpcoesRetorno, localDoOrcamento, linhaEvento, primeiroNome, OPCOES_RETORNO,
+  precisaPerguntarAssunto, itensAssunto, linhaItem, textoEscolherAssunto, escolhaItem };
