@@ -41,6 +41,7 @@ const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require(".
 
 const { sessions } = require("./utils/sessions");
 const { clientePedeValor, clienteNaoSabe, convidadosNaMensagem } = require("./utils/pedidoDeValor.js");
+const { mensagemAcolhimento, anosDeCasamentoDaResposta, contouQueTemFilhos, PERGUNTA_ANOS_BODAS } = require("./utils/acolhimentoCelebracao.js");
 const { marcaAtiva, limparMarca, qualRespostaRapida, clientePediuParar } = require("./utils/followupRespostaRapida.js");
 const { clienteQuerFechar, soFechado, numeroDoOrcamento, resumoOrcamento, rotuloBotao } = require("./utils/queroContratar.js");
 const { ehEstrangeiroConhecido, lembrarEstrangeiro, numeroDeEntrada } = require("./utils/numeroEstrangeiro.js");
@@ -816,7 +817,13 @@ function msgAbencoarEvento(celebracaoId) {
 
 async function abrirColetaDoEvento(chatId, session) {
   await sendTyping(chatId);
-  await sendText(chatId, msgAbencoarEvento(session.orcamento && session.orcamento.celebracaoId));
+  /* 14/11/2026 (Mario + ChatGPT): acolhimento PRÓPRIO de cada celebração (Bodas com os anos, casal x
+     família, corporativo profissional) no lugar da frase única. Ver utils/acolhimentoCelebracao.js. */
+  const o = session.orcamento || {};
+  await sendText(chatId, mensagemAcolhimento(o.celebracaoId, {
+    anosCasamento: o.anosCasamento, idade: o.idadeCelebrada, perfil: o.perfil,
+    temFilhos: !!(session.dadosLivres && session.dadosLivres.temFilhos),
+  }));
   await sendTyping(chatId);
   await sendText(chatId,
     "Agora preciso das informações do seu evento para montar o seu orçamento. " +
@@ -1989,13 +1996,27 @@ async function seguirDepoisDoNome(chatId, session) {
 
 /** Depois dos servicos: social ve o menu de celebracoes; empresa/agencia vao direto para o corporativo. */
 /* Celebração já sabida (dita em texto livre ou pela idade): anota, abençoa e segue para os convidados. */
-async function anotarCelebracao(chatId, session, op, idade) {
+async function anotarCelebracao(chatId, session, op, idade, anosCasamento) {
   session.orcamento.celebracao = celebracoes[op];
   session.orcamento.celebracaoId = op;
+  if (op === 6 && anosCasamento) session.orcamento.anosCasamento = anosCasamento;
+  else if (idade) session.orcamento.idadeCelebrada = idade;
   await sendTyping(chatId);
-  await sendText(chatId, `Anotei: *${celebracoes[op]}*${idade ? " (" + idade + " anos)" : ""}! 🎉`);
+  await sendText(chatId, `Anotei: *${celebracoes[op]}*${op === 6 && anosCasamento ? " (" + anosCasamento + " anos de casamento)" : idade ? " (" + idade + " anos)" : ""}! 🎉`);
+  if (await perguntarAnosBodas(chatId, session)) return;
   await abrirColetaDoEvento(chatId, session);
   await perguntarConvidados(chatId, session, "Quantos convidados?");
+}
+
+/* 💍 Bodas sem os anos: pergunta UMA vez (opcional - resposta sem número segue normal). Não pergunta se o
+   cliente já pediu o preço (nada de pergunta a mais antes do valor). true = perguntou. */
+async function perguntarAnosBodas(chatId, session) {
+  const o = session.orcamento || {};
+  if (Number(o.celebracaoId) !== 6 || o.anosCasamento || o.anosBodasPerguntado || o.preliminarEnviadoEm) return false;
+  o.anosBodasPerguntado = true;
+  session.step = "orcamento_bodas_anos";
+  await enviarPerguntaESalvar(chatId, session, PERGUNTA_ANOS_BODAS);
+  return true;
 }
 
 async function seguirParaCelebracao(chatId, session) {
@@ -2004,7 +2025,7 @@ async function seguirParaCelebracao(chatId, session) {
   if (perfil === "social" && dlC.celebracaoId && dlC.celebracaoId !== 8 && !dlC.celebracaoUsada) {
     // 🎉 13/11/2026: ela já disse o que vai celebrar - anota e segue, sem a lista de celebrações
     dlC.celebracaoUsada = true;
-    await anotarCelebracao(chatId, session, Number(dlC.celebracaoId), dlC.celebracaoIdade);
+    await anotarCelebracao(chatId, session, Number(dlC.celebracaoId), dlC.celebracaoIdade, dlC.celebracaoAnosCasamento);
     return;
   }
   if (perfil === "social" && dlC.celebracaoPerguntarIdade && !dlC.idadePerguntada) {
@@ -2136,7 +2157,9 @@ function guardarConvidadosLivres(session, texto) {
    Guarda e, na hora da pergunta, não pergunta: anota e segue (corrige no resumo final, como os outros dados). */
 function guardarCelebracaoLivre(session, texto) {
   try {
-    if (!session || ["orcamento_celebracao", "orcamento_celebracao_outros"].includes(session.step)) return;
+    // 💍 casal que CONTOU que tem filhos: o acolhimento do casamento fala da família (nunca perguntado)
+    if (session && contouQueTemFilhos(texto)) (session.dadosLivres = session.dadosLivres || {}).temFilhos = true;
+    if (!session || ["orcamento_celebracao", "orcamento_celebracao_outros", "orcamento_bodas_anos"].includes(session.step)) return;
     if (session.orcamento && session.orcamento.celebracaoId) return;
     const c = celebracaoDoTexto(texto);
     if (!c) return;
@@ -2147,6 +2170,7 @@ function guardarCelebracaoLivre(session, texto) {
     }
     dl.celebracaoId = c.id;
     dl.celebracaoIdade = c.idade || null;
+    dl.celebracaoAnosCasamento = c.anosCasamento || null;
     console.log(`📌 [dados livres] celebração ${c.id}${c.idade ? " (" + c.idade + " anos)" : ""}`);
   } catch (e) { console.warn(`⚠️ celebração livre: ${e.message}`); }
 }
@@ -4160,11 +4184,11 @@ const CABECALHO_MENU_POS = "Gostou da nossa proposta? 😊📸\nComo posso te aj
 
 function montarMenuPosOrcamento(_session) {
   return [
-    { acao: "contratar", label: "✅ Quero contratar" },
-    { acao: "duvida",    label: "💬 Tenho uma dúvida" },
-    { acao: "detalhes",  label: "📸 Quero conhecer mais detalhes dos serviços" },
-    { acao: "orcamento", label: "📋 Quero outro orçamento" },
-    { acao: "fim",       label: "❤️ Por enquanto é só, obrigado(a)" },
+    { acao: "contratar", label: "✅ *Quero contratar*" },   // 14/11 (Mario): só a 1 com emoji, em negrito
+    { acao: "duvida",    label: "Tenho uma dúvida" },
+    { acao: "detalhes",  label: "Quero conhecer mais detalhes dos serviços" },
+    { acao: "orcamento", label: "Quero outro orçamento" },
+    { acao: "fim",       label: "Por enquanto é só, obrigado(a)" },
   ].map((o, i) => ({ ...o, id: String(i + 1) }));
 }
 
@@ -7563,6 +7587,15 @@ const resumoEucaristia =
     return;
   }
 
+  // 💍 14/11/2026: resposta de "quantos anos de casamento?" - nunca trava (sem número, segue sem os anos)
+  if (session.step === "orcamento_bodas_anos") {
+    const anos = anosDeCasamentoDaResposta(corpoMensagem);
+    if (anos) session.orcamento.anosCasamento = anos;
+    await abrirColetaDoEvento(chatId, session);
+    await perguntarConvidados(chatId, session, "Quantos convidados?");
+    return;
+  }
+
   if (session.step === "orcamento_celebracao") {
     const opcao = parseInt(corpoMensagem, 10);
 
@@ -7581,6 +7614,7 @@ const resumoEucaristia =
     session.orcamento.celebracao = celebracoes[opcao];
     session.orcamento.celebracaoId = opcao;
 
+    if (await perguntarAnosBodas(chatId, session)) return;   // 💍 14/11/2026
     await abrirColetaDoEvento(chatId, session);
 
     /* 🚨 CORPORATIVO PERGUNTA O NOME DA EMPRESA (Mario, 19/08/2026).

@@ -110,7 +110,8 @@ checar("nenhuma bênção diz \"sua festa\"",
 checar("coração só vermelho", [1, 2, 3, 8].every(i => !/[💙💚💛🧡💜🖤🤍💗💖]/u.test(msgAbencoarEvento(i))), "");
 checar("a bênção sai ANTES das perguntas do evento (celebração e \"outros\")",
   // 13/11/2026: +1 caminho (celebração já dita em texto livre), também com a bênção antes das perguntas
-  (fonte.match(/await abrirColetaDoEvento\(chatId, session\);/g) || []).length === 5, "");
+  // 14/11/2026: +1 caminho (resposta dos anos das Bodas), também com o acolhimento antes das perguntas
+  (fonte.match(/await abrirColetaDoEvento\(chatId, session\);/g) || []).length === 6, "");
 checar("nomes dos serviços saem na ordem do menu", (() => {
   const t = listaNomesServicos([3, 1, 13]);
   return t.indexOf("Foto Cabine") < t.indexOf("Totem Retrô") && t.indexOf("Totem Retrô") < t.indexOf("Plataforma");

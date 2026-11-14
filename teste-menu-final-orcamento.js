@@ -69,8 +69,8 @@ async function comMenu(chat, extra) {
   console.log("\n— O MENU —");
   let s = await comMenu(A);
   const menu = paraCliente(A);
-  const esperado = ["Gostou da nossa proposta? 😊📸", "Como posso te ajudar agora?", "*1* - ✅ Quero contratar", "*2* - 💬 Tenho uma dúvida",
-    "*3* - 📸 Quero conhecer mais detalhes dos serviços", "*4* - 📋 Quero outro orçamento", "*5* - ❤️ Por enquanto é só, obrigado(a)"];
+  const esperado = ["Gostou da nossa proposta? 😊📸", "Como posso te ajudar agora?", "*1* - ✅ *Quero contratar*", "*2* - Tenho uma dúvida",
+    "*3* - Quero conhecer mais detalhes dos serviços", "*4* - Quero outro orçamento", "*5* - Por enquanto é só, obrigado(a)"];
   checar("texto do menu exatamente como pedido (cabeçalho + 5 opções, na ordem)", esperado.every(l => menu.includes(l)) && !/BOTOES/.test(menu), menu);
   checar("passo = orcamento_pos, com as 5 ações guardadas", s.step === "orcamento_pos" && s._menuPos.map(o => o.acao).join() === "contratar,duvida,detalhes,orcamento,fim", JSON.stringify(s._menuPos));
   checar("as 5 opções aparecem mesmo com tudo já detalhado e orçado (o número não muda)",
@@ -115,7 +115,7 @@ async function comMenu(chat, extra) {
   s = await comMenu(A, { orcamento: { nome: "Cliente Teste", servicosEnviados: [1], servicosDetalhados: [1] } });
   await cliente(A, "3");
   checar("3 com tudo já detalhado: avisa e mostra o menu de novo (não fica mudo)",
-    /já recebeu os detalhes de todos/.test(paraCliente(A)) && /\*5\* - ❤️ Por enquanto é só/.test(paraCliente(A)) && sessions[A].step === "orcamento_pos", paraCliente(A));
+    /já recebeu os detalhes de todos/.test(paraCliente(A)) && /\*5\* - Por enquanto é só/.test(paraCliente(A)) && sessions[A].step === "orcamento_pos", paraCliente(A));
 
   console.log("\n— 4. OUTRO ORÇAMENTO —");
   s = await comMenu(A);
@@ -147,7 +147,7 @@ async function comMenu(chat, extra) {
   checar("menu ANTIGO guardado na sessão (antes da publicação): o 2 ainda é 'mais orçamento'", sessions[A].step === "orcamento_escolher_servico", paraCliente(A));
   s = await comMenu(A);
   await cliente(A, "xyz");
-  checar("resposta que não é opção: repete o menu de 5", /Não entendi/.test(paraCliente(A)) && /\*4\* - 📋 Quero outro orçamento/.test(paraCliente(A)), paraCliente(A));
+  checar("resposta que não é opção: repete o menu de 5", /Não entendi/.test(paraCliente(A)) && /\*4\* - Quero outro orçamento/.test(paraCliente(A)), paraCliente(A));
 
   console.log("\n— PEDIDO PARA NÃO RECEBER MENSAGENS (regra de sempre) —");
   s = await comMenu(A);

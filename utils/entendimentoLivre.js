@@ -154,11 +154,21 @@ function convidadosDaResposta(texto) {
    O bot perguntou "o que vai celebrar?" mesmo assim. Ids = os do menu: 1 15 anos · 2 Casamento · 3 Infantil ·
    4 Adolescente · 5 Adulto · 6 Bodas · 7 Formatura · 8 Corporativo. Aniversario pela IDADE: ate 10 Infantil,
    11 a 17 Adolescente (15 = festa de 15 anos), 18+ Adulto. "Aniversario" sem idade = null (nao adivinha). */
+const { anosDeCasamentoDaResposta } = require("./acolhimentoCelebracao.js");
+
 function celebracaoDoTexto(texto) {
   const t = semAcento(texto);
   if (!t) return null;
-  if (/\b(casamento|casar|noivado|noivos|bodas? de casamento)\b/.test(t)) return /\bbodas\b/.test(t) ? { id: 6 } : { id: 2 };
-  if (/\bbodas\b/.test(t)) return { id: 6 };
+  /* 14/11/2026: "25 anos de casamento", "bodas de prata", "aniversario de casamento" = BODAS com os anos
+     (antes o "casamento" da frase virava Casamento, e os 25 anos se perdiam). */
+  const anosCas = t.match(/\b(\d{1,2})\s*anos\s+de\s+(casamento|casados?|uniao)\b/);
+  if (anosCas) return { id: 6, anosCasamento: Number(anosCas[1]) };
+  if (/\bbodas\b/.test(t)) {
+    const a = anosDeCasamentoDaResposta(t);
+    return a ? { id: 6, anosCasamento: a } : { id: 6 };
+  }
+  if (/\baniversario\s+de\s+casamento\b/.test(t)) return { id: 6 };
+  if (/\b(casamento|casar|noivado|noivos)\b/.test(t)) return { id: 2 };
   if (/\b(debutante|quinze anos|15 anos)\b/.test(t)) return { id: 1, idade: 15 };
   if (/\b(formatura|formando|formandos|colacao de grau)\b/.test(t)) return { id: 7 };
   if (/\b(confraternizacao|evento corporativo|evento da empresa|festa da empresa|corporativo)\b/.test(t)) return { id: 8 };
