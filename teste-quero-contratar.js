@@ -170,6 +170,31 @@ const simples = { id: 701, criado: "01/11/2026", data_evento: "20/12/2026", cele
   await cliente(F, "1");
   checar("botão 'Quero contratar' do follow-up entra na conversa de contratação", /Como você prefere pagar/.test(paraCliente(F)), paraCliente(F));
 
+  console.log("\n— ORÇAMENTO QUE JÁ VIROU EVENTO (teste do Mario, 712) —");
+  const G = "5521900007120";
+  const virou = Object.assign({}, simples, { id: 712, evento: 274, evento_link: "https://site.test/evento?id=274" });
+  const outroVirou = Object.assign({}, simples, { id: 702, evento: 273 });
+  const aberto = Object.assign({}, simples, { id: 715 });
+  Object.keys(sessions).forEach(k => delete sessions[k]);
+  plugin = { ativo: true, orcamentos: [virou, outroVirou] };
+  await cliente(G, "quero contratar");
+  checar("todos já viraram evento: NÃO lista para contratar; diz que já estão com a equipe",
+    /já estão\s+com a nossa equipe/.test(paraCliente(G)) && !/Qual você quer contratar/.test(paraCliente(G)) && /nº 712/.test(paraCliente(G)), paraCliente(G));
+  checar("operador recebe o link do evento (nada duplicado)", /já tem evento/.test(paraOperador()) && /id=274/.test(paraOperador()), paraOperador());
+  Object.keys(sessions).forEach(k => delete sessions[k]);
+  plugin = { ativo: true, orcamentos: [virou, aberto] };
+  await cliente(G, "quero contratar");
+  checar("um virou evento e outro não: vai direto para o que está ABERTO (715), sem oferecer o 712",
+    /^contratar_/.test((sessions[G] || {}).step || "") && sessions[G]._contratar && sessions[G]._contratar.orc.id === 715, (sessions[G] || {}).step + " | " + paraCliente(G));
+  Object.keys(sessions).forEach(k => delete sessions[k]);
+  plugin = { ativo: true, orcamentos: [virou, aberto, Object.assign({}, simples, { id: 716 })] };
+  await cliente(G, "quero contratar");
+  checar("vários abertos: a lista mostra só os abertos (sem o 712)", /Qual você quer contratar/.test(paraCliente(G)) && !/nº 712/.test(paraCliente(G)) && /nº 715/.test(paraCliente(G)), paraCliente(G));
+  Object.keys(sessions).forEach(k => delete sessions[k]);
+  plugin = { ativo: true, orcamentos: [virou, aberto] };
+  await cliente(G, "quero contratar o orçamento nº 712");
+  checar("citou o nº que já virou evento: avisa que já está com a equipe", /orçamento nº 712 já está/.test(paraCliente(G)), paraCliente(G));
+
   devolver(ARQ_SESSOES, sessoesAntes); devolver(ARQ_RR, rrAntes);
   console.log(`\n${falhas === 0 ? "✅ TUDO CERTO" : "❌ " + falhas + " FALHA(S)"}`);
   process.exit(falhas === 0 ? 0 : 1);

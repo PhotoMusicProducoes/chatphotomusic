@@ -1750,7 +1750,24 @@ async function tratarQueroContratar(chatId, texto, opc = {}) {
   const r = await buscarOrcamentosDoCliente(chatId, numero);
   if (!r || r.ativo !== true) return false;   // PhotoMusic Pro sem a chave: fluxo de sempre
 
-  const lista = Array.isArray(r.orcamentos) ? r.orcamentos : [];
+  const todos = Array.isArray(r.orcamentos) ? r.orcamentos : [];
+  /* 14/11/2026 (teste do Mario, orçamento 712): orçamento que JÁ VIROU EVENTO não é oferecido de novo para contratar.
+     O site marca `evento` em cada orçamento (site antigo sem a marca = todos abertos, como antes). */
+  const lista = todos.filter(o => !o.evento);
+  const jaContratados = todos.filter(o => o.evento);
+  const citadoContratado = numero ? jaContratados.find(o => o.id === numero) : null;
+  if (citadoContratado || (!lista.length && jaContratados.length)) {
+    const nums = (citadoContratado ? [citadoContratado] : jaContratados).map(o => "nº " + o.id);
+    await sendText(chatId, `Que bom! ❤️ ${nums.length > 1 ? "Os seus orçamentos " + nums.join(" e ") + " já estão" : "O seu orçamento " + nums[0] + " já está"} ` +
+      "com a nossa equipe para a contratação. ✅ O próximo passo é o formulário do contrato que te enviamos por aqui. " +
+      "Se quiser contratar outro orçamento, é só me dizer o número. 😊");
+    try {
+      const c = citadoContratado || jaContratados[0];
+      await sendText(OPERADOR_TELEFONE_ID, `🔁 *Cliente pediu de novo para contratar*\n📱 ${chatId}\nOrçamento ${nums.join(", ")}: já tem evento (nada foi duplicado).` +
+        (c.evento_link ? `\n\n📅 Conferir o evento:\n${c.evento_link}` : ""));
+    } catch (e) { console.warn(`⚠️ aviso operador (contratar de novo): ${e.message}`); }
+    return true;
+  }
   let orc = numero ? lista.find(o => o.id === numero) : null;
   if (!orc && lista.length === 1) orc = lista[0];
 
