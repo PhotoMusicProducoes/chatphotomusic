@@ -625,6 +625,56 @@ function textoDoisPeriodos(orc) {
   return orc.periodos.map((p, i) => `${i + 1}º ${p.inicio} às ${p.fim}`).join(" | ");
 }
 
+/* ---- PERÍODO DO SERVIÇO (Mario, 14/11/2026, caso Roberta / orçamento 705) ----
+   Evento de 10h (10:00 às 20:00) em que a empresa queria o serviço só por 3 ou 4 horas: o orçamento saía
+   com o evento inteiro. Agora, de 7 horas para cima, o bot pergunta "evento todo ou um período menor?" e,
+   no menor, o horário do serviço (dentro do evento). O orçamento vai com o período do SERVIÇO; o do evento
+   fica guardado e aparece no resumo do operador e na confirmação do cliente. */
+const HORAS_PERGUNTAR_PERIODO_SERVICO = 7;
+function minutosEntre(ini, fim) {
+  const a = minutosDoHorario(ini), b = minutosDoHorario(fim);
+  if (a === null || b === null) return 0;
+  return b > a ? b - a : b + 24 * 60 - a;   // vira a madrugada
+}
+/** O serviço fica dentro do evento e é menor que ele. */
+function servicoDentroDoEvento(orc, ini, fim) {
+  const ev = minutosEntre(orc.horaInicio, orc.horaFim), s = minutosEntre(ini, fim);
+  const desloc = minutosEntre(orc.horaInicio, ini) % (24 * 60);
+  if (!s || ini === fim) return false;
+  return s < ev && desloc + s <= ev;
+}
+
+async function seguirAposHorarioDoEvento(chatId, session) {
+  const o = session.orcamento;
+  if (!o.periodoServicoDecidido && minutosEntre(o.horaInicio, o.horaFim) >= HORAS_PERGUNTAR_PERIODO_SERVICO * 60) {
+    session.step = "orcamento_periodo_servico";
+    const perg = `O evento terá *${o.horas} horas* (das ${o.horaInicio} às ${o.horaFim}). Você quer o serviço durante o *evento todo* ou em *um período menor*?`;
+    await sendTyping(chatId);
+    await sendButtonList(chatId, perg, [{ id: "1", label: "O evento todo" }, { id: "2", label: "Um período menor" }]);
+    session.ultimaPerguntaNaoRespondida = perg + "\n*1* - O evento todo\n*2* - Um período menor";
+    return;
+  }
+
+  /* 🚨 DOIS HORARIOS NO MESMO DIA - SO CORPORATIVO (Mario, 13/10/2026).
+     (bloco movido para cá em 14/11/2026, sem mudança; não pergunta quando o cliente já escolheu
+     um período menor do serviço, que é o horário que ele quer)
+     Caso real: a equipe atende de manha, para, e volta a noite. Sem esta
+     pergunta o gerador cobrava as horas CORRIDAS entre o comeco da manha e
+     o fim da noite - um evento de 4h30 de trabalho virava 14h de conta, e o
+     cliente recebia um valor que nao tem como fechar.
+     📌 So no corporativo porque festa social acontece num bloco so. */
+  if (Number(o.celebracaoId) === 8 && !o.horarioEvento) {
+    session.step = "orcamento_2_periodos";
+    await sendTyping(chatId);
+    await sendButtonList(chatId, "O evento tem *dois horários no mesmo dia* (ex: manhã e noite)?",
+      [{ id: "1", label: "Sim" }, { id: "2", label: "Não" }]);
+    return;
+  }
+
+  session.step = "orcamento_bairro";
+  await perguntarBairroEvento(chatId, session);
+}
+
 function valorCampoResumo(orc, tipo) {
   switch (tipo) {
     // Mesmo helper dos resumos: em "Outros" mostra a descrição que ele digitou,
@@ -652,6 +702,7 @@ function valorCampoResumo(orc, tipo) {
                  .join(" | ");
       }
       if (temDoisPeriodos(orc)) return textoDoisPeriodos(orc);   // 14/11: os dois horários do mesmo dia
+      if (orc.horarioEvento) return `${orc.horaInicio} (serviço; evento das ${orc.horarioEvento.inicio} às ${orc.horarioEvento.fim})`;
       return orc.horaInicio || "(não informado)";
     }
     case "hora_fim": {
@@ -8156,8 +8207,7 @@ const resumoEucaristia =
       await sendTyping(chatId);
       await sendText(chatId, `⏰ Anotado: das *${intervalo.inicio}* às *${intervalo.fim}*.`);
 
-      session.step = "orcamento_bairro";
-      await perguntarBairroEvento(chatId, session);
+      await seguirAposHorarioDoEvento(chatId, session);   // 14/11/2026: mesmo caminho do término
       return;
     }
 
@@ -8213,37 +8263,71 @@ const resumoEucaristia =
     // FIX: garantir horas numéricas para os serviços
     session.orcamento.horas = Number.parseInt(session.orcamento.duracao, 10) || 2;
 
-    /* 🚨 DOIS HORARIOS NO MESMO DIA - SO CORPORATIVO (Mario, 13/10/2026).
-       Caso real: a equipe atende de manha, para, e volta a noite. Sem esta
-       pergunta o gerador cobrava as horas CORRIDAS entre o comeco da manha e
-       o fim da noite - um evento de 4h30 de trabalho virava 14h de conta, e o
-       cliente recebia um valor que nao tem como fechar.
-       📌 So no corporativo porque festa social acontece num bloco so;
-       perguntar numa festa de 15 anos e campo a mais sem motivo.
-       📌 O que a equipe faz no intervalo NAO se pergunta: o motor aplica
-       `vai_volta`, que e o que acontece, e ja soma alimentacao e
-       estacionamento (ver resolver_estacionamento no plugin). */
-    if (Number(session.orcamento.celebracaoId) === 8) {
-      /* 🚨 BOTAO, nao texto (Mario, 14/10/2026). Toda pergunta de sim/nao
-         deste fluxo usa `sendButtonList`; esta tinha nascido como texto
-         solto e obrigava o cliente a digitar. O proprio sendButtonList
-         repete o "1 - / 2 -" no corpo, entao quem nao ve o botao digita
-         como sempre. */
-      session.step = "orcamento_2_periodos";
-      await sendTyping(chatId);
-      await sendButtonList(
-        chatId,
-        "O evento tem *dois horários no mesmo dia* (ex: manhã e noite)?",
-        [
-          { id: "1", label: "Sim" },
-          { id: "2", label: "Não" }
-        ]
-      );
+    await seguirAposHorarioDoEvento(chatId, session);
+    return;
+  }
+
+  // ======================================================
+  // ORÇAMENTO — PERÍODO DO SERVIÇO (evento de 7h ou mais) - Mario, 14/11/2026
+  // ======================================================
+  if (session.step === "orcamento_periodo_servico") {
+    const n = normalizarParaBusca(corpoMensagem || "");
+    if (n === "2" || /\b(menor|menos|parte|algumas horas)\b/.test(n)) {
+      session.step = "orcamento_periodo_servico_horario";
+      await enviarPerguntaESalvar(chatId, session,
+        `De que horas a que horas você quer o serviço? O evento vai das *${session.orcamento.horaInicio}* às *${session.orcamento.horaFim}*. (ex: *14h às 18h*)`);
       return;
     }
+    if (n === "1" || /\b(todo|inteiro)\b/.test(n)) {
+      session.orcamento.periodoServicoDecidido = true;
+      await seguirAposHorarioDoEvento(chatId, session);
+      return;
+    }
+    await sendText(chatId, "*⚠ Responda* *1* para o evento todo ou *2* para um período menor.");
+    return;
+  }
 
+  if (session.step === "orcamento_periodo_servico_horario" || session.step === "orcamento_periodo_servico_fim") {
+    const o = session.orcamento;
+    if (/\b(evento todo|o tempo todo|inteiro)\b/.test(normalizarParaBusca(corpoMensagem || ""))) {   // mudou de ideia
+      o.periodoServicoDecidido = true; delete o._servicoInicio;
+      await seguirAposHorarioDoEvento(chatId, session);
+      return;
+    }
+    let ini, fim;
+    const iv = normalizarIntervaloHorario(corpoMensagem);
+    if (session.step === "orcamento_periodo_servico_fim") {
+      ini = o._servicoInicio;
+      fim = iv ? iv.fim : normalizarHorario(corpoMensagem);
+    } else if (iv) {
+      ini = iv.inicio; fim = iv.fim;
+    } else {
+      ini = normalizarHorario(corpoMensagem);
+      if (!ini) { await sendText(chatId, "*⚠ Horário inválido!* Responda com o início e o término do serviço, por exemplo *14h às 18h*."); return; }
+      o._servicoInicio = ini;
+      session.step = "orcamento_periodo_servico_fim";
+      await enviarPerguntaESalvar(chatId, session, "E que horas *termina* o serviço? (ex: *18h*)");
+      return;
+    }
+    if (!fim) { await sendText(chatId, "*⚠ Horário inválido!* Use o formato *18:00*"); return; }
+    if (!servicoDentroDoEvento(o, ini, fim)) {
+      session.step = "orcamento_periodo_servico_horario";
+      delete o._servicoInicio;
+      await sendText(chatId,
+        `*⚠ O serviço precisa ficar dentro do horário do evento* (das *${o.horaInicio}* às *${o.horaFim}*) e ser menor que ele.\n\n` +
+        "De que horas a que horas você quer o serviço? (ex: *14h às 18h*). Se for o evento todo, responda *evento todo*.");
+      return;
+    }
+    // o horário do EVENTO fica guardado; o orçamento vai com o período do SERVIÇO
+    o.horarioEvento = { inicio: o.horaInicio, fim: o.horaFim };
+    o.horaInicio = ini; o.horaFim = fim;
+    o.duracao = calcularDuracaoEvento(ini, fim);
+    o.horas = Number.parseInt(o.duracao, 10) || 2;
+    o.periodoServicoDecidido = true;
+    delete o._servicoInicio;
+    await sendTyping(chatId);
+    await sendText(chatId, `⏰ Anotado: o serviço será das *${ini}* às *${fim}* (*${o.horas} horas*), dentro do evento das ${o.horarioEvento.inicio} às ${o.horarioEvento.fim}. O orçamento vai com esse período. 😊`);
     session.step = "orcamento_bairro";
-
     await perguntarBairroEvento(chatId, session);
     return;
   }
@@ -8746,12 +8830,12 @@ const resumoEucaristia =
       }
       case "hora_ini": {
         const h = normalizarHorario(txt);
-        if (h) { orc.horaInicio = h; desfazerSegundoPeriodo(orc); ok = true; }   // 14/11: o 2º horário antigo não vale mais
+        if (h) { orc.horaInicio = h; desfazerSegundoPeriodo(orc); delete orc.horarioEvento; ok = true; }   // 14/11: o 2º horário antigo não vale mais
         break;
       }
       case "hora_fim": {
         const h = normalizarHorario(txt);
-        if (h) { orc.horaFim = h; desfazerSegundoPeriodo(orc); ok = true; }
+        if (h) { orc.horaFim = h; desfazerSegundoPeriodo(orc); delete orc.horarioEvento; ok = true; }
         break;
       }
       case "bairro": {
@@ -9007,7 +9091,8 @@ const resumoEucaristia =
 // ======================================================
 module.exports = {
   handleIncomingMessage,
-  // para teste-dois-periodos-conferencia.js (14/11/2026)
+  // para teste-dois-periodos-conferencia.js e teste-periodo-servico.js (14/11/2026)
+  servicoDentroDoEvento,
   segundoPeriodoDepoisDoPrimeiro,
   valorCampoResumo,
   // para teste-menu-final-orcamento.js (14/11/2026)
@@ -9497,6 +9582,7 @@ async function enviarResumoCliente(chatId, session) {
         if (orc.horaInicio) linhas.push(`${index++}. Horário de Início: *${orc.horaInicio}*`);
         if (orc.horaFim)   linhas.push(`${index++}. Horário de Término: *${orc.horaFim}*`);
         if (orc.horas)     linhas.push(`${index++}. Duração: *${orc.horas} horas*`);
+        if (orc.horarioEvento) linhas.push(`   🕒 Horário do EVENTO: ${orc.horarioEvento.inicio} às ${orc.horarioEvento.fim} (cliente quer o serviço só no período acima)`);
       }
     }
 
