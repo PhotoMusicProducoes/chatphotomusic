@@ -598,6 +598,33 @@ const CAMPOS_CORRIGIVEIS = [
   { id: 10, label: "E-mail",             tipo: "email"      },
 ];
 
+/* ---- DOIS HORÁRIOS NO MESMO DIA (corporativo) - 14/11/2026, orçamento 705 ---- */
+function minutosDoHorario(h) {
+  const m = String(h || "").match(/^(\d{1,2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+/** O 2º horário começa DEPOIS que o 1º termina (no mesmo dia). 1º que passa da meia-noite: só não pode começar antes do fim dele. */
+function segundoPeriodoDepoisDoPrimeiro(orc, inicio2) {
+  const ini1 = minutosDoHorario(orc.horaInicio), fim1 = minutosDoHorario(orc.horaFim), ini2 = minutosDoHorario(inicio2);
+  if (ini1 === null || fim1 === null || ini2 === null) return true;   // sem dado para conferir: não trava
+  if (fim1 <= ini1) return ini2 > fim1 && ini2 < ini1;                 // 1º vira a noite (ex.: 22:00 às 02:00)
+  return ini2 > fim1;
+}
+function ehUmHorarioSo(texto) {
+  const t = String(texto || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  return /\b(um|1)\s+horario\s+so\b|\bso\s+(um|1)\s+horario\b|\bnao\s+tem\b|^nao\b|\bhorario\s+unico\b/.test(t);
+}
+function desfazerSegundoPeriodo(orc) {
+  if (!orc) return;
+  delete orc.periodos; delete orc.horaInicio2; delete orc.horaFim2;
+}
+function temDoisPeriodos(orc) {
+  return !!(orc && Array.isArray(orc.periodos) && orc.periodos.length >= 2);
+}
+function textoDoisPeriodos(orc) {
+  return orc.periodos.map((p, i) => `${i + 1}º ${p.inicio} às ${p.fim}`).join(" | ");
+}
+
 function valorCampoResumo(orc, tipo) {
   switch (tipo) {
     // Mesmo helper dos resumos: em "Outros" mostra a descrição que ele digitou,
@@ -624,11 +651,13 @@ function valorCampoResumo(orc, tipo) {
         return dd.map((d, i) => `${i + 1}º ${d.data || ""} ${d.horaInicio || "?"} às ${d.horaFim || "?"}`)
                  .join(" | ");
       }
+      if (temDoisPeriodos(orc)) return textoDoisPeriodos(orc);   // 14/11: os dois horários do mesmo dia
       return orc.horaInicio || "(não informado)";
     }
     case "hora_fim": {
       const dd = Array.isArray(orc.diasDetalhes) ? orc.diasDetalhes : [];
       if (dd.length > 1 && dd.some(d => d && d.horaInicio)) return "(por dia, acima)";
+      if (temDoisPeriodos(orc)) return "(dois horários, acima)";
       return orc.horaFim || "(não informado)";
     }
     case "bairro":     return orc.bairro      || "(não informado)";
@@ -8245,9 +8274,25 @@ const resumoEucaristia =
   }
 
   if (session.step === "orcamento_periodo2_inicio") {
+    /* 🚨 14/11/2026 (orçamento 705): o cliente respondeu 10:00 às 20:00 para um 1º horário de 14:00 às 20:00 -
+       o 2º começava ANTES e por cima do 1º, e o PDF cobrou 16 horas com retorno e estacionamento.
+       Agora: o 2º tem de começar depois que o 1º termina; quem se confundiu pode dizer que é um horário só. */
+    if (ehUmHorarioSo(corpoMensagem)) {
+      desfazerSegundoPeriodo(session.orcamento);
+      session.step = "orcamento_bairro";
+      await sendText(chatId, `Certo, fica *um horário só*: das *${session.orcamento.horaInicio}* às *${session.orcamento.horaFim}*. 😊`);
+      await perguntarBairroEvento(chatId, session);
+      return;
+    }
     const h = normalizarHorario(corpoMensagem);
     if (!h) {
       await sendText(chatId, "*⚠ Horário inválido!* Use o formato *20:00*");
+      return;
+    }
+    if (!segundoPeriodoDepoisDoPrimeiro(session.orcamento, h)) {
+      await sendText(chatId,
+        `*⚠ O segundo horário precisa começar depois das ${session.orcamento.horaFim}*, quando termina o primeiro (das ${session.orcamento.horaInicio} às ${session.orcamento.horaFim}).\n\n` +
+        "Que horas começa o *segundo horário*? Se o evento é *um horário só*, responda *um horário só* (e, se o primeiro horário estiver errado, dá para corrigir no resumo, antes do orçamento).");
       return;
     }
     session.orcamento.horaInicio2 = h;
@@ -8263,6 +8308,10 @@ const resumoEucaristia =
       return;
     }
 
+    if (h === session.orcamento.horaInicio2) {
+      await sendText(chatId, `*⚠ O segundo horário precisa terminar depois das ${session.orcamento.horaInicio2}.* Que horas ele termina? (ex: *23:00*)`);
+      return;
+    }
     session.orcamento.horaFim2 = h;
     /* 🚨 Os DOIS periodos juntos, na ordem. Guardar so o segundo faria o
        motor perder o primeiro e cobrar um evento menor do que o real. */
@@ -8697,12 +8746,12 @@ const resumoEucaristia =
       }
       case "hora_ini": {
         const h = normalizarHorario(txt);
-        if (h) { orc.horaInicio = h; ok = true; }
+        if (h) { orc.horaInicio = h; desfazerSegundoPeriodo(orc); ok = true; }   // 14/11: o 2º horário antigo não vale mais
         break;
       }
       case "hora_fim": {
         const h = normalizarHorario(txt);
-        if (h) { orc.horaFim = h; ok = true; }
+        if (h) { orc.horaFim = h; desfazerSegundoPeriodo(orc); ok = true; }
         break;
       }
       case "bairro": {
@@ -8958,6 +9007,9 @@ const resumoEucaristia =
 // ======================================================
 module.exports = {
   handleIncomingMessage,
+  // para teste-dois-periodos-conferencia.js (14/11/2026)
+  segundoPeriodoDepoisDoPrimeiro,
+  valorCampoResumo,
   // para teste-menu-final-orcamento.js (14/11/2026)
   perguntarPosOrcamento,
   montarMenuPosOrcamento,
@@ -9439,9 +9491,13 @@ async function enviarResumoCliente(chatId, session) {
     } else {
       // 1 dia — exibição normal
       if (orc.data)      linhas.push(`${index++}. Data do Evento: *${orc.data}*`);
-      if (orc.horaInicio) linhas.push(`${index++}. Horário de Início: *${orc.horaInicio}*`);
-      if (orc.horaFim)   linhas.push(`${index++}. Horário de Término: *${orc.horaFim}*`);
-      if (orc.horas)     linhas.push(`${index++}. Duração: *${orc.horas} horas*`);
+      if (temDoisPeriodos(orc)) {   // 14/11/2026 (orçamento 705): o operador não via o 2º horário
+        linhas.push(`${index++}. Horários (2 no mesmo dia): *${textoDoisPeriodos(orc)}*`);
+      } else {
+        if (orc.horaInicio) linhas.push(`${index++}. Horário de Início: *${orc.horaInicio}*`);
+        if (orc.horaFim)   linhas.push(`${index++}. Horário de Término: *${orc.horaFim}*`);
+        if (orc.horas)     linhas.push(`${index++}. Duração: *${orc.horas} horas*`);
+      }
     }
 
     // ✅ Corrigido: usar `orc.local` (já estava correto)
