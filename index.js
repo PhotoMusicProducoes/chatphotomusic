@@ -1613,11 +1613,11 @@ async function concluirQueroContratar(chatId, orc, mudar, textoCliente) {
   } else if (auto && auto.criado && auto.precadastro) {
     await sendText(chatId, (corp ? `Perfeito${primeiro ? ", *" + primeiro + "*" : ""}! ` : `Que alegria${primeiro ? ", *" + primeiro + "*" : ""}! ❤️ `) +
       "Já preparei o seu cadastro e te enviei o link do formulário do contrato, já preenchido com os dados do orçamento: " +
-      "é só completar o que falta. 🙌");
+      "é só completar o que falta. 🙌\n\n_A data fica reservada assim que o contrato for assinado._");   // 14/11: nunca prometer reserva antes
   } else {
     await sendText(chatId, (corp ? `Perfeito${primeiro ? ", *" + primeiro + "*" : ""}! ` : `Que alegria${primeiro ? ", *" + primeiro + "*" : ""}! ❤️ `) +
       "Já avisei a nossa equipe. O próximo passo é o cadastro para o contrato: vamos te enviar o formulário por aqui, " +
-      "já preenchido com os dados do orçamento, e você completa só o que falta. 🙌");
+      "já preenchido com os dados do orçamento, e você completa só o que falta. 🙌\n\n_A data fica reservada assim que o contrato for assinado._");
   }
   if (auto && (auto.criado || auto.ja_existe)) {
     try {
