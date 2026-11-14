@@ -85,6 +85,20 @@ const CASA = { id: 700, criado: "20/11/2026", data_evento: "10/10/2027", celebra
   r = doCli();
   checar("tudo igual à proposta: mostra o total EXATO", /Total da proposta: \*R\$ 3\.394,00\*/.test(r), r);
 
+  console.log("\n— \"quero contratar\" DE NOVO na confirmação (14/11, ChatGPT) —");
+  novo(O688);
+  await cliente("quero contratar"); await cliente("1"); await cliente("Premium"); await cliente("2"); await cliente("1");
+  await cliente("quero contratar o orçamento nº 688");
+  r = doCli();
+  checar("pergunta Confirmar x Alterar, mostrando a escolha guardada (não reinicia nem vira ajuste)", /1\* - Confirmar minha escolha/.test(r) && /2\* - Alterar minha escolha/.test(r) && /Totem Retrô · Pacote \*Premium\*/.test(r) && doOp() === "", r + " | op: " + doOp());
+  await cliente("1");
+  checar("1: confirma com a escolha guardada (operador recebe o pedido, sem \"pediu ajuste\")", /CONTRATAR/.test(doOp()) && !/pediu ajuste/.test(doOp()) && /servicos=totem-retro/.test(doOp()), doOp());
+  novo(O688);
+  await cliente("quero contratar"); await cliente("1"); await cliente("Premium"); await cliente("2"); await cliente("1");
+  await cliente("bora fechar"); await cliente("2");
+  r = doCli();
+  checar("2: refaz a escolha do mesmo orçamento, do começo", /refazer a sua escolha/.test(r) && /Quais serviços você quer contratar/.test(r) && doOp() === "", r);
+
   console.log("\n— 688: os dois, mas o Som com o pacote menor —");
   novo(O688);
   await cliente("quero contratar"); await cliente("1 e 2"); await cliente("Premium"); await cliente("2 Caixas Ativas");

@@ -1557,6 +1557,25 @@ async function tratarQueroContratar(chatId, texto, opc = {}) {
     };
     if (s.step === "contratar_confirmar") {
       const n = normalizarParaBusca(t);
+      /* 14/11/2026 (ChatGPT, teste do Mario no 688): "quero contratar" DE NOVO na confirmação não reinicia
+         nem vira "quero mudar algo". Pergunta Confirmar x Alterar, guardando o que já foi escolhido. */
+      if (c._confirmarOuAlterar) {
+        c._confirmarOuAlterar = false;
+        if (t === "1" || /^(sim|confirm)/.test(n)) return concluirQueroContratar(chatId, o, false);
+        if (t === "2" || /^(alter|mudar|trocar|corrigir)/.test(n)) {
+          // refaz as escolhas do MESMO orçamento, do começo
+          s._contratar = { orc: o, opcao: "", pacote: "", horas: 0, pagto: "" };
+          await sendText(chatId, "Sem problemas! Vamos refazer a sua escolha. 😊");
+          await perguntarProximoContratar(chatId);
+          return true;
+        }
+      }
+      if (clienteQuerFechar(t) || soFechado(t)) {
+        c._confirmarOuAlterar = true;
+        await sendButtonList(chatId, `Sua escolha já está pronta:\n\n${resumoEscolhas(c)}\n\nO que você prefere?`,
+          [{ id: "1", label: "Confirmar minha escolha" }, { id: "2", label: "Alterar minha escolha" }]);
+        return true;
+      }
       if (t === "1" || /^sim\b|^esta certo|^isso\b|^confirm/.test(n)) return concluirQueroContratar(chatId, o, false);
       return concluirQueroContratar(chatId, o, true, t === "2" ? "" : t);
     }
