@@ -88,7 +88,8 @@ async function sendOptionList(chatId, pergunta, opcoes, cfg = {}) {
         buttonLabel: cfg.buttonLabel || "Ver opções",
         options: opcoes.map(o => ({
           id: String(o.id),
-          title: o.title,
+          // 14/11/2026 (Mario): opção só com `label` (ex.: "O novo orçamento será para quem?") saía com a linha EM BRANCO
+          title: o.title || o.label || String(o.id),
           ...(o.description ? { description: o.description } : {})
         }))
       }
