@@ -23,7 +23,10 @@ utils.sendFileByUrl  = async () => true;
 require("./utils/intervaloEnvio.js").esperaEntreEnvios = () => 0;
 const axios = require("axios");
 let plugin = {};
-axios.post = async () => ({ data: { v2: true, status: "negociando", id: 1, nome: "Cliente", ja_pausado: false } });
+let respAuto = { criado: false, motivo: "a criação automática está desligada" };
+const pedidosAuto = [];
+axios.post = async (u, b) => /contratacao-automatica/.test(u) ? (pedidosAuto.push(b), { data: respAuto })
+  : { data: { v2: true, status: "negociando", id: 1, nome: "Cliente", ja_pausado: false } };
 axios.get  = async (u) => ({ data: /orcamentos-do-cliente/.test(u) ? plugin : {} });
 
 const bot = require("./index.js");
@@ -98,6 +101,25 @@ const CASA = { id: 700, criado: "20/11/2026", data_evento: "10/10/2027", celebra
   await cliente("bora fechar"); await cliente("2");
   r = doCli();
   checar("2: refaz a escolha do mesmo orçamento, do começo", /refazer a sua escolha/.test(r) && /Quais serviços você quer contratar/.test(r) && doOp() === "", r);
+
+  console.log("\n— Criação AUTOMÁTICA do evento (14/11) —");
+  respAuto = { criado: true, precadastro: true, id_evento: 1500, link: "https://site/wp-admin/admin.php?page=photomusic-evento-detalhes&id=1500" };
+  novo(O688);
+  await cliente("quero contratar"); await cliente("Todos"); await cliente("1"); await cliente("1"); await cliente("2"); await cliente("1");
+  await cliente("1");
+  const pa = pedidosAuto[pedidosAuto.length - 1] || {};
+  checar("pede ao site a criação com as escolhas (orçamento, serviços, pacotes, horas, pagamento)", pa.orc === 688 && pa.servicos === "totem-retro,som-dj" && /totem-retro:Premium/.test(pa.pacotes) && pa.horas === "4" && pa.pagto === "pix_avista", JSON.stringify(pa));
+  checar("criado: cliente sabe que recebeu o link do formulário", /te enviei o link do formulário/.test(doCli()), doCli());
+  checar("criado: operador recebe \"Evento criado AUTOMATICAMENTE\", o link do evento e o aviso de que não é reserva", /Evento criado AUTOMATICAMENTE/.test(doOp()) && /photomusic-evento-detalhes&id=1500/.test(doOp()) && /Não é reserva confirmada/.test(doOp()) && !/Criar o evento já preenchido/.test(doOp()), doOp());
+  respAuto = { criado: false, motivo: "é um orçamento antigo (de 13/11/2026): confira preços e condições." };
+  novo(O688);
+  await cliente("quero contratar"); await cliente("Todos"); await cliente("1"); await cliente("1"); await cliente("2"); await cliente("1"); await cliente("1");
+  checar("não criado: operador recebe o MOTIVO e o link para criar conferindo", /Não criei o evento sozinho: é um orçamento antigo/.test(doOp()) && /Criar o evento já preenchido/.test(doOp()), doOp());
+  respAuto = { criado: false, ja_existe: true, id_evento: 1500, link: "https://site/x?id=1500", motivo: "já existe evento para esta contratação" };
+  novo(O688);
+  await cliente("quero contratar"); await cliente("Todos"); await cliente("1"); await cliente("1"); await cliente("2"); await cliente("1"); await cliente("1");
+  checar("já existe: operador avisado que NADA foi duplicado", /já tem evento/.test(doOp()) && /Nada foi duplicado/.test(doOp()), doOp());
+  respAuto = { criado: false, motivo: "a criação automática está desligada" };
 
   console.log("\n— 688: os dois, mas o Som com o pacote menor —");
   novo(O688);

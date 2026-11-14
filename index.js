@@ -1509,12 +1509,41 @@ async function concluirQueroContratar(chatId, orc, mudar, textoCliente) {
     .filter(([, v]) => v).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join("") : "";
   const link = orc ? `${PM_ADMIN_BASE}/wp-admin/admin-post.php?action=pm_evento_do_orcamento&orc=${orc.id}${q}` : "";
   const escolhas = orc && (c.opcao || c.pacote || c.horas || c.pagto || Array.isArray(c.servicos)) ? resumoEscolhas(c) : (orc ? resumoOrcamento(orc) : "");
+  /* 14/11/2026 (aprovado pelo ChatGPT/Mario): com a confirmação, o PhotoMusic Pro tenta CRIAR o evento sozinho.
+     Ele só cria se o orçamento é novo, a escolha é a da proposta e o pagamento está pronto (PIX, ou cartão
+     com link do valor em 10x); senão devolve o motivo e segue o caminho do link para o operador conferir. */
+  let auto = null;
+  if (!mudar && orc) {
+    try {
+      const resp = await axios.post(`${PM_API_BASE}/contratacao-automatica`,
+        Object.assign({ telefone: chatId, orc: orc.id }, Object.fromEntries(new URLSearchParams(q.replace(/^&/, "")))),
+        { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 20000 });
+      auto = resp.data || null;
+    } catch (e) { console.warn(`⚠️ contratacao-automatica (${chatId}): ${e.message}`); }
+  }
   if (mudar) {
     await sendText(chatId, "Claro! Me conta o que você quer mudar, que a nossa equipe ajusta com você por aqui. 😊");
+  } else if (auto && auto.criado && auto.precadastro) {
+    await sendText(chatId, (corp ? `Perfeito${primeiro ? ", *" + primeiro + "*" : ""}! ` : `Que alegria${primeiro ? ", *" + primeiro + "*" : ""}! ❤️ `) +
+      "Já preparei o seu cadastro e te enviei o link do formulário do contrato, já preenchido com os dados do orçamento: " +
+      "é só completar o que falta. 🙌");
   } else {
     await sendText(chatId, (corp ? `Perfeito${primeiro ? ", *" + primeiro + "*" : ""}! ` : `Que alegria${primeiro ? ", *" + primeiro + "*" : ""}! ❤️ `) +
       "Já avisei a nossa equipe. O próximo passo é o cadastro para o contrato: vamos te enviar o formulário por aqui, " +
       "já preenchido com os dados do orçamento, e você completa só o que falta. 🙌");
+  }
+  if (auto && (auto.criado || auto.ja_existe)) {
+    try {
+      await sendText(OPERADOR_TELEFONE_ID,
+        (auto.criado ? "✅ *Evento criado AUTOMATICAMENTE!*" : "ℹ️ *Cliente confirmou de novo uma contratação que já tem evento*") +
+        `\n\n${primeiro ? "*" + primeiro + "*\n" : ""}📱 ${chatId}\n` + (escolhas ? `\n${escolhas}\n` : "") +
+        (auto.criado ? (auto.precadastro ? "\n📨 Pré-cadastro enviado ao cliente." : "\n⚠️ O pré-cadastro NÃO saiu: envie pelo botão do evento.") +
+                       "\n_Não é reserva confirmada nem contrato assinado: confira o evento._" : "\nNada foi duplicado.") +
+        (auto.link ? `\n\n📅 Conferir o evento:\n${auto.link}` : "") +
+        "\n\nO lead foi para *Negociando* e o follow-up está pausado.");
+    } catch (e) { console.warn(`⚠️ aviso operador (contratar automático): ${e.message}`); }
+    console.log(`🤝 ${chatId} contratação do orçamento nº ${orc.id}: ${auto.criado ? "evento criado automaticamente" : "já tinha evento"}.`);
+    return true;
   }
   try {
     await sendText(OPERADOR_TELEFONE_ID,
@@ -1528,6 +1557,7 @@ async function concluirQueroContratar(chatId, orc, mudar, textoCliente) {
         ? "\n⚠️ Escolha diferente da proposta: ajuste o valor pelo PDF ao criar o evento." +
           (totalDaEscolha(c) !== null ? ` O cliente viu o total de *${brlContratar(totalDaEscolha(c))}*.` : " O cliente NÃO viu valor: confirme com ele.") + "\n"
         : "") +
+      (auto && auto.motivo && !/desligada/.test(auto.motivo) ? `\n🔎 Não criei o evento sozinho: ${auto.motivo}\n` : "") +
       (link ? `\n📅 Criar o evento já preenchido:\n${link}` : "\nNão achei orçamento deste telefone no sistema.") +
       "\n\nO lead foi para *Negociando* e o follow-up está pausado.");
   } catch (e) { console.warn(`⚠️ aviso operador (contratar): ${e.message}`); }
