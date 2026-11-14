@@ -57,6 +57,7 @@ async function ateConvidados(servico) {
   let r = "", guarda = 0;
   while (sess().step !== "orcamento_convidados" && guarda++ < 6) {
     if (sess().step === "orcamento_celebracao") r = await cliente("4");          // 4 = Aniversário Adolescente
+    else if (sess().step === "orcamento_aniv_info") r = await cliente("pular");   // 14/11/2026: pergunta opcional do aniversario
     else r = await cliente("1");
   }
   return r;

@@ -97,6 +97,7 @@ const PASSOS_QUESTIONARIO = new Set([
   // 15/08, e o passo `orcamento_empresa` repetiu o erro depois.
   "orcamento_2_periodos", "orcamento_periodo2_inicio", "orcamento_periodo2_fim",
   "orcamento_periodo_servico", "orcamento_periodo_servico_horario", "orcamento_periodo_servico_fim",   // 14/11/2026
+  "orcamento_bodas_anos", "orcamento_aniv_info", "orcamento_aniv_confirma",   // 14/11/2026: acolhimento (lead não some)
   "orcamento_bairro", "orcamento_cidade", "orcamento_salao",
   "orcamento_onde_encontrou", "orcamento_detalhes", "orcamento_detalhes_texto",
   // Etapas opcionais finais (e-mail/nascimento): o orçamento só é ENTREGUE depois
