@@ -81,7 +81,7 @@ async function cliente(texto) {
   // 13/11/2026 (Mario): Foto Cabine em CASAMENTO leva tambem o Totem Retro (servico novo), cada um enviado uma vez.
   checar("estado final: orçamento definitivo, Cabine + Totem Retrô (casamento), cada um uma vez", sess().orcamento.situacao === "definitivo" && JSON.stringify(sess().orcamento.servicosEnviados || []) === "[1,13]", JSON.stringify(sess().orcamento.servicosEnviados) + " / " + sess().orcamento.situacao);
   checar("avisa que incluiu o Totem Retrô, a novidade", todas.some(t => /incluí também o \*Totem Retrô\*/.test(t)));
-  checar("oferece 'Quero mais detalhes' para as avaliações e vídeos (sob pedido)", todas.some(t => /Quero mais detalhes/.test(t)));
+  checar("oferece 'Quero conhecer mais detalhes dos serviços' para as avaliações e vídeos (sob pedido)", todas.some(t => /Quero conhecer mais detalhes dos servi/.test(t)));
 
   // o cliente pergunta "Orçamento??" depois de receber: o bot NAO ignora nem repete a fila antiga
   await cliente("Orçamento??");

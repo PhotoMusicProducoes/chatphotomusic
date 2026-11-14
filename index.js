@@ -667,7 +667,7 @@ const PASSOS_OPCIONAIS_ORCAMENTO = new Set([
 // Passos do orçamento que NÃO são coleta (já recebeu o orçamento): ali "não
 // quero mais" significa "chega de orçamentos" e já tem tratamento próprio.
 const PASSOS_POS_ORCAMENTO = new Set([
-  "orcamento_pos", "orcamento_mais_servicos", "orcamento_escolher_detalhe"
+  "orcamento_pos", "orcamento_mais_servicos", "orcamento_escolher_detalhe", "orcamento_duvida"
 ]);
 
 function passoDeColetaDoOrcamento(session) {
@@ -4145,16 +4145,53 @@ function registrarServicoDetalhado(session, servico) {
   }
 }
 
-function montarMenuPosOrcamento(session) {
-  const opcoes = [];
-  if (servicosParaDetalhar(session).length > 0) {
-    opcoes.push({ acao: "detalhes",  label: "Quero mais detalhes" });
+/* 14/11/2026 (Mario + ChatGPT): MENU FINAL COMERCIAL. Antes eram 3 opções que mudavam conforme o
+   estado (detalhes / mais orçamento / é só) e o cliente não tinha como dizer "quero contratar" nem
+   "tenho uma dúvida" pelo número. Agora são 5 opções FIXAS, sempre no mesmo número:
+     1 contratar (fluxo de contratação, sobre o orçamento enviado; com vários, pergunta qual)
+     2 dúvida (o cliente escreve, vai para a equipe, nada do questionário é refeito)
+     3 detalhes dos serviços (o envio de sempre)
+     4 outro orçamento (os anteriores continuam guardados)
+     5 por enquanto é só (encerra com educação; NÃO marca como perdido nem bloqueia contato)
+   ⚠️ 5 opções passam do limite de 3 botões do WhatsApp: vai como texto numerado (que é o que
+   o cliente responde de qualquer jeito). Menu antigo guardado em sessão ("1 detalhes", "2 mais
+   orçamento", "3 é só") segue funcionando: a resposta é traduzida pela ação, não pela posição. */
+const CABECALHO_MENU_POS = "Gostou da nossa proposta? 😊📸\nComo posso te ajudar agora?";
+
+function montarMenuPosOrcamento(_session) {
+  return [
+    { acao: "contratar", label: "✅ Quero contratar" },
+    { acao: "duvida",    label: "💬 Tenho uma dúvida" },
+    { acao: "detalhes",  label: "📸 Quero conhecer mais detalhes dos serviços" },
+    { acao: "orcamento", label: "📋 Quero outro orçamento" },
+    { acao: "fim",       label: "❤️ Por enquanto é só, obrigado(a)" },
+  ].map((o, i) => ({ ...o, id: String(i + 1) }));
+}
+
+function textoMenuPos(opcoes, cabecalho) {
+  return `${cabecalho || CABECALHO_MENU_POS}\n\n` + opcoes.map(o => `*${o.id}* - ${o.label}`).join("\n");
+}
+
+async function enviarMenuPos(chatId, opcoes, cabecalho) {
+  await sendTyping(chatId);
+  if (opcoes.length <= 3) {   // menu antigo guardado em sessão: ainda cabe em botões
+    await sendButtonList(chatId, cabecalho || "Posso te ajudar em mais alguma coisa?", opcoes.map(o => ({ id: o.id, label: o.label })));
+    return;
   }
-  if (servicosParaOrcar(session).length > 0) {
-    opcoes.push({ acao: "orcamento", label: "Quero mais orçamento" });
-  }
-  opcoes.push({ acao: "fim", label: "Está ótimo, por enquanto é só" });
-  return opcoes.map((o, i) => ({ ...o, id: String(i + 1) }));
+  await sendText(chatId, textoMenuPos(opcoes, cabecalho));
+}
+
+/* Resposta escrita em vez do número ("tenho uma dúvida", "quero ver os detalhes", "outro orçamento",
+   "só isso, obrigada"). Devolve a AÇÃO; o número continua sendo o caminho principal. */
+function acaoMenuPosPorTexto(texto) {
+  const n = String(texto || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  if (!n || /^\d+$/.test(n)) return "";
+  if (/\bduvida|\bpergunta/.test(n)) return "duvida";
+  if (/\b(outro|novo|mais)\s+orcamento|\borcar\s+outr/.test(n)) return "orcamento";
+  if (/\bdetalhe|\bconhecer\b|\bfotos?\b|\bvideos?\b/.test(n)) return "detalhes";
+  if (/\bcontrat|\bfechar\b/.test(n) && !/\bnao\b/.test(n)) return "contratar";
+  if (/^(so isso|e so|era so|por enquanto|obrigad|valeu|nao,? obrigad|ta otimo|esta otimo|tudo certo)/.test(n)) return "fim";
+  return "";
 }
 
 /** Texto com 2+ eventos (13/11/2026, caso Raquel): termina a proposta de um e comeca a do proximo, reaproveitando o que e comum. */
@@ -4170,29 +4207,35 @@ async function iniciarProximoEvento(chatId, session) {
   await completarBriefing(chatId, session);
 }
 
-async function perguntarPosOrcamento(chatId, session) {
+async function perguntarPosOrcamento(chatId, session, cabecalho) {
   if (Array.isArray(session.eventosPendentes) && session.eventosPendentes.length) { await iniciarProximoEvento(chatId, session); return; }
   const opcoes = montarMenuPosOrcamento(session);
 
-  // Sobrou só o "por enquanto é só": não há nada a oferecer, não pergunta.
-  if (opcoes.length === 1) {
-    await sendTyping(chatId);
-    await sendText(chatId, "Qualquer dúvida é só me chamar 😊");
-    session.step = "finalizado";
-    return;
-  }
-
-  // Guarda o menu montado: a resposta ("1","2","3") é posicional, e as opções
-  // mudam conforme o estado. Sem isso, não dá para traduzir o número na ação.
+  // Guarda o menu montado: a resposta ("1".."5") é traduzida na ação por ele.
   session._menuPos = opcoes.map(o => ({ id: o.id, acao: o.acao, label: o.label }));
   session.step = "orcamento_pos";
+  await enviarMenuPos(chatId, opcoes, cabecalho);
+}
 
+/* Opção 2 (e "outro orçamento" quando ele já orçou todos os serviços): o cliente escreve e a
+   mensagem vai para a equipe. O questionário NÃO é refeito; o bot para neste número até o
+   operador responder (ou mandar "continuar", que volta ao menu final). */
+async function encaminharDuvidaPos(chatId, session, texto) {
+  const tipo = session._duvidaTipo || "duvida";
+  session._duvidaTipo = "";
+  const nome = session.nome || session.orcamento?.nome || "";
+  try {
+    await sendText(OPERADOR_TELEFONE_ID,
+      (tipo === "outro_evento" ? "📋 *Cliente quer OUTRO orçamento (outro evento)*\n" : "💬 *Cliente com DÚVIDA sobre o orçamento*\n") +
+      (nome ? `*${nome}*\n` : "") + `📱 ${chatId}\n\n_"${String(texto || "").slice(0, 500)}"_\n\n` +
+      "O bot parou neste número: *responda por aqui*. (\"continuar\" volta ao menu final.)");
+  } catch (e) { console.warn(`⚠️ aviso operador (dúvida pós-orçamento): ${e.message}`); }
   await sendTyping(chatId);
-  await sendButtonList(
-    chatId,
-    "Posso te ajudar em mais alguma coisa?",
-    opcoes.map(o => ({ id: o.id, label: o.label }))
-  );
+  await sendText(chatId, tipo === "outro_evento"
+    ? "Recebi! ❤️ Já passei para a nossa equipe, que prepara o novo orçamento e fala com você por aqui. 😊"
+    : "Recebi a sua dúvida! ❤️ Já passei para a nossa equipe, que te responde por aqui em instantes. 😊");
+  session.step = "orcamento_pos";   // o "continuar" do operador volta para o menu final
+  sessaoAguardandoOperador(chatId, true);
 }
 
 // Processa a escolha do menu pós-orçamento ("1 - detalhes", "2 - mais orçamento",
@@ -4201,11 +4244,15 @@ async function perguntarPosOrcamento(chatId, session) {
 // reativando o fluxo em vez de ficar mudo (pedido do Mario 26/07).
 async function processarOrcamentoPos(chatId, session, corpoMensagem) {
   const opcoes  = session._menuPos || montarMenuPosOrcamento(session);
-  const escolha = opcoes.find(o => o.id === String(corpoMensagem).trim());
+  let escolha = opcoes.find(o => o.id === String(corpoMensagem).trim());
+  if (!escolha) {
+    const acao = acaoMenuPosPorTexto(corpoMensagem);
+    if (acao) escolha = opcoes.find(o => o.acao === acao) || montarMenuPosOrcamento(session).find(o => o.acao === acao);
+  }
 
   if (!escolha && await reenviarOrcamentoPedido(chatId, session, corpoMensagem)) {
     session.tentativasInvalidasPos = 0;
-    await sendButtonList(chatId, "Posso te ajudar em mais alguma coisa?", opcoes.map(o => ({ id: o.id, label: o.label })));
+    await enviarMenuPos(chatId, opcoes, "Posso te ajudar em mais alguma coisa?");
     return;
   }
 
@@ -4215,21 +4262,40 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
       await autoPausarFluxo(chatId, session, "respostas inválidas no menu pós-orçamento");
       return;
     }
-    await sendTyping(chatId);
-    await sendButtonList(
-      chatId,
-      "Não entendi. Escolha uma opção:",
-      opcoes.map(o => ({ id: o.id, label: o.label }))
-    );
+    await enviarMenuPos(chatId, opcoes, "Não entendi 😅 Responda com o número da opção:");
     return;
   }
 
   session.tentativasInvalidasPos = 0;
 
   if (escolha.acao === "fim") {
+    /* Encerra com educação. NÃO marca como perdido, não pausa follow-up nem bloqueia contato:
+       só para de perguntar. Se ele voltar com um número do menu, o fluxo reabre. */
     await sendTyping(chatId);
-    await sendText(chatId, "Perfeito! Qualquer dúvida é só me chamar 😊");
+    await sendText(chatId, "Foi um prazer te atender! ❤️ Quando quiser, é só me chamar por aqui. 😊");
     session.step = "finalizado";
+    return;
+  }
+
+  if (escolha.acao === "contratar") {
+    // o mesmo fluxo do "quero contratar" escrito: acha o orçamento deste telefone (com vários, pergunta qual)
+    if (await tratarQueroContratar(chatId, "quero contratar", { forcar: true })) return;
+    // PhotoMusic Pro sem a conversão ligada (ou fora do ar): a equipe assume, como antes
+    sessaoAguardandoOperador(chatId, true);
+    avisarLeadRespondeu(chatId, "quero contratar", { semAvisoOperador: true, forcarContratar: true });
+    await sendTyping(chatId);
+    await sendText(chatId, "Que ótimo! ❤️ Já avisei a nossa equipe, que fala com você por aqui para seguir com a contratação. 🙌");
+    try {
+      await sendText(OPERADOR_TELEFONE_ID, `🟢 *Cliente quer CONTRATAR!*\n\n📱 ${chatId}\n\nEscolheu "Quero contratar" no menu final do orçamento. Assuma a conversa. 🙌`);
+    } catch (e) { console.warn(`⚠️ aviso operador (contratar pelo menu): ${e.message}`); }
+    return;
+  }
+
+  if (escolha.acao === "duvida") {
+    session.step = "orcamento_duvida";
+    session._duvidaTipo = "duvida";
+    await sendTyping(chatId);
+    await sendText(chatId, "Claro! 😊 Pode escrever a sua dúvida aqui, que eu passo para a nossa equipe te responder.");
     return;
   }
 
@@ -4240,6 +4306,12 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
       catch (e) { console.error("⚠️ avaliações (detalhes):", e.message); }
     }
     const paraDetalhar = servicosParaDetalhar(session);
+    if (!paraDetalhar.length) {   // já viu os detalhes de tudo o que orçou
+      await sendTyping(chatId);
+      await sendText(chatId, "Você já recebeu os detalhes de todos os serviços do seu orçamento. 😊");
+      await perguntarPosOrcamento(chatId, session, "Posso te ajudar em mais alguma coisa?");
+      return;
+    }
 
     /* Manda os detalhes de TODOS os serviços orçados (Mario, 06/08/2026).
        Antes, com vários, o bot perguntava "de qual serviço?" e o cliente que
@@ -4263,12 +4335,19 @@ async function processarOrcamentoPos(chatId, session, corpoMensagem) {
        ULTIMA tela, que e onde o operador olha. O "mais orcamento" ja fazia isso
        por dentro do enviarMultiplosOrcamentos; so o "mais detalhes" nao fazia. */
     await enviarResumoCliente(chatId, session);
-    await perguntarPosOrcamento(chatId, session);
+    await perguntarPosOrcamento(chatId, session, "Posso te ajudar em mais alguma coisa?");
     return;
   }
 
   if (escolha.acao === "orcamento") {
     const restantes = servicosParaOrcar(session);
+    if (!restantes.length) {   // já orçou todos os serviços: o novo orçamento é de OUTRO evento, a equipe prepara
+      session.step = "orcamento_duvida";
+      session._duvidaTipo = "outro_evento";
+      await sendTyping(chatId);
+      await sendText(chatId, "Você já recebeu orçamento de todos os nossos serviços. 😊\n\nSe o novo orçamento for para *outro evento*, me conta a *data*, o *local* e o *número de convidados*, que a nossa equipe prepara para você. Os orçamentos anteriores continuam guardados.");
+      return;
+    }
     session.step = "orcamento_escolher_servico";
     await sendTyping(chatId);
     /* 🚨 id da lista = número de EXIBIÇÃO, nunca o id interno. Com o id
@@ -6395,7 +6474,7 @@ async function handleIncomingMessage(message) {
     const sFin   = sessions[chatId];
     const optsFin = sFin._menuPos || [];
     const escFin  = optsFin.find(o => o.id === String(corpoMensagem).trim());
-    if (escFin && (escFin.acao === "detalhes" || escFin.acao === "orcamento")) {
+    if (escFin && escFin.acao !== "fim") {
       sFin.step = "orcamento_pos";
       sFin.tentativasInvalidasPos = 0;
       sFin.ultimaInteracao = Date.now();
@@ -8747,6 +8826,12 @@ const resumoEucaristia =
     return;
   }
 
+  // 14/11/2026: opção 2 do menu final ("Tenho uma dúvida") - o que ele escrever vai para a equipe
+  if (session.step === "orcamento_duvida") {
+    await encaminharDuvidaPos(chatId, session, corpoMensagem);
+    return;
+  }
+
   // ======================================================
   // ESCOLHER QUAL SERVIÇO DETALHAR
   // ======================================================
@@ -8839,6 +8924,10 @@ const resumoEucaristia =
 // ======================================================
 module.exports = {
   handleIncomingMessage,
+  // para teste-menu-final-orcamento.js (14/11/2026)
+  perguntarPosOrcamento,
+  montarMenuPosOrcamento,
+  acaoMenuPosPorTexto,
   // para teste-convidado-evento.js (Smart Fit Pavuna, 07/10/2026)
   marcarConvidadoEvento,
   ehConvidadoEvento,
