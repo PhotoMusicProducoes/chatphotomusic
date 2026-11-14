@@ -42,7 +42,7 @@ const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require(".
 const { sessions } = require("./utils/sessions");
 const { clientePedeValor, clienteNaoSabe, convidadosNaMensagem } = require("./utils/pedidoDeValor.js");
 const { marcaAtiva, limparMarca, qualRespostaRapida, clientePediuParar } = require("./utils/followupRespostaRapida.js");
-const { clienteQuerFechar, numeroDoOrcamento, resumoOrcamento, rotuloBotao } = require("./utils/queroContratar.js");
+const { clienteQuerFechar, soFechado, numeroDoOrcamento, resumoOrcamento, rotuloBotao } = require("./utils/queroContratar.js");
 const { ehEstrangeiroConhecido, lembrarEstrangeiro, numeroDeEntrada } = require("./utils/numeroEstrangeiro.js");
 const { resetSession } = require("./utils/resetSession");
 // 🤖 Camada de ENTENDIMENTO (Fase 1). Fica desligada até IA_ROTEADOR=1.
@@ -1606,7 +1606,9 @@ async function tratarQueroContratar(chatId, texto, opc = {}) {
     return true;
   }
 
-  if (!opc.forcar && !clienteQuerFechar(t)) return false;
+  // "Fechado!" sozinho = "combinado": só conta fora das perguntas do orçamento (lá pode ser só um "ok")
+  const fechadoSolto = soFechado(t) && !(s && passoDeColetaDoOrcamento(s));
+  if (!opc.forcar && !clienteQuerFechar(t) && !fechadoSolto) return false;
 
   const numero = numeroDoOrcamento(t);
   const r = await buscarOrcamentosDoCliente(chatId, numero);

@@ -62,6 +62,12 @@ const simples = { id: 701, criado: "01/11/2026", data_evento: "20/12/2026", cele
   const nao = ["não quero contratar agora", "ainda não vou fechar", "qual o valor?", "obrigada", "vou pensar", "1"];
   checar("frases de contratar (botão do PDF, follow-up, escritas) reconhecidas", sim.every(clienteQuerFechar), sim.filter(s => !clienteQuerFechar(s)));
   checar("negação e conversa comum NÃO são pedido de contratar", !nao.some(clienteQuerFechar), nao.filter(clienteQuerFechar));
+  // 13/11/2026 (Mario): "os clientes também usam fechar"
+  const fechar = ["quero fechar", "vou fechar", "vamos fechar", "vamos contratar", "queremos fechar", "queremos contratar", "bora fechar",
+    "pode fechar", "fecha pra mim", "fechamos com vocês", "vamos fechar negócio", "decidimos contratar", "quero reservar"];
+  const naoFechar = ["vou fechar o salão primeiro", "o salão fecha às 23h", "que horas vocês fecham?", "vou contratar outra empresa", "não vamos contratar"];
+  checar("\"fechar\" e \"contratar\" em todas as formas (quero/vou/vamos/queremos/bora...)", fechar.every(clienteQuerFechar), fechar.filter(s => !clienteQuerFechar(s)));
+  checar("\"fechar o salão\", \"contratar outra empresa\" e horário NÃO são pedido", !naoFechar.some(clienteQuerFechar), naoFechar.filter(clienteQuerFechar));
   checar("nº do orçamento sai da mensagem do PDF", numeroDoOrcamento(sim[0]) === 576 && numeroDoOrcamento("orçamento 612") === 612 && numeroDoOrcamento("quero contratar") === null);
 
   console.log("\n— 2. CASO REAL Nº 576 (anonimizado): do botão do PDF ao link do evento —");
@@ -108,6 +114,17 @@ const simples = { id: 701, criado: "01/11/2026", data_evento: "20/12/2026", cele
   checar("lead vai para Negociando (UMA chamada ao plugin)", posts.filter(p => /lead-cliente-respondeu/.test(p[0]) && p[1].contratar === true).length === 1, JSON.stringify(posts));
   checar("sessão fica com a equipe (não volta a fazer perguntas)", sessions[A].step === "pausado_followup");
   fs.writeFileSync(SITE + "demo-link.json", JSON.stringify({ link, conversa_operador: op }, null, 2), "utf8");
+
+  console.log("\n— \"Fechado!\" solto —");
+  plugin = { ativo: true, orcamentos: [simples] };
+  const FE = "5521900007900";
+  Object.keys(sessions).forEach(k => delete sessions[k]);
+  sessions[FE] = { step: "orcamento_convidados", menuInicialEnviado: true, orcamento: { servicosEnviados: [] }, servicosEnviados: [] };
+  await cliente(FE, "Fechado!");
+  checar("\"Fechado!\" no MEIO das perguntas do orçamento é só um \"ok\": não começa contratação", !/prefere pagar|Quais serviços|foto impressa/.test(paraCliente(FE)) && !/^contratar_/.test(sessions[FE].step || ""), paraCliente(FE));
+  sessions[FE] = { step: "finalizado", menuInicialEnviado: true, orcamento: { servicosEnviados: [] }, servicosEnviados: [] };
+  await cliente(FE, "Fechado!");
+  checar("\"Fechado!\" depois do orçamento = quer contratar", /Como você prefere pagar/.test(paraCliente(FE)), paraCliente(FE));
 
   console.log("\n— 3. OUTROS ESTADOS E CASOS —");
   plugin = { ativo: true, orcamentos: [simples] };

@@ -16,13 +16,28 @@ function clienteQuerFechar(texto) {
   const t = normalizar(texto);
   if (!t) return false;
   // negação explícita: "não quero contratar", "ainda não vou fechar", "não vou seguir"
-  if (/\bnao\b[^.!?]*\b(contrat|fechar|seguir com|aprovar|reservar)/.test(t)) return false;
+  if (/\bnao\b[^.!?]*\b(contrat|fechar|fecha|seguir com|aprovar|reservar)/.test(t)) return false;
+  // 13/11/2026 (Mario): "fechar" com OUTRA coisa não é com a gente ("vou fechar o salão primeiro",
+  // "vou contratar outra empresa")
+  if (/\bfech\w* (o |a |com o |com a |com )?(salao|buffet|espaco|local|casa de festa|igreja|cerimonial|decoracao|bolo|porta|outr[ao])\b/.test(t)) return false;
+  if (/\bcontrat\w* (com )?(outr[ao]|a concorrencia|o concorrente)\b/.test(t)) return false;
+  // quem fala (13/11/2026, Mario: "quero fechar, vou fechar, vamos fechar, vamos contratar")
+  const QUEM = "(quero|queremos|vou|vamos|bora|gostaria de|gostariamos de|desejo|podemos|pode|decidi|decidimos|resolvi|resolvemos|topo|topamos)";
   return /\bquero seguir com o orcamento\b/.test(t)                                     // botão do PDF
-      || /\b(quero|vou|vamos|gostaria de|desejo|podemos|pode)\b[^.!?]{0,30}\b(fechar|aprovar)\b/.test(t)   // "quero fechar esta proposta", "quero fechar os 2 serviços"
+      || new RegExp(`\\b${QUEM}\\b[^.!?]{0,30}\\b(fechar|aprovar)\\b`).test(t)          // "quero fechar esta proposta", "bora fechar"
       || /\b(fechar|aprovar) (esta|essa|a|o|nossa) (proposta|orcamento)\b/.test(t)
-      || /\b(quero|vou|vamos|gostaria de|desejo)\b[^.!?]{0,20}\bcontrat(ar|o)\b/.test(t)    // "quero contratar", "gostaria de contratar a cabine"
-      || /^contrat(ar|o)\b/.test(t)
-      || /\b(quero|pode|podemos|vamos) (garantir|reservar) a (minha |nossa )?data\b/.test(t);
+      || new RegExp(`\\b${QUEM}\\b[^.!?]{0,20}\\bcontrat(ar|o|amos)\\b`).test(t)         // "quero contratar", "queremos contratar"
+      || /^(contrat(ar|o)|fechar|fechamos|fechar com voces|pode fechar)\b/.test(t)
+      || /\b(fecha|fechem|fechamos) (pra|para|com) (mim|a gente|nos|voces)\b/.test(t)     // "fecha pra mim", "fechamos com vocês"
+      || /\bvamos fechar negocio\b/.test(t)
+      || /\b(quero|queremos|pode|podemos|vamos) (garantir|reservar)( a (minha |nossa )?data)?\b/.test(t);
+}
+
+/* "Fechado!", "Fechou!", "Combinado, fechado": quer dizer "combinado". Só vale como contratar quando o
+   cliente NÃO está no meio das perguntas de um orçamento (lá pode ser só um "ok"). Quem chama decide. */
+function soFechado(texto) {
+  const t = normalizar(texto).replace(/[!.]+$/, "").trim();
+  return /^((ta |esta |entao |combinado,? |ok,? )?(fechado|fechou|fechamos)( entao)?( com voces)?)$/.test(t);
 }
 
 /* Nº do orçamento citado: "orçamento nº 612", "orçamento 612", "nº612", "n. 612". */
@@ -52,4 +67,4 @@ function rotuloBotao(o) {
   return `Nº ${o.id} · ${serv}`.slice(0, 20);
 }
 
-module.exports = { clienteQuerFechar, numeroDoOrcamento, resumoOrcamento, rotuloBotao, brl };
+module.exports = { clienteQuerFechar, soFechado, numeroDoOrcamento, resumoOrcamento, rotuloBotao, brl };
