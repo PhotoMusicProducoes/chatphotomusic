@@ -102,6 +102,15 @@ const paraCliente = (chat) => enviados.filter(e => e[0].replace(/\D/g, "").endsW
   checar("envio que FALHA avisa o erro (a reserva é solta, nada marcado como enviado)", regErro && regErro[1].ok === false && /WhatsApp fora/.test(regErro[1].erro), JSON.stringify(posts));
   falharEnvio = false;
 
+  console.log("--- um ciclo por vez (proteção do número) ---");
+  leadsPlugin = { v2: true, v3: true, leads: [lead({ id: 501, telefone: "5521990005010" }), lead({ id: 502, telefone: "5521990005020" })] };
+  enviados.length = 0;
+  await Promise.all([job.executarFollowupLeads(), job.executarFollowupLeads()]);
+  const nEnv = enviados.filter(e => /BOTOES:/.test(e[1])).length;
+  checar("dois ciclos ao mesmo tempo: o segundo espera (2 envios, não 4; o intervalo entre mensagens não cai)", nEnv === 2, nEnv);
+  const fonte = fs.readFileSync(path.join(__dirname, "jobs/followupLeads.js"), "utf8");
+  checar("depois de um erro, a próxima também espera o intervalo sorteado", /erros\+\+;\s*\/\/ depois de um erro[\s\S]{0,200}esperaEntreEnvios/.test(fonte));
+
   console.log("--- \"Agora não\" ---");
   const A = "5521990007777";
   Object.keys(sessions).forEach(k => delete sessions[k]);

@@ -382,7 +382,18 @@ function montarMensagemFollowup(lead) {
 // ======================================================
 // EXECUÇÃO — busca leads devidos, envia e registra
 // ======================================================
+/* 🛡️ 15/11/2026 (Mario: "a Meta não pode derrubar nosso número"): um ciclo por vez. Com muitos envios e 30-90s entre
+   eles, um ciclo pode passar dos 30 min do agendamento; sem esta trava o próximo começaria em paralelo e o intervalo
+   real entre mensagens cairia pela metade. */
+let cicloEmAndamento = false;
+
 async function executarFollowupLeads() {
+  if (cicloEmAndamento) { console.log("⏳ Follow-up: o ciclo anterior ainda está enviando; este fica para o próximo."); return; }
+  cicloEmAndamento = true;
+  try { await executarFollowupLeadsCiclo(); } finally { cicloEmAndamento = false; }
+}
+
+async function executarFollowupLeadsCiclo() {
   console.log("\n📨 ========== FOLLOW-UP DE LEADS ==========");
   try {
     const resp = await axios.get(`${PM_API_BASE}/leads-followup`, {
@@ -455,6 +466,9 @@ async function executarFollowupLeads() {
       } catch (e) {
         console.error(`   ❌ Erro no lead #${lead.id}: ${e.message}`);
         erros++;
+        // depois de um erro, a próxima também espera o intervalo sorteado (nunca dispara em sequência)
+        idxEnvio++;
+        await new Promise(r => setTimeout(r, esperaEntreEnvios(idxEnvio)));
       }
     }
 
