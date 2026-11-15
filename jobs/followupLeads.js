@@ -22,6 +22,8 @@ const { sessions } = require("../utils/sessions");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
 // 13/11/2026: follow-up v2 (so com `v2: true` vindo do PhotoMusic Pro)
 const { montarMensagemV2, montarBotoesV2 } = require("./followupTextosV2.js");
+// 14/11/2026: follow-up V3 (so com `v3: true` vindo do PhotoMusic Pro)
+const { montarBotoesV3 } = require("./followupTextosV3.js");
 const { marcarFollowupEnviado } = require("../utils/followupRespostaRapida.js");
 
 const TIMEZONE = "America/Sao_Paulo";
@@ -390,7 +392,8 @@ async function executarFollowupLeads() {
 
     const leads = resp.data?.leads || [];
     const v2 = resp.data?.v2 === true;   // PhotoMusic Pro com pm_followup_v2_ativo = 1
-    console.log(`📋 ${leads.length} lead(s) com follow-up devido.${v2 ? " (v2)" : ""}`);
+    const v3 = resp.data?.v3 === true;   // 14/11/2026: pm_followup_v3_ativo = 1 (a janela seg-sab 10h-18h e decidida la)
+    console.log(`📋 ${leads.length} lead(s) com follow-up devido.${v3 ? " (v3)" : v2 ? " (v2)" : ""}`);
 
     let enviados = 0, erros = 0;
     let idxEnvio = 0; // p/ o intervalo anti-bloqueio entre envios do mesmo ciclo
@@ -406,6 +409,25 @@ async function executarFollowupLeads() {
           continue;
         }
         const ajudaV2 = { montarMensagemFollowup, tipoDoLead, blocoPreco, frasePrecoMenor, servicosDoLead, linhaMulti: linhaMultiDoLead };
+        if (v3) {
+          /* V3: o PhotoMusic Pro RESERVOU esta etapa antes de devolver o lead. Confirma o envio ou o erro:
+             erro solta a reserva (tenta no proximo ciclo); sem confirmacao, la conta como enviada (nunca repete). */
+          const b = montarBotoesV3(lead);
+          try {
+            await sendButtonList(lead.telefone, b.pergunta, b.opcoes);
+          } catch (eEnvio) {
+            await registrarFollowup(lead.id, tipo, lead.estagio, { ok: false, erro: String(eEnvio.message || eEnvio).slice(0, 120) }).catch(() => {});
+            throw eEnvio;
+          }
+          await registrarFollowup(lead.id, tipo, lead.estagio, { ok: true });
+          marcarFollowupEnviado(lead.telefone, { leadId: lead.id, perfil: lead.perfil, nome: lead.nome });
+          encerrarFluxoLead(lead.telefone);
+          console.log(`   ✅ Follow-up V3 ${tipo} enviado para ${lead.nome} (${lead.telefone})`);
+          enviados++;
+          idxEnvio++;
+          await new Promise(r => setTimeout(r, esperaEntreEnvios(idxEnvio)));
+          continue;
+        }
         if (v2) {
           const b = montarBotoesV2(lead, ajudaV2);   // 13/11: botões, "Quero contratar" primeiro
           await sendButtonList(lead.telefone, b.pergunta, b.opcoes);
@@ -445,11 +467,11 @@ async function executarFollowupLeads() {
   console.log("📨 ========== FIM DO FOLLOW-UP ==========\n");
 }
 
-async function registrarFollowup(id, tipo, estagio) {
-  // Envia `tipo` (plugin novo) e mantém `estagio` por compatibilidade.
+async function registrarFollowup(id, tipo, estagio, extra = {}) {
+  // Envia `tipo` (plugin novo) e mantém `estagio` por compatibilidade. V3: `ok` (enviado) ou `ok: false` + `erro`.
   await axios.post(
     `${PM_API_BASE}/leads-followup-registrar`,
-    { id, tipo, estagio },
+    { id, tipo, estagio, ...extra },
     { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 10000 }
   );
 }

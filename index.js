@@ -41,6 +41,7 @@ const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require(".
 
 const { sessions } = require("./utils/sessions");
 const { clientePedeValor, clienteNaoSabe, convidadosNaMensagem } = require("./utils/pedidoDeValor.js");
+const { PERGUNTA_LEMBRETE, BOTOES_LEMBRETE } = require("./jobs/followupTextosV3.js");
 const { mensagemAcolhimento, anosDeCasamentoDaResposta, contouQueTemFilhos, PERGUNTA_ANOS_BODAS,
   lerInfoAniversario, generoDoTexto, idadesDoTexto, PERGUNTA_ANIVERSARIO_CRIANCA, PERGUNTA_ANIVERSARIO_ADULTO } = require("./utils/acolhimentoCelebracao.js");
 const { marcaAtiva, limparMarca, qualRespostaRapida, clientePediuParar } = require("./utils/followupRespostaRapida.js");
@@ -1245,7 +1246,28 @@ function sessaoAguardandoOperador(chatId, avisado) {
   return sessions[chatId];
 }
 
+/* 🔔 V3 (14/11/2026): resposta à pergunta "Posso te enviar um lembrete perto da data do evento?" (feita UMA vez,
+   depois do "3 - Agora não"). Sim = só um lembrete perto da data; não ou silêncio = nenhuma mensagem da proposta. */
+async function tratarRespostaLembreteV3(chatId, texto) {
+  const s = sessions[chatId];
+  if (!s || !s._v3PerguntouLembrete || Date.now() - s._v3PerguntouLembrete > 3 * 86400000) return false;
+  const n = normalizarParaBusca(String(texto || ""));
+  const sim = n === "1" || /^(sim|pode|claro|quero|ok)\b/.test(n);
+  const nao = n === "2" || /^(nao|n)\b/.test(n);
+  if (!sim && !nao) return false;
+  delete s._v3PerguntouLembrete;
+  try {
+    await axios.post(`${PM_API_BASE}/lead-lembrete-resposta`, { telefone: chatId, quer: sim },
+      { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 6000 });
+  } catch (e) { console.warn(`⚠️ lead-lembrete-resposta (${chatId}): ${e.message}`); }
+  await sendText(chatId, sim
+    ? "Combinado! 😊 Te mando um lembrete perto da data. Se precisar antes, é só me chamar por aqui."
+    : "Tudo bem! Não vou mais enviar mensagens sobre esta proposta. Se precisar, é só me chamar por aqui. ❤️");
+  return true;
+}
+
 async function tratarFollowupV2(chatId, texto) {
+  if (await tratarRespostaLembreteV3(chatId, texto)) return true;   // V3
   const marca = marcaAtiva(chatId);
   const rr = marca ? qualRespostaRapida(texto) : "";
   const parar = !rr && clientePediuParar(texto);
@@ -1292,7 +1314,13 @@ async function tratarFollowupV2(chatId, texto) {
     duvida: "❓ *Cliente tem uma DÚVIDA* (resposta rápida 2)\n\nO follow-up foi pausado. Responda por aqui.",
     agora_nao: "⏸️ *Cliente respondeu \"Agora não\"* (resposta rápida 3)\n\nO follow-up foi pausado. Não é perda: decida no funil se marca como perdido ou retoma depois.",
   };
-  await sendText(chatId, respostas[rr]);
+  if (rr === "agora_nao" && data.pode_lembrete) {   // V3: pergunta UMA vez se pode lembrar perto da data
+    const s = sessions[chatId] || sessaoAguardandoOperador(chatId, true);
+    s._v3PerguntouLembrete = Date.now();
+    await sendButtonList(chatId, PERGUNTA_LEMBRETE, BOTOES_LEMBRETE);
+  } else {
+    await sendText(chatId, respostas[rr]);
+  }
   try {
     await sendText(OPERADOR_TELEFONE_ID, `${avisos[rr]}\n\n${quem}\n📱 ${chatId}`);
   } catch (e) { console.warn(`⚠️ aviso operador (resposta rápida): ${e.message}`); }
@@ -4773,6 +4801,15 @@ async function handleIncomingMessage(message) {
     message.fromMe === true ||
     (ehNumeroAutorizado(remetenteReal) && pareceComandoOperador)
   );
+
+  /* 🙋 V3 (14/11/2026): o OPERADOR escreveu ao cliente pelo próprio WhatsApp (fromMe, sem ser comando). O PhotoMusic Pro
+     marca "operador respondeu" (a dúvida deixa de esperar) e, se o cliente ficar 3 dias sem escrever, a régua retoma.
+     Com a V3 desligada o site só responde "desligado". Fire-and-forget. */
+  if (!isBot && message.fromMe === true && !pareceComandoOperador && chatId && /^\d{10,13}$/.test(String(chatId))
+      && String(chatId) !== normalizarNumero(OPERADOR_TELEFONE_ID) && message.isGroup !== true) {
+    axios.post(`${PM_API_BASE}/lead-operador-respondeu`, { telefone: chatId },
+      { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 6000 }).catch(e => console.warn(`⚠️ lead-operador-respondeu: ${e.message}`));
+  }
 
   // ignora mensagens enviadas pelo próprio bot
   if (isBot) {
