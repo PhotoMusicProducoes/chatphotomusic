@@ -92,7 +92,7 @@ function social(tipo, d) {
       const eco = linhaEconomica(d, false);
       return eco
         ? `*💡 Uma opção mais econômica*\n\n${oi} 😊 ${eco}\n\nPosso te ajudar a escolher?`
-        : `*💬 Uma ajuda para decidir*\n\n${oi} 😊 Ficou alguma dúvida sobre o serviço (*${d.servicos}*), como funciona no dia ou os horários? Me pergunte, que eu explico.`;
+        : `*💬 Uma ajuda para decidir*\n\n${oi} 😊 Ficou alguma dúvida sobre a proposta, como funciona no dia ou os horários? Me pergunte, que eu explico.`;
     }
     case "d7":
       return `*📅 Sobre a sua data*\n\n${oi} Passando para saber como está a decisão sobre ${d.a.o} *${d.celeb}*${d.dataTxt}.\n\n` +
