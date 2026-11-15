@@ -88,7 +88,7 @@ const paraCliente = (chat) => enviados.filter(e => e[0].replace(/\D/g, "").endsW
   checar("concordância: 'das *Bodas*' e 'A *Formatura* ... está'", /15 dias das \*Bodas\*/.test(bodas) && /A \*Formatura\*.* está bem perto/.test(form), bodas + " || " + form);
   checar("concordância: 'As *Bodas* ... estão bem perto'", /As \*Bodas\*.* estão bem perto/.test(T.corpoV3(lead({ tipo: "proximo", celebracao: "Bodas" }))));
   checar("D+1 mostra a FAIXA da proposta (nenhum pacote apresentado como escolhido)", /os pacotes vão de \*R\$ 1\.797,00\* a \*R\$ 2\.297,00\*/.test(todos.social[0]) && !/Pacote \*Premium\*/.test(todos.social[0]), todos.social[0]);
-  checar("D+3: a opção econômica é SUGESTÃO da proposta", /sugestão da sua proposta/.test(d3), d3);
+  checar("D+3: a opção econômica é SUGESTÃO (sem repetir 'proposta')", /uma sugestão: a proposta com o pacote/.test(d3) && !/sugestão da sua proposta/.test(d3), d3);
 
   console.log("--- envio com confirmação (sem duplicidade) ---");
   leadsPlugin = { v2: true, v3: true, leads: [lead({ tipo: "d1" })] };
