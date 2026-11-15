@@ -81,6 +81,15 @@ const paraCliente = (chat) => enviados.filter(e => e[0].replace(/\D/g, "").endsW
   checar("sem informação da agenda: não afirma disponibilidade", !/disponibilidade/.test(semAgenda) && /reservada assim que o contrato/.test(semAgenda), semAgenda);
   checar("agenda lotada: não promete a data", !/temos disponibilidade/i.test(T.corpoV3(lead({ tipo: "d7", agenda: "lotada" }))));
 
+  console.log("--- português e concordância (ajustes do ChatGPT) ---");
+  checar("sem 'resumo d proposta', 'aprovação de a proposta' nem 'cliente para ... para'",
+    !tudo.some(t => /resumo d proposta|de a proposta|para o seu cliente para/.test(t)), tudo.find(t => /resumo d proposta|de a proposta|para o seu cliente para/.test(t)));
+  const bodas = T.corpoV3(lead({ tipo: "e15", celebracao: "Bodas" })), form = T.corpoV3(lead({ tipo: "proximo", celebracao: "Formatura" }));
+  checar("concordância: 'das *Bodas*' e 'A *Formatura* ... está'", /15 dias das \*Bodas\*/.test(bodas) && /A \*Formatura\*.* está bem perto/.test(form), bodas + " || " + form);
+  checar("concordância: 'As *Bodas* ... estão bem perto'", /As \*Bodas\*.* estão bem perto/.test(T.corpoV3(lead({ tipo: "proximo", celebracao: "Bodas" }))));
+  checar("D+1 mostra a FAIXA da proposta (nenhum pacote apresentado como escolhido)", /os pacotes vão de \*R\$ 1\.797,00\* a \*R\$ 2\.297,00\*/.test(todos.social[0]) && !/Pacote \*Premium\*/.test(todos.social[0]), todos.social[0]);
+  checar("D+3: a opção econômica é SUGESTÃO da proposta", /sugestão da sua proposta/.test(d3), d3);
+
   console.log("--- envio com confirmação (sem duplicidade) ---");
   leadsPlugin = { v2: true, v3: true, leads: [lead({ tipo: "d1" })] };
   enviados.length = 0; posts.length = 0;

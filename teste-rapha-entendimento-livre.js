@@ -120,8 +120,8 @@ function novo() { Object.keys(sessions).forEach(k => delete sessions[k]); CHAT =
   checar("confirmou: 59 gravado e segue (Outros pergunta os dias)", (sess().orcamento || {}).convidados === 59 && sess().step === "orcamento_dias", sess().step + " " + JSON.stringify(sess().orcamento));
   r = await cliente("1");
   checar("1 dia: pergunta a data", sess().step === "orcamento_data", sess().step + " | " + r);
-  r = await cliente("15112026");
-  checar("'15112026' aceito como 15/11/2026", !/Data inválida/.test(r) && (sess().orcamento || {}).data === "15/11/2026", sess().step + " " + (sess().orcamento || {}).data + " | " + r);
+  r = await cliente("15112027");   // 15/11/2026: a data fixa virou hoje; o fluxo recusa evento no passado (o parser segue testado acima)
+  checar("'15112027' aceito como 15/11/2027", !/Data inválida/.test(r) && (sess().orcamento || {}).data === "15/11/2027", sess().step + " " + (sess().orcamento || {}).data + " | " + r);
 
   console.log("--- convidados: texto sem numero ---");
   novo();
