@@ -88,7 +88,7 @@ function mensagemAcolhimento(celebracaoId, info = {}) {
           "Uma fase nova, cheia de sonhos e descobertas. Que seja uma festa inesquecível, e a PhotoMusic Produções vai adorar fazer parte dela! 📸✨";
       }
       return "Que fase especial! 🎉❤️\n\n" +
-        `Parabéns antecipados${g ? " para " + g.ele : ""}${idade ? ` pelos seus *${idade} anos*` : ""}!\n\n` +
+        `Parabéns antecipados${g ? " para " + g.ele : ""}${idade ? ` pelos ${g && g.plural ? "" : "seus "}*${idade} anos*` : ""}!\n\n` +
         `Que Deus abençoe ${g ? "a vida " + g.dele : "essa nova fase"} com muita saúde, alegria e sonhos realizados!\n\n` +
         "Será uma alegria para a PhotoMusic Produções fazer parte dessa comemoração! 📸✨";
     }
@@ -121,12 +121,20 @@ function mensagemAcolhimento(celebracaoId, info = {}) {
 function pron(genero) {
   if (genero === "f") return { ele: "ela", dele: "dela" };
   if (genero === "m") return { ele: "ele", dele: "dele" };
+  // 👯 14/11/2026 (Mario: "já fizemos gêmeas, e gêmeos menino e menina")
+  if (genero === "fp") return { ele: "elas", dele: "delas", plural: true };
+  if (genero === "mp") return { ele: "eles", dele: "deles", plural: true };
+  if (genero === "misto") return { ele: "os dois", dele: "deles", plural: true };
   return null;
 }
 const PERGUNTA_ANIVERSARIO_CRIANCA = "Que alegria! 🎉❤️ Me conta um pouquinho: é o aniversário de um *menino* ou de uma *menina*? E quantos anos vai completar?\n\n_(Se preferir, é só responder *pular*.)_";
 const PERGUNTA_ANIVERSARIO_ADULTO  = "Que alegria! 🥂❤️ O aniversário é *seu* ou de *outra pessoa*?";
 
 function generoDoTexto(t) {
+  // mais de uma pessoa (gêmeos, irmãos) vem ANTES do singular
+  if (/\b(menino e (uma )?menina|menina e (um )?menino|casal de gemeos|gemeos (um )?menino e (uma )?menina|um de cada)\b/.test(t)) return "misto";
+  if (/\b(gemeas|trigemeas|duas meninas|as meninas|minhas filhas|as filhas|as netas|minhas netas)\b/.test(t)) return "fp";
+  if (/\b(gemeos|trigemeos|dois meninos|os meninos|meus filhos|os filhos|meus netos|os netos)\b/.test(t)) return "mp";
   const f = /\b(menina|filha|filhinha|neta|sobrinha|afilhada|enteada|garota|mocinha|princesa|ela|esposa|mae|irma|namorada|tia|sogra|amiga|aniversariante dela)\b/.test(t);
   const m = /\b(menino|filho|filhinho|neto|sobrinho|afilhado|enteado|garoto|mocinho|principe|ele|marido|esposo|pai|irmao|namorado|tio|sogro|amigo)\b/.test(t);
   return f && !m ? "f" : m && !f ? "m" : "";
