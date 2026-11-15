@@ -67,7 +67,7 @@ function linhaEconomica(d, corporativo) {
   const dTopo = d.descricao[topo.titulo], dLeve = d.descricao[leve.titulo];
   if (!dTopo || !dLeve || !(leve.total < topo.total)) return "";
   return (corporativo ? "Se for preciso reduzir o investimento, uma sugestão da própria proposta" : "Se preferir um valor menor, uma sugestão da sua proposta") +
-    `: o pacote *${leve.titulo}* fica em *${brl(leve.total)}* (ou *${d.nParc}x de ${brl(leve.total / d.nParc)}*). ` +
+    `: a proposta com o pacote *${leve.titulo}* fica em *${brl(leve.total)}* (ou *${d.nParc}x de ${brl(leve.total / d.nParc)}*). ` +
     `A diferença está nas fotos impressas por sessão: *${leve.titulo}*, ${dLeve.charAt(0).toLowerCase() + dLeve.slice(1)}; ` +
     `*${topo.titulo}*, ${dTopo.charAt(0).toLowerCase() + dTopo.slice(1)}.`;
 }
