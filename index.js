@@ -42,7 +42,7 @@ const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require(".
 const { sessions } = require("./utils/sessions");
 const { clientePedeValor, clienteNaoSabe, convidadosNaMensagem } = require("./utils/pedidoDeValor.js");
 const { mensagemAcolhimento, anosDeCasamentoDaResposta, contouQueTemFilhos, PERGUNTA_ANOS_BODAS,
-  lerInfoAniversario, generoDoTexto, PERGUNTA_ANIVERSARIO_CRIANCA, PERGUNTA_ANIVERSARIO_ADULTO } = require("./utils/acolhimentoCelebracao.js");
+  lerInfoAniversario, generoDoTexto, idadesDoTexto, PERGUNTA_ANIVERSARIO_CRIANCA, PERGUNTA_ANIVERSARIO_ADULTO } = require("./utils/acolhimentoCelebracao.js");
 const { marcaAtiva, limparMarca, qualRespostaRapida, clientePediuParar } = require("./utils/followupRespostaRapida.js");
 const { clienteQuerFechar, soFechado, numeroDoOrcamento, resumoOrcamento, rotuloBotao } = require("./utils/queroContratar.js");
 const { ehEstrangeiroConhecido, lembrarEstrangeiro, numeroDeEntrada } = require("./utils/numeroEstrangeiro.js");
@@ -902,7 +902,7 @@ async function abrirColetaDoEvento(chatId, session) {
      família, corporativo profissional) no lugar da frase única. Ver utils/acolhimentoCelebracao.js. */
   const o = session.orcamento || {};
   await sendText(chatId, mensagemAcolhimento(o.celebracaoId, {
-    anosCasamento: o.anosCasamento, idade: o.idadeCelebrada, perfil: o.perfil, genero: o.anivGenero, quem: o.anivQuem,
+    anosCasamento: o.anosCasamento, idade: o.idadeCelebrada, perfil: o.perfil, genero: o.anivGenero, quem: o.anivQuem, idadesTexto: o.idadesTexto,
     temFilhos: !!(session.dadosLivres && session.dadosLivres.temFilhos),
   }));
   await sendTyping(chatId);
@@ -2100,6 +2100,7 @@ async function anotarCelebracao(chatId, session, op, idade, anosCasamento) {
   const dlA = session.dadosLivres || {};
   if (dlA.anivGenero && !session.orcamento.anivGenero) session.orcamento.anivGenero = dlA.anivGenero;
   if (dlA.anivQuem && !session.orcamento.anivQuem) session.orcamento.anivQuem = dlA.anivQuem;
+  if (dlA.idadesTexto && !session.orcamento.idadesTexto) { session.orcamento.idadesTexto = dlA.idadesTexto; idade = null; }
   if (op === 6 && anosCasamento) session.orcamento.anosCasamento = anosCasamento;
   else if (idade) session.orcamento.idadeCelebrada = idade;
   await sendTyping(chatId);
@@ -2118,7 +2119,7 @@ async function perguntarInfoAniversario(chatId, session) {
   const o = session.orcamento || {};
   const id = Number(o.celebracaoId);
   if (![3, 4, 5].includes(id) || o.anivPerguntado || o.preliminarEnviadoEm) return false;
-  if (id !== 5 && o.idadeCelebrada) return false;   // a idade já veio (com ou sem menino/menina): não insiste
+  if (id !== 5 && (o.idadeCelebrada || o.idadesTexto)) return false;   // a idade já veio (com ou sem menino/menina): não insiste
   if (id === 5 && o.anivQuem) return false;
   o.anivPerguntado = true;
   session.step = "orcamento_aniv_info";
@@ -2293,6 +2294,8 @@ function guardarCelebracaoLivre(session, texto) {
     const gen = generoDoTexto(semAc);
     if (gen && !dl.anivGenero) dl.anivGenero = gen;
     if (/\bmeu (proprio )?aniversario\b/.test(semAc)) dl.anivQuem = "proprio";
+    const varias = idadesDoTexto(semAc, true);
+    if (varias) { dl.idadesTexto = varias; if (c.idade) c.idade = null; }   // nunca a mesma idade para os dois
     if (c.perguntarIdade) {   // "aniversário da minha filha" sem idade: pergunta a idade na hora da celebração
       if (!dl.celebracaoId) dl.celebracaoPerguntarIdade = c.perguntarIdade;
       return;
@@ -7724,6 +7727,7 @@ const resumoEucaristia =
     if (!info.pular) {
       if (info.genero) o.anivGenero = info.genero;
       if (info.quem) o.anivQuem = info.quem;
+      if (info.idadesTexto) o.idadesTexto = info.idadesTexto;   // irmãos: as duas idades, a celebração escolhida fica
       if (info.idade) {
         const certo = celebracaoDaIdade(info.idade);
         if (certo && certo !== id) {

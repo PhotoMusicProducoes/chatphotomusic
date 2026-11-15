@@ -165,6 +165,14 @@ const PERGUNTA = /Quantos anos de casamento vocês estarão celebrando/;
   await ateCelebracao(); await cliente("3");
   r = await cliente("dois meninos de 8");
   checar("Infantil 'dois meninos de 8': 8 aninhos + parabéns para eles", /\*8 aninhos!\*/.test(r) && /Parabéns antecipados para eles!/.test(r), r);
+  console.log("--- irmãos com idades DIFERENTES (ChatGPT: nunca a mesma idade para os dois) ---");
+  await ateCelebracao(); await cliente("4");
+  r = await cliente("meus filhos fazem 12 e 14");
+  checar("'meus filhos fazem 12 e 14': parabéns para eles pelos 12 e 14 anos, sem trocar a celebração",
+    /Parabéns antecipados para eles pelos \*12 e 14 anos\*/.test(r) && sess().orcamento.celebracaoId === 4 && !/Posso ajustar/.test(r) && /orcamento_convidados/.test(sess().step), r);
+  r = await ateCelebracao("Oi, é o aniversário dos meus filhos de 8 e 10 anos");
+  checar("informado na 1a mensagem (8 e 10 anos): não pergunta e cita as duas idades", /\*8 e 10 aninhos!\*/.test(r) && !/\*8 aninhos!\*/.test(r) && /orcamento_convidados/.test(sess().step), sess().step + " | " + r);
+  checar("'80 e 100 convidados' não vira idade", AC.idadesDoTexto("80 e 100 convidados", true) === "");
   checar("nome não define gênero (a leitura só usa o que o cliente diz)", AC.lerInfoAniversario("Mariana, 13", 4).genero === "" && AC.lerInfoAniversario("Mariana, 13", 4).idade === 13);
   const lembF = fs.readFileSync(path.join(__dirname, "jobs/lembreteOrcamento.js"), "utf8");
   checar("o lembrete conhece os passos novos (Bodas e aniversário)", ["orcamento_bodas_anos", "orcamento_aniv_info", "orcamento_aniv_confirma"].every(x => lembF.includes(`"${x}"`)));

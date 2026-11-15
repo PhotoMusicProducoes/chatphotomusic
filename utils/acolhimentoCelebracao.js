@@ -77,12 +77,20 @@ function mensagemAcolhimento(celebracaoId, info = {}) {
           "Será uma alegria para a PhotoMusic Produções fazer parte desse dia tão especial!";
     case 3: {
       const g = pron(info.genero);
+      if (info.idadesTexto) return `Que alegria! 🎈\n\n*${info.idadesTexto} aninhos!* 🥳` + (g ? `\n\nParabéns antecipados para ${g.ele}! ❤️` : "") + "\n\n" +
+        "Desejamos uma festa cheia de alegria, brincadeiras e lembranças lindas! A PhotoMusic Produções vai adorar fazer parte desse dia! 📸❤️";
       return `Que alegria! 🎈${idade ? `\n\n*${idade} ${idade === 1 ? "aninho" : "aninhos"}!* 🥳` : ""}` +
         (g ? `\n\nParabéns antecipados para ${g.ele}! ❤️` : "") + "\n\n" +
         "Desejamos uma festa cheia de alegria, brincadeiras e lembranças lindas! A PhotoMusic Produções vai adorar fazer parte desse dia! 📸❤️";
     }
     case 4: {
       const g = pron(info.genero);
+      if (info.idadesTexto) {   // irmãos com idades diferentes: as duas, nunca a mesma para os dois
+        return "Que fase especial! 🎉❤️\n\n" +
+          `Parabéns antecipados${g ? " para " + g.ele : ""} pelos *${info.idadesTexto} anos*!\n\n` +
+          `Que Deus abençoe ${g ? "a vida " + g.dele : "essa nova fase"} com muita saúde, alegria e sonhos realizados!\n\n` +
+          "Será uma alegria para a PhotoMusic Produções fazer parte dessa comemoração! 📸✨";
+      }
       if (!idade && !g) {
         return "Que demais! 🎉\n\n" +
           "Uma fase nova, cheia de sonhos e descobertas. Que seja uma festa inesquecível, e a PhotoMusic Produções vai adorar fazer parte dela! 📸✨";
@@ -140,6 +148,15 @@ function generoDoTexto(t) {
   return f && !m ? "f" : m && !f ? "m" : "";
 }
 
+/** "8 e 10 anos", "8, 10" -> "8 e 10" (só se forem idades DIFERENTES). exigeAnos: no texto livre, só com "anos". */
+function idadesDoTexto(t, exigeAnos) {
+  const m = String(t || "").match(/\b(\d{1,2})\s*(?:anos\s*)?(?:e|,|&)\s*(\d{1,2})\s*(anos|aninhos)?\b/);
+  if (!m || (exigeAnos && !m[3])) return "";
+  const a = Number(m[1]), b = Number(m[2]);
+  if (a === b || a > 120 || b > 120) return "";
+  return `${Math.min(a, b)} e ${Math.max(a, b)}`;
+}
+
 /** Lê a resposta livre. Devolve { pular, idade, genero, quem }. */
 function lerInfoAniversario(texto, celebracaoId) {
   const t = String(texto || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -148,6 +165,9 @@ function lerInfoAniversario(texto, celebracaoId) {
   out.genero = generoDoTexto(t);
   const num = t.match(/\b(\d{1,3})\b/);
   if (num && Number(num[1]) <= 120) out.idade = Number(num[1]);
+  // 14/11/2026 (ChatGPT): irmãos com idades DIFERENTES ("8 e 10 anos") - cita as duas e não escolhe uma para os dois
+  const varias = idadesDoTexto(t, false);
+  if (varias) { out.idade = 0; out.idadesTexto = varias; }
   if (Number(celebracaoId) === 5) {
     if (t === "2" || /\b(outra pessoa|outra|outro|de um|de uma|do meu|da minha|meu (marido|esposo|pai|filho|irmao|namorado|amigo|sogro|tio|neto)|minha (esposa|mae|filha|irma|namorada|amiga|sogra|tia|neta)|dele|dela)\b/.test(t)) out.quem = "outra";
     else if (t === "1" || /\b(meu|minha|eu|seu|sou eu|o meu|e meu|proprio|propria)\b/.test(t)) out.quem = "proprio";
@@ -160,4 +180,4 @@ function lerInfoAniversario(texto, celebracaoId) {
 const PERGUNTA_ANOS_BODAS = "Que alegria! ❤️🥂 Quantos anos de casamento vocês estarão celebrando? (*Digite só o número*)";
 
 module.exports = { mensagemAcolhimento, anosDeCasamentoDaResposta, contouQueTemFilhos, NOMES_BODAS, PERGUNTA_ANOS_BODAS,
-  lerInfoAniversario, generoDoTexto, PERGUNTA_ANIVERSARIO_CRIANCA, PERGUNTA_ANIVERSARIO_ADULTO };
+  lerInfoAniversario, generoDoTexto, idadesDoTexto, PERGUNTA_ANIVERSARIO_CRIANCA, PERGUNTA_ANIVERSARIO_ADULTO };
