@@ -35,7 +35,20 @@ function dados(lead) {
     ? String(lead.servicos).split(/\s*,\s*/).filter(n => !fora.includes(n)).join(", ")
     : lead.servicos) || "nossos serviços";
   const multiDia = Number(lead.dias) > 1;
+  /* 15/11/2026 (ChatGPT): os serviços citados são os do ORÇAMENTO ENVIADO (o cadastro do lead pode ter mais).
+     Até 3, pelo nome; com mais, a frase fica neutra ("a sua proposta"). Sem dado, usa o do lead. */
+  const so = Array.isArray(lead.servicos_orcamento) ? lead.servicos_orcamento.filter(Boolean) : [];
+  const lista = (arr) => arr.length <= 1 ? (arr[0] || "") : arr.slice(0, -1).join(", ") + " e " + arr[arr.length - 1];
+  const servicosOrc = so.length ? (so.length <= 3 ? lista(so) : "") : servicos;
+  let diasAte = null;
+  const m = String(lead.dataEvento || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) {
+    const ev = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    diasAte = Math.round((ev - hoje) / 86400000);
+  }
   return {
+    servicosOrc, diasAte,
     nome: String(lead.nome || "").split(" ")[0] || "",
     servicos,
     celeb: lead.celebracao || "evento",
@@ -85,14 +98,16 @@ function social(tipo, d) {
   switch (tipo) {
     case "d1":
       return `*📸 Sua proposta da PhotoMusic*\n\n${oi} ❤️ Aqui é o Rapha, da PhotoMusic Produções.\n\n` +
-        `Conseguiu ver a proposta de *${d.servicos}* para ${d.a.o} *${d.celeb}*${d.dataTxt}?\n\n` +
+        (d.servicosOrc ? `Conseguiu ver a proposta de *${d.servicosOrc}* para ${d.a.o} *${d.celeb}*${d.dataTxt}?\n\n`
+                       : `Conseguiu ver a sua proposta para ${d.a.o} *${d.celeb}*${d.dataTxt}?\n\n`) +
         (d.cols.length ? linhaPreco(d) + "\n\n" : "") +
         "Se quiser mudar o pacote, o horário ou tirar alguma dúvida, é só me responder. 😊";
     case "d3": {
       const eco = linhaEconomica(d, false);
       return eco
         ? `*💡 Uma opção mais econômica*\n\n${oi} 😊 ${eco}\n\nPosso te ajudar a escolher?`
-        : `*💬 Uma ajuda para decidir*\n\n${oi} 😊 Ficou alguma dúvida sobre a proposta, como funciona no dia ou os horários? Me pergunte, que eu explico.`;
+        : `*💬 Uma ajuda para decidir*\n\n${oi} 😊❤️ Passando para saber se ficou alguma dúvida sobre a ${d.servicosOrc ? "proposta de *" + d.servicosOrc + "*" : "sua proposta"}.\n\n` +
+          "Posso explicar como funciona durante a festa, os horários ou as opções de pacotes. Quer que eu te ajude com algum detalhe?";
     }
     case "d7":
       return `*📅 Sobre a sua data*\n\n${oi} Passando para saber como está a decisão sobre ${d.a.o} *${d.celeb}*${d.dataTxt}.\n\n` +
@@ -103,9 +118,13 @@ function social(tipo, d) {
     case "e15":
       return `*📅 Falta cerca de 15 dias*\n\n${oi} Estamos a cerca de 15 dias ${d.a.do} *${d.celeb}*${d.dataTxt}.\n\n` +
         "Esta é a última mensagem que envio sobre esta proposta, para não te incomodar. Se ainda quiser contar com a PhotoMusic, é só tocar em *Quero contratar*. ❤️";
-    case "proximo":
-      return `*📅 Seu evento está chegando*\n\n${oi} ${d.a.O} *${d.celeb}*${d.dataTxt} ${d.a.esta} bem perto.\n\n` +
-        `${linhaAgenda(d)} Se quiser contar com a PhotoMusic, toque em *Quero contratar* que a nossa equipe fala com você em seguida. ❤️`;
+    case "proximo": {
+      const disp = d.agenda === "livre" ? "Ainda temos disponibilidade para a data, e será uma alegria fazer parte dessa celebração!"
+                 : d.agenda === "ultima" ? "Temos só mais uma disponibilidade para a data, e será uma alegria fazer parte dessa celebração!"
+                 : "Será uma alegria fazer parte dessa celebração!";
+      return `*📅 Seu evento está chegando*\n\n${oi} ❤️\n\n${d.a.O} *${d.celeb}*${d.dataTxt} ${d.a.esta} chegando! 🎉\n\n${disp}\n\n` +
+        "Se quiser seguir com a PhotoMusic, posso ajudar você a concluir a contratação de forma prática. A data fica reservada com a assinatura do contrato.";
+    }
     case "lembrete":
     default:
       return `*🔔 O lembrete que você pediu*\n\n${oi} Como combinamos, passando perto da data ${d.a.do} *${d.celeb}*${d.dataTxt}.\n\n` +
@@ -156,7 +175,10 @@ function corporativo(tipo, d, agencia) {
 function corpoV3(lead) {
   const d = dados(lead);
   const perfil = lead.perfil === "empresa" || lead.perfil === "agencia" ? lead.perfil : "social";
-  const tipo = lead.tipo || "d1";
+  let tipo = lead.tipo || "d1";
+  /* 15/11/2026 (ChatGPT, caso de evento a 5 dias): D+1/D+3/D+7 que caem a 10 dias ou menos do evento reconhecem que
+     ele está chegando (mesmo texto da mensagem de evento próximo), sem pressão. */
+  if (["d1", "d3", "d7"].includes(tipo) && d.diasAte !== null && d.diasAte >= 2 && d.diasAte <= 10) tipo = "proximo";
   return perfil === "social" ? social(tipo, d) : corporativo(tipo, d, perfil === "agencia");
 }
 

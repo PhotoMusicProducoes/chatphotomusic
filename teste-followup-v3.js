@@ -29,7 +29,8 @@ let respostaPlugin = {};
 let leadsPlugin = { leads: [] };
 const posts = [];
 axios.post = async (url, body) => { posts.push([url, body]); return { data: /lead-cliente-respondeu/.test(url) ? respostaPlugin : {} }; };
-axios.get  = async (url) => ({ data: /leads-followup/.test(url) ? leadsPlugin : {} });
+let orcPlugin = { ativo: true, orcamentos: [] };
+axios.get  = async (url) => ({ data: /leads-followup/.test(url) ? leadsPlugin : /orcamentos-do-cliente/.test(url) ? orcPlugin : {} });
 
 const rr  = require("./utils/followupRespostaRapida.js");
 const job = require("./jobs/followupLeads.js");
@@ -85,8 +86,8 @@ const paraCliente = (chat) => enviados.filter(e => e[0].replace(/\D/g, "").endsW
   checar("sem 'resumo d proposta', 'aprovação de a proposta' nem 'cliente para ... para'",
     !tudo.some(t => /resumo d proposta|de a proposta|para o seu cliente para/.test(t)), tudo.find(t => /resumo d proposta|de a proposta|para o seu cliente para/.test(t)));
   const bodas = T.corpoV3(lead({ tipo: "e15", celebracao: "Bodas" })), form = T.corpoV3(lead({ tipo: "proximo", celebracao: "Formatura" }));
-  checar("concordância: 'das *Bodas*' e 'A *Formatura* ... está'", /15 dias das \*Bodas\*/.test(bodas) && /A \*Formatura\*.* está bem perto/.test(form), bodas + " || " + form);
-  checar("concordância: 'As *Bodas* ... estão bem perto'", /As \*Bodas\*.* estão bem perto/.test(T.corpoV3(lead({ tipo: "proximo", celebracao: "Bodas" }))));
+  checar("concordância: 'das *Bodas*' e 'A *Formatura* ... está'", /15 dias das \*Bodas\*/.test(bodas) && /A \*Formatura\*.* está chegando/.test(form), bodas + " || " + form);
+  checar("concordância: 'As *Bodas* ... estão chegando'", /As \*Bodas\*.* estão chegando/.test(T.corpoV3(lead({ tipo: "proximo", celebracao: "Bodas" }))));
   checar("D+1 mostra a FAIXA da proposta (nenhum pacote apresentado como escolhido)", /os pacotes vão de \*R\$ 1\.797,00\* a \*R\$ 2\.297,00\*/.test(todos.social[0]) && !/Pacote \*Premium\*/.test(todos.social[0]), todos.social[0]);
   checar("D+3: a opção econômica é SUGESTÃO (sem repetir 'proposta')", /uma sugestão: a proposta com o pacote/.test(d3) && !/sugestão da sua proposta/.test(d3), d3);
 
@@ -101,6 +102,30 @@ const paraCliente = (chat) => enviados.filter(e => e[0].replace(/\D/g, "").endsW
   const regErro = posts.find(p => /leads-followup-registrar/.test(p[0]));
   checar("envio que FALHA avisa o erro (a reserva é solta, nada marcado como enviado)", regErro && regErro[1].ok === false && /WhatsApp fora/.test(regErro[1].erro), JSON.stringify(posts));
   falharEnvio = false;
+
+  console.log("--- ajustes da simulação de 15/11 (ChatGPT) ---");
+  const daqui = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return String(x.getDate()).padStart(2, "0") + "/" + String(x.getMonth() + 1).padStart(2, "0") + "/" + x.getFullYear(); };
+  const leandra = T.corpoV3(lead({ tipo: "d7", dataEvento: daqui(5), agenda: "livre" }));
+  checar("D+7 a 5 dias do evento: reconhece que o evento está chegando, sem pressão, e diz que a reserva é com o contrato",
+    /Seu evento está chegando/.test(leandra) && /está chegando! 🎉/.test(leandra) && /Ainda temos disponibilidade/.test(leandra) && /reservada com a assinatura do contrato/.test(leandra) && !/decisão/.test(leandra), leandra);
+  checar("D+7 com evento distante: texto normal", /Sobre a sua data/.test(T.corpoV3(lead({ tipo: "d7", dataEvento: daqui(40) }))));
+  const leo = T.corpoV3(lead({ tipo: "d3", precos: null, servicos: "Foto Cabine, Plataforma 360, Som", servicos_orcamento: ["Foto Cabine", "Plataforma 360°"] }));
+  checar("D+3 sem valores cita os serviços DO ORÇAMENTO ENVIADO (não os do cadastro)", /proposta de \*Foto Cabine e Plataforma 360°\*/.test(leo) && !/Som/.test(leo), leo);
+  const lei = T.corpoV3(lead({ tipo: "d3", precos: null, servicos_orcamento: ["Plataforma 360°", "Foto Paparazzi Digital", "Som Completo com DJ", "Foto Cabine"] }));
+  checar("mais de 3 serviços no orçamento: frase neutra ('sua proposta')", /dúvida sobre a sua proposta/.test(lei), lei);
+  checar("D+1 usa os serviços do orçamento enviado", /proposta de \*Foto Cabine e Plataforma 360°\*/.test(T.corpoV3(lead({ tipo: "d1", servicos_orcamento: ["Foto Cabine", "Plataforma 360°"] }))));
+  // Juliana: "Quero contratar" depois da sugestão do Gold NÃO presume o Gold, pergunta o pacote
+  const J = "5521990003410";
+  Object.keys(sessions).forEach(k => delete sessions[k]);
+  rr.marcarFollowupEnviado(J, { leadId: 341, perfil: "empresa", nome: "Juliana" });
+  orcPlugin = { ativo: true, orcamentos: [{ id: 604, criado: "12/11/2026", data_evento: "04/12/2026", celebracao: "Evento Corporativo", empresa: "Empresa", total: 2497,
+    itens: [{ servico: "Totem Fotográfico", slug: "totem", pacote: "Pacote Premium", horas: 6, valor: 2397 }], pacote_definido: true,
+    opcoes: [], pacotes: ["Premium", "Tirinha", "Gold"], pacotes_servico: { totem: ["Premium", "Tirinha", "Gold"] }, duracoes: [], horas_proposta: 6,
+    pagamentos: { pix_avista: "PIX à vista", cartao: "Cartão de crédito (até 10x)" } }] };
+  respostaPlugin = { v2: true, v3: true, status: "negociando", id: 341, nome: "Juliana" };
+  await cliente(J, "1");
+  const rJ = paraCliente(J);
+  checar("'Quero contratar' depois da sugestão do Gold: PERGUNTA o pacote (não presume o Gold)", /Premium/.test(rJ) && /Gold/.test(rJ) && /^contratar_/.test((sessions[J] || {}).step || "") && !(sessions[J]._contratar || {}).pacote, (sessions[J] || {}).step + " | " + rJ);
 
   console.log("--- um ciclo por vez (proteção do número) ---");
   leadsPlugin = { v2: true, v3: true, leads: [lead({ id: 501, telefone: "5521990005010" }), lead({ id: 502, telefone: "5521990005020" })] };
