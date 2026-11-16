@@ -10,6 +10,8 @@ const { inicializarEnvioAgendado } = require("./jobs/envioAgendado");
 const { inicializarAvisosGaleria } = require("./jobs/avisosGaleria");
 // 🚨 Este estava FORA da lista e por isso nunca rodou. Ver jobs/lembreteTarefas.js.
 const { inicializarLembreteTarefas } = require("./jobs/lembreteTarefas");
+// 📤 16/11/2026: relógio do envio programado da reativação de empresas (quem manda é o PhotoMusic Pro)
+const { inicializarReativacaoTick } = require("./jobs/reativacaoTick");
 const { inicializarPausaEspecial } = require("./utils/index.js");
 const { extrairRespostaDeClique, extrairPedidoDeCatalogo } = require("./utils/webhookPayload.js");
 // Comando do operador nao pode ficar preso atras do envio de um cliente.
@@ -85,6 +87,7 @@ inicializarLembreteOrcamento();
 inicializarEnvioAgendado();
 inicializarAvisosGaleria();
 inicializarLembreteTarefas();
+inicializarReativacaoTick();
 
 // ================= FILA SEQUENCIAL POR USUÁRIO =================
 // Garante que duas mensagens do mesmo número nunca sejam processadas
