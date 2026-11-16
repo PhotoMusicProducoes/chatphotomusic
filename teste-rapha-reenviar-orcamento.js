@@ -64,6 +64,15 @@ async function msg(de, t) { enviados.length = 0; await bot.handleIncomingMessage
   await msg(CLI, "e o totem retrô?");
   checar("não reenvia nada que não foi orçado (segue o comportamento de sempre)", !/ARQUIVO/.test(doCliente()), doCliente());
 
+  console.log("\n— Orçamento ÚNICO de 3 serviços (caso 733, 16/11): a mensagem lista todos, não só o perguntado —");
+  const LINK3 = "https://photomusic.com.br/wp-content/uploads/orcamentos/orcamento-733-TESTE.pdf";
+  sessions[CLI].orcamento.linksOrcamento = { 1: LINK3, 13: LINK3, 2: LINK3 };
+  sessions[CLI].step = "orcamento_pos";
+  await msg(CLI, "e o totem retrô?");
+  const r3 = doCliente();
+  checar("reenvia o PDF único uma vez só", r3.includes(LINK3) && (r3.match(/ARQUIVO/g) || []).length === 1, r3);
+  checar("a mensagem cita os 3 serviços e não diz 'orçamento da Totem Retrô'", /Foto Cabine/.test(r3) && /Totem Retrô/.test(r3) && /Totem Fotográfico/.test(r3) && !/orçamento da Totem Retrô/.test(r3), r3);
+
   devolver();
   console.log(`\n${falhas === 0 ? "✅ TUDO CERTO" : "❌ " + falhas + " FALHA(S)"}`);
   process.exit(falhas === 0 ? 0 : 1);

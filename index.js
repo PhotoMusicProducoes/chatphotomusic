@@ -4631,11 +4631,22 @@ async function reenviarOrcamentoDoServico(chatId, session, servico) {
   session._pdfsEnviadosNoLote?.add(link);
 
   const nome = SERVICOS_NOMES[servico] || "serviço";
+  /* 16/11/2026 (Mario, orçamento 733): o PDF é UM só para vários serviços (Cabine, Retrô e Totem), mas a
+     mensagem dizia "orçamento da Totem Retrô" e parecia que só aquele serviço tinha sido enviado. Quando o
+     mesmo link cobre mais de um serviço, a mensagem lista todos. */
+  const linksTodos = session.orcamento?.linksOrcamento || {};
+  const nomesDoLink = Object.keys(linksTodos)
+    .filter(id => linksTodos[id] === link)
+    .map(id => SERVICOS_NOMES[id])
+    .filter(Boolean);
+  const rotuloOrcamento = nomesDoLink.length > 1
+    ? `orçamento com ${nomesDoLink.slice(0, -1).join(", ")} e ${nomesDoLink[nomesDoLink.length - 1]}`
+    : `orçamento da ${nome}`;
   try {
     await sendTyping(chatId);
     await sendText(
       chatId,
-      `💰 E aqui está de novo o *orçamento da ${nome}*, para você não precisar voltar na conversa 😊`
+      `💰 E aqui está de novo o *${rotuloOrcamento}*, para você não precisar voltar na conversa 😊`
     );
     await enviarPdfComLink(
       chatId,
