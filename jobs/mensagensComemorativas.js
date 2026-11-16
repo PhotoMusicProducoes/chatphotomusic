@@ -8,6 +8,9 @@ const { sendText } = require("../utils/index.js");
    fica marcado, e a resposta dele NÃO entra no funil de orçamento.
    Ver utils/carinho.js. */
 const { marcarComemorativa } = require("../utils/carinho.js");
+/* 🔐 A lista de contatos tem nome, telefone e aniversario: o PhotoMusic Pro
+   passou a exigir a chave nessa leitura (16/11/2026, protecao de dados). */
+const { PM_API_KEY } = require("../utils/config");
 
 // ================= NORMALIZAÇÃO DE NÚMEROS (VERSÃO COMPLETA DO CHATBOT) =================
 function normalizarNumero(numero) {
@@ -441,7 +444,10 @@ async function executarEnvioComemoracoes() {
     let registrosEndpoint = [];
     try {
       console.log(`📥 Buscando endpoint: ${URL_ENDPOINT}`);
-      const respEndpoint = await axios.get(URL_ENDPOINT, { timeout: 8000 });
+      const respEndpoint = await axios.get(URL_ENDPOINT, {
+        timeout: 8000,
+        headers: { "X-PM-Api-Key": PM_API_KEY || "" },
+      });
       if (Array.isArray(respEndpoint.data)) {
         registrosEndpoint = respEndpoint.data;
         console.log(`✅ Endpoint: ${registrosEndpoint.length} registro(s)`);

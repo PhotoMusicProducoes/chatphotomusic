@@ -7,6 +7,11 @@ const axios = require("axios");
 const { PM_API_BASE, PM_API_KEY } = require("./config");
 const { ehEstrangeiroConhecido, lembrarEstrangeiro } = require("./numeroEstrangeiro");
 
+/* 🔐 16/11/2026 (protecao de dados): o arquivo tem nome e telefone e estava
+   aberto ao publico. Agora a leitura passa pelo PhotoMusic Pro, COM a chave.
+   O endereco antigo fica so como reserva enquanto o PhotoMusic Pro novo nao
+   sobe; depois ele passa a responder "proibido" e a reserva nunca e usada. */
+const URL_PAUSA_ESPECIAL_API = `${PM_API_BASE || "https://photomusic.com.br/wp-json/photomusic/v1"}/pausa-especial/arquivo`;
 const URL_PAUSA_ESPECIAL = "https://photomusic.com.br/wp-content/dados/pausaEspecial.json";
 
 // Persiste sessoesRetomadas no volume do Fly.io (sobrevive a restarts e deploys)
@@ -106,9 +111,28 @@ function normalizarNumero(numero) {
 }
 
 // ================= CARREGAR JSON =================
+async function buscarArquivoPausa() {
+  // 1º: rota do PhotoMusic Pro, com a chave
+  if (PM_API_KEY) {
+    try {
+      return await axios.get(URL_PAUSA_ESPECIAL_API, {
+        headers: { "X-PM-API-Key": PM_API_KEY },
+        timeout: 5000,
+      });
+    } catch (erro) {
+      const st = erro.response && erro.response.status;
+      // 404 = PhotoMusic Pro ainda sem a rota nova: cai na reserva.
+      // Qualquer outro erro (rede, 401, 500) sobe e mantém a lista em memória.
+      if (st !== 404) throw erro;
+    }
+  }
+  // Reserva: endereço antigo (deixa de responder quando o arquivo for fechado)
+  return axios.get(URL_PAUSA_ESPECIAL, { timeout: 5000 });
+}
+
 async function carregarPausadosEspeciais() {
   try {
-    const resposta = await axios.get(URL_PAUSA_ESPECIAL, { timeout: 5000 });
+    const resposta = await buscarArquivoPausa();
     pausadosEspeciais = Array.isArray(resposta.data) ? resposta.data : [];
     console.log(`✅ ${pausadosEspeciais.length} pausados carregados do JSON`);
     return pausadosEspeciais;
