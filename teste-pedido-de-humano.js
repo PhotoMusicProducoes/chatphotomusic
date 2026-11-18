@@ -59,12 +59,12 @@ const paraOperador = () => enviados.filter(e => e[0].replace(/\D/g, "").endsWith
   let r = paraCliente(A);
   checar("NÃO diz 'Opção inválida'", !/inválida/i.test(r), r);
   checar("diz que alguém vai falar", /alguém vai falar com você/.test(r), r);
-  checar("pede nome, celebração, convidados, data e horário (nada foi informado)", /nome/.test(r) && /celebrar/.test(r) && /convidados/.test(r) && /data do evento/.test(r) && /horário de início e término/.test(r), r);
-  checar("usa o cabeçalho pedido pelo Mario", /Para agilizar seu atendimento, por gentileza responda/.test(r), r);
+  checar("pede os 7 itens (nada foi informado)", /bairro\/cidade/.test(r) && /Como nos encontrou/.test(r) && /nome/.test(r) && /celebrar/.test(r) && /convidados/.test(r) && /data do evento/.test(r) && /horário de início e término/.test(r), r);
+  checar("usa o cabeçalho pedido pelo Mario", /Para enviar o orçamento personalizado do seu evento, por gentileza responda/.test(r), r);
   checar("avisa o operador com o número e a frase", /pediu para falar com uma pessoa/.test(paraOperador()) && /Falsr com humano/.test(paraOperador()), paraOperador());
   checar("bot pausado neste número", sessions[A].step === "pausado_followup", sessions[A].step);
   await cliente(A, "Falar com atendente");
-  checar("pedir de novo não gera 'Opção inválida' nem repete a lista", !/inválida/i.test(paraCliente(A)) && !/Para agilizar/.test(paraCliente(A)), paraCliente(A));
+  checar("pedir de novo não gera 'Opção inválida' nem repete a lista", !/inválida/i.test(paraCliente(A)) && !/Para enviar o orçamento personalizado/.test(paraCliente(A)), paraCliente(A));
 
   console.log("\n— Já informou algumas coisas: só pergunta o que falta —");
   const B = "5521900001020";
@@ -73,29 +73,29 @@ const paraOperador = () => enviados.filter(e => e[0].replace(/\D/g, "").endsWith
   r = paraCliente(B);
   checar("trata pelo primeiro nome", /Claro, \*Mey\*/.test(r), r);
   checar("NÃO pergunta nome, celebração nem convidados (já informados)", !/Qual o seu nome/.test(r) && !/O que vai celebrar/.test(r) && !/Quantos convidados/.test(r), r);
-  checar("pergunta data e horário", /data do evento/.test(r) && /horário de início e término/.test(r), r);
+  checar("pergunta data, horário, bairro/cidade e como encontrou", /data do evento/.test(r) && /horário de início e término/.test(r) && /bairro\/cidade/.test(r) && /Como nos encontrou/.test(r), r);
   checar("aviso ao operador lista o que já veio", /Nome: Mey Silva/.test(paraOperador()) && /Aniversário Adulto/.test(paraOperador()) && /Convidados: 80/.test(paraOperador()), paraOperador());
 
   console.log("\n— Tudo informado: só diz que alguém vai falar —");
   const C = "5521900001030";
-  sessions[C] = { step: "orcamento_bairro", menuInicialEnviado: true, orcamento: { nome: "Ana", celebracao: "Casamento", convidados: 100, data: "10/12/2026", horaInicio: "19:00", horaFim: "23:00", servicosEnviados: [] }, servicosEnviados: [] };
+  sessions[C] = { step: "orcamento_bairro", menuInicialEnviado: true, orcamento: { nome: "Ana", celebracao: "Casamento", convidados: 100, data: "10/12/2026", horaInicio: "19:00", horaFim: "23:00", bairro: "Barra da Tijuca", cidade: "Rio de Janeiro", ondeEncontrou: "Instagram", servicosEnviados: [] }, servicosEnviados: [] };
   await cliente(C, "humano");
   r = paraCliente(C);
-  checar("sem lista de perguntas", /alguém vai falar/.test(r) && !/Para agilizar/.test(r), r);
+  checar("sem lista de perguntas", /alguém vai falar/.test(r) && !/Para enviar o orçamento personalizado/.test(r), r);
 
   console.log("\n— Dados ditos antes (dadosLivres) contam como informados —");
   const D = "5521900001040";
   sessions[D] = { step: "orcamento_celebracao", menuInicialEnviado: true, orcamento: { nome: "Bia", servicosEnviados: [] }, dadosLivres: { convidados: 60, data: "05/12/2026" }, servicosEnviados: [] };
   await cliente(D, "falar com atendente");
   r = paraCliente(D);
-  checar("não repete convidados e data", !/Quantos convidados/.test(r) && !/data do evento/.test(r) && /celebrar/.test(r) && /horário/.test(r), r);
+  checar("não repete convidados e data", !/Quantos convidados/.test(r) && !/data do evento/.test(r) && /celebrar/.test(r) && /horário/.test(r) && /bairro\/cidade/.test(r), r);
 
   console.log("\n— Já recebeu orçamento: avisa a equipe sem refazer perguntas —");
   const E = "5521900001050";
   sessions[E] = { step: "orcamento_pos", menuInicialEnviado: true, orcamento: { nome: "Leo", servicosEnviados: [1] }, servicosEnviados: [1] };
   await cliente(E, "falar com atendente");
   r = paraCliente(E);
-  checar("diz que alguém vai falar, sem perguntas", /alguém vai falar/.test(r) && !/Para agilizar/.test(r), r);
+  checar("diz que alguém vai falar, sem perguntas", /alguém vai falar/.test(r) && !/Para enviar o orçamento personalizado/.test(r), r);
   checar("operador sabe que já recebeu orçamento", /Já recebeu orçamento/.test(paraOperador()), paraOperador());
 
   console.log("\n— Primeira mensagem da conversa já é o pedido —");

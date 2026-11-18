@@ -4,7 +4,7 @@
 // Caso real 18/11 17:34: a cliente pediu "Falsr com humano" e "Falar com atendente" durante a pergunta
 // "o que vai celebrar?" e recebeu 3x "Opção inválida". Pedir uma pessoa NUNCA e resposta invalida: o bot avisa
 // a equipe, diz que alguem vai falar e, como orcamento de SERVICO precisa de dados (nao e preco de produto de loja),
-// pede em UMA mensagem so o que ainda NAO foi informado (nome, celebracao, convidados, data, horario).
+// pede em UMA mensagem so o que ainda NAO foi informado (nome, celebracao, convidados, data, horario, bairro/cidade, como encontrou).
 
 function normalizar(texto) {
   return String(texto || "").toLowerCase()
@@ -62,6 +62,8 @@ function faltantesParaOrcamento(session) {
   if (!_tem(o.convidados) && !_tem(dl.convidados)) falta.push("👥 Quantos convidados?");
   if (!_tem(o.data) && !_tem(dl.data)) falta.push("📆 Qual a data do evento?");
   if (!_tem(o.horaInicio) || !_tem(o.horaFim)) falta.push("⏰ Qual horário de início e término?");
+  if (!_tem(o.bairro) && !_tem(o.cidade) && !_tem(dl.bairro) && !_tem(dl.cidade)) falta.push("🏙️ Qual bairro/cidade?");
+  if (!_tem(o.ondeEncontrou)) falta.push("🫵 Como nos encontrou?");
   return falta;
 }
 
@@ -71,7 +73,7 @@ function textoPedidoDeHumano(session, pedirDados) {
   let txt = `Claro${nome ? ", *" + nome + "*" : ""}! ❤️ Já avisei a nossa equipe, e alguém vai falar com você por aqui em instantes. 😊`;
   const falta = pedirDados ? faltantesParaOrcamento(session) : [];
   if (falta.length) {
-    txt += "\n\n🔢  *Para agilizar seu atendimento, por gentileza responda ⬇️⬇️:*\n\n" + falta.join("\n");
+    txt += "\n\n🔢  *Para enviar o orçamento personalizado do seu evento, por gentileza responda ⬇️⬇️:*\n\n" + falta.join("\n");
   }
   return txt;
 }
