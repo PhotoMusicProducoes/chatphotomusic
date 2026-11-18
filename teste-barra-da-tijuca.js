@@ -28,6 +28,7 @@ axios.get = async (url, cfg) => {
   if (/deslocamento-consultar/.test(url)) {
     const b = String((cfg && cfg.params && cfg.params.bairro) || "");
     consultas.push(b);
+    if (b.toLowerCase() === "recreio dos bandeirantes") return { data: { status: "encontrado", bairro: "Recreio dos Bandeirantes", cidade: "Rio de Janeiro", cidades_do_bairro: ["Rio de Janeiro"] } };
     if (b.toLowerCase() === "barra da tijuca") return { data: { status: "encontrado", bairro: "Barra da Tijuca", cidade: "Rio de Janeiro", cidades_do_bairro: ["Rio de Janeiro"] } };
     return { data: { status: "nao_encontrado" } };
   }
@@ -66,11 +67,20 @@ function novaSessao(chat) {
   }
 
   console.log("\n— Outros bairros NÃO mudam —");
-  for (const [i, b] of ["Barra Mansa", "Barra do Piraí", "Barra de Guaratiba", "Recreio"].entries()) {
+  for (const [i, b] of ["Barra Mansa", "Barra do Piraí", "Barra de Guaratiba", "Recreio Novo"].entries()) {
     const A = "55219000099" + String(20 + i);
     novaSessao(A);
     await cliente(A, b);
     checar(`"${b}" continua como digitado`, sessions[A].orcamento.bairro.toLowerCase() === b.toLowerCase(), sessions[A].orcamento.bairro);
+  }
+
+  console.log("\n— Recreio vira Recreio dos Bandeirantes —");
+  for (const [i, d] of ["Recreio", "recreio", " RECREIO. "].entries()) {
+    const R = "55219000099" + String(30 + i);
+    novaSessao(R); consultas.length = 0;
+    await cliente(R, d);
+    const o = sessions[R].orcamento;
+    checar(`"${d.trim()}" vira Recreio dos Bandeirantes, cidade Rio de Janeiro, segue para o salão`, o.bairro.toLowerCase() === "recreio dos bandeirantes" && o.cidade === "Rio de Janeiro" && sessions[R].step === "orcamento_salao", JSON.stringify([o.bairro, o.cidade, sessions[R].step]));
   }
 
   devolver(ARQ_SESSOES, sessoesAntes); devolver(ARQ_RR, rrAntes);
