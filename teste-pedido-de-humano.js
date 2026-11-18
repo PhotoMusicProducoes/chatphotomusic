@@ -60,7 +60,7 @@ const paraOperador = () => enviados.filter(e => e[0].replace(/\D/g, "").endsWith
   checar("NÃO diz 'Opção inválida'", !/inválida/i.test(r), r);
   checar("diz que alguém vai falar", /alguém vai falar com você/.test(r), r);
   checar("pede os 7 itens (nada foi informado)", /bairro\/cidade/.test(r) && /Como nos encontrou/.test(r) && /nome/.test(r) && /celebrar/.test(r) && /convidados/.test(r) && /data do evento/.test(r) && /horário de início e término/.test(r), r);
-  checar("usa o cabeçalho pedido pelo Mario", /Para enviar o orçamento personalizado do seu evento, por gentileza responda/.test(r), r);
+  checar("usa o cabeçalho pedido pelo Mario", /Para agilizar seu atendimento, por gentileza responda/.test(r), r);
   checar("avisa o operador com o número e a frase", /pediu para falar com uma pessoa/.test(paraOperador()) && /Falsr com humano/.test(paraOperador()), paraOperador());
   checar("bot pausado neste número", sessions[A].step === "pausado_followup", sessions[A].step);
   await cliente(A, "Falar com atendente");

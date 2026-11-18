@@ -73,7 +73,7 @@ function textoPedidoDeHumano(session, pedirDados) {
   let txt = `Claro${nome ? ", *" + nome + "*" : ""}! ❤️ Já avisei a nossa equipe, e alguém vai falar com você por aqui em instantes. 😊`;
   const falta = pedirDados ? faltantesParaOrcamento(session) : [];
   if (falta.length) {
-    txt += "\n\n🔢  *Para enviar o orçamento personalizado do seu evento, por gentileza responda ⬇️⬇️:*\n\n" + falta.join("\n");
+    txt += "\n\n🔢  *Para agilizar seu atendimento, por gentileza responda ⬇️⬇️:*\n\n" + falta.join("\n");
   }
   return txt;
 }
