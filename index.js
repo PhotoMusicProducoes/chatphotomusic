@@ -11,6 +11,7 @@ const { fluxoEventos, apresentarEvento } = require("./services/eventos.js");
 // 🔧 Bancada de teste NOVA (mesmo padrão): Oficina do Narciso, gatilho "#oficina".
 const { handleOficina } = require("./services/oficinaNarciso.js");
 const { INSTANCE_ID, TOKEN, API_URL, PM_API_BASE, PM_API_KEY } = require("./utils/config.js");
+const registroCampanha = require("./utils/registroCampanha.js");   // 📊 16/11/2026: registro de resultados (fatia 2, desligado por padrao)
 /* ❤️ Quem agradece (inclusive quem responde a uma comemoração nossa) não entra
    no funil de orçamento. Ver utils/carinho.js. */
 const { ehAgradecimento, recebeuComemorativa, respostaAoCarinho, nomeDaComemorativa } = require("./utils/carinho.js");
@@ -4820,6 +4821,7 @@ async function handleIncomingMessage(message) {
       && String(chatId) !== normalizarNumero(OPERADOR_TELEFONE_ID) && message.isGroup !== true) {
     axios.post(`${PM_API_BASE}/lead-operador-respondeu`, { telefone: chatId },
       { headers: { "X-PM-Api-Key": PM_API_KEY }, timeout: 6000 }).catch(e => console.warn(`⚠️ lead-operador-respondeu: ${e.message}`));
+    try { if (messageId) registroCampanha.avisar({ tipo: "resposta_humana", telefone: chatId, ref: String(messageId), cfg: { base: PM_API_BASE, chave: PM_API_KEY } }); } catch (e) { /* observacao */ }   // 📊 fatia 2 (desligado por padrao)
   }
 
   // ignora mensagens enviadas pelo próprio bot
@@ -4850,6 +4852,18 @@ async function handleIncomingMessage(message) {
     console.log(`🤖 ${chatId}: resposta automática do WhatsApp do cliente - ignorada.`);
     return;
   }
+
+  /* 📊 REGISTRO DE RESULTADOS (16/11/2026, fatia 2): AVISO só de observação ao PhotoMusic Pro. NASCE DESLIGADO
+     (CAMPANHA_REGISTRO_ATIVO). Sem await, dentro de try: nunca atrasa nem muda a resposta ao cliente. */
+  try {
+    if (!isOperador && messageId && chatId && /^\d{10,13}$/.test(String(chatId)) && message.isGroup !== true
+        && String(chatId) !== normalizarNumero(OPERADOR_TELEFONE_ID) && registroCampanha.ligado()) {
+      const botaoId = (message.buttonsResponseMessage && message.buttonsResponseMessage.buttonId) || (message.listResponseMessage && message.listResponseMessage.selectedRowId) || "";
+      for (const tipo of registroCampanha.classificar({ querContratar: clienteQuerContratar(corpoMensagem), pediuParar: clientePediuParar(corpoMensagem), botaoId })) {
+        registroCampanha.avisar({ tipo, telefone: chatId, ref: String(messageId), detalhe: tipo === "botao_acionado" ? "botao:" + String(botaoId).slice(0, 30).toLowerCase().replace(/[^a-z0-9_:\-]/g, "") : "", cfg: { base: PM_API_BASE, chave: PM_API_KEY } });
+      }
+    }
+  } catch (e) { /* observacao nunca pode quebrar o atendimento */ }
 
   // ======================================================
   // ⛪ BANCADA DA PARÓQUIA — APOSENTADA em 24/07/2026
