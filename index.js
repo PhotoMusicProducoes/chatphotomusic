@@ -8671,7 +8671,9 @@ const resumoEucaristia =
       return;
     }
 
-    session.orcamento.bairro = capitalizarPalavras(txtBairro);
+    // 18/11/2026 (Mario): quem digita só "Barra" quer dizer Barra da Tijuca (Barra Mansa, Barra do Piraí etc. têm nome completo)
+    const _soBarra = txtBairro.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z ]+/g, " ").replace(/\s+/g, " ").trim() === "barra";
+    session.orcamento.bairro = capitalizarPalavras(_soBarra ? "Barra da Tijuca" : txtBairro);
     // Marca a ORIGEM: local dito pelo cliente nunca pode ser apagado pelo
     // orcamento manual (ver o bloco de #local no comando manual).
     session.orcamento._localOrigem = "cliente";
