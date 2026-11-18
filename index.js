@@ -42,6 +42,7 @@ const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require(".
 
 const { sessions } = require("./utils/sessions");
 const { clientePedeValor, clienteNaoSabe, convidadosNaMensagem } = require("./utils/pedidoDeValor.js");
+const { pedeAtendente, textoPedidoDeHumano, faltantesParaOrcamento } = require("./utils/pedidoDeHumano.js");   // 18/11/2026
 const { PERGUNTA_LEMBRETE, BOTOES_LEMBRETE } = require("./jobs/followupTextosV3.js");
 const { mensagemAcolhimento, anosDeCasamentoDaResposta, contouQueTemFilhos, PERGUNTA_ANOS_BODAS,
   lerInfoAniversario, generoDoTexto, idadesDoTexto, PERGUNTA_ANIVERSARIO_CRIANCA, PERGUNTA_ANIVERSARIO_ADULTO } = require("./utils/acolhimentoCelebracao.js");
@@ -1245,6 +1246,35 @@ function sessaoAguardandoOperador(chatId, avisado) {
   }
   sessions[chatId].avisouOperadorFollowup = !!avisado;
   return sessions[chatId];
+}
+
+/* 🙋 PEDIU UMA PESSOA (Mario, 18/11/2026): "falar com atendente/humano/alguém" em qualquer ponto nunca e opcao invalida.
+   Avisa a equipe (com o que o cliente ja informou), responde que alguem vai falar e, se ele ainda nao recebeu
+   orcamento, pede de uma vez SO o que falta (nome, celebracao, convidados, data, horario). O bot para neste numero
+   ate o operador responder ("continuar" retoma). Nao cria lembrete nem orcamento automatico depois. */
+async function tratarPedidoDeHumano(chatId, session, texto) {
+  const o = session.orcamento || {};
+  const jaOrcou = Array.isArray(o.servicosEnviados) && o.servicosEnviados.length > 0;
+  const passoAntes = session.step;
+  const linhas = [];
+  const nome = session.nome || o.nome;
+  if (nome) linhas.push(`Nome: ${nome}`);
+  if (o.celebracao) linhas.push(`Celebração: ${o.celebracao}`);
+  if (o.convidados) linhas.push(`Convidados: ${o.convidados}`);
+  if (o.data) linhas.push(`Data: ${o.data}`);
+  if (o.horaInicio) linhas.push(`Horário: ${o.horaInicio}${o.horaFim ? " às " + o.horaFim : ""}`);
+  console.log(`🙋 ${chatId} pediu atendente em "${passoAntes}": operador avisado, bot pausado.`);
+  try {
+    await sendText(OPERADOR_TELEFONE_ID,
+      `🙋 *Cliente pediu para falar com uma pessoa*\n📱 ${chatId}\n_"${String(texto || "").slice(0, 200)}"_\n` +
+      (linhas.length ? `\nJá informou:\n${linhas.join("\n")}\n` : "\nAinda não informou nada do evento.\n") +
+      (jaOrcou ? "\nJá recebeu orçamento." : "") +
+      "\nO bot parou neste número: *responda por aqui*. (\"continuar\" retoma o fluxo.)");
+  } catch (e) { console.warn(`⚠️ aviso operador (pediu atendente): ${e.message}`); }
+  await sendTyping(chatId);
+  await sendText(chatId, textoPedidoDeHumano(session, !jaOrcou));
+  session.lembreteOrcamentoEnviado = true;   // sem orçamento automático/lembrete por cima do atendimento manual
+  sessaoAguardandoOperador(chatId, true);
 }
 
 /* 🔔 V3 (14/11/2026): resposta à pergunta "Posso te enviar um lembrete perto da data do evento?" (feita UMA vez,
@@ -6708,6 +6738,7 @@ async function handleIncomingMessage(message) {
 
     /* 🤝 13/11/2026 (caso Adrielen): quem abre a conversa dizendo que JA CONTRATOU vai direto ao suporte,
        sem o menu de boas-vindas. 🎞️ Quem abre perguntando da TIRINHA escolhe entre os 3 servicos. */
+    if (pedeAtendente(corpoMensagem)) { await tratarPedidoDeHumano(chatId, sessions[chatId], corpoMensagem); return; }   // 🙋 18/11/2026
     if (jaContratou(corpoMensagem)) {
       console.log(`🤝 ${chatId} disse que já contratou (1ª mensagem): suporte direto, sem menu.`);
       sessions[chatId].menuInicialEnviado = true;
@@ -6815,6 +6846,12 @@ async function handleIncomingMessage(message) {
   // pausa, para nunca falar por cima de um atendimento manual.
   if (passoDeColetaDoOrcamento(session) && ehDesistencia(corpoMensagem, session.step)) {
     await tratarDesistenciaOrcamento(chatId, session);
+    return;
+  }
+
+  // 🙋 18/11/2026: pediu para falar com uma pessoa (em qualquer passo; nunca é "opção inválida")
+  if (session.step !== "orcamento_duvida" && pedeAtendente(corpoMensagem)) {   // "duvida" já vai inteira para a equipe
+    await tratarPedidoDeHumano(chatId, session, corpoMensagem);
     return;
   }
 
