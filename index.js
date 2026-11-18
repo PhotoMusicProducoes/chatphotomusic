@@ -3262,6 +3262,29 @@ function marcarConvidadoEvento(chatId) {
   s.menuInicialEnviado = false;   // o menu nao foi pedido: o lembrete de "nao escolheu a opcao" nao se aplica
 }
 
+/* 📸 FOTO PELO MENU 7 (18/11/2026, ideia da Adriana; regras do ChatGPT):
+   o convidado recebeu o link pelo item 7 e depois manda mensagem/emoji SEM intencao clara.
+   Antes: menu de boas-vindas de novo e, sem resposta, o orcamento generico. Agora o Rapha
+   pergunta se ele quer as fotos DAQUELA festa de novo: Sim = a MESMA mensagem com o mesmo
+   link; Nao = menu inicial. Pedido claro (opcao do menu, servico, orcamento, contratar, ja
+   contratou...) segue o fluxo normal. Links de QR do operador e da galeria NAO mudam (eles
+   marcam `convidadoEvento`, outro caminho). Sem lembrete de orcamento neste passo. */
+const FOTO_MENU7_VALIDADE = 3 * 24 * 60 * 60 * 1000;
+const ROTULOS_FOTO_MENU7 = { "1": "Sim, quero minhas fotos", "2": "Não, ver o menu" };
+function fotoMenu7Valida(s) {
+  return !!(s && s.fotoMenu7 && s.fotoMenu7.mensagem && (Date.now() - (s.fotoMenu7.em || 0)) < FOTO_MENU7_VALIDADE);
+}
+function respostaFotoMenu7(texto) {
+  const porBotao = opcaoPorTitulo(texto, ROTULOS_FOTO_MENU7);
+  if (porBotao) return porBotao;
+  const t = normalizarParaBusca(String(texto || "")).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  // "sim" so quando a resposta INTEIRA e um sim: "quero um orcamento" comeca com "quero" e e OUTRO assunto
+  if (/^sim\b/.test(t) || /^(1|s|claro|isso|pode|pode ser|ok|yes|quero|quero sim|por favor)( por favor| obrigad[oa])?$/.test(t)) return "1";
+  if (/^2$|^(nao|n|no)\b/.test(t)) return "2";
+  if (/^\s*$/.test(t) && /👍|✅|🙏/.test(String(texto || ""))) return "1";
+  return null;
+}
+
 function ehConvidadoEvento(s) {
   return !!(s && s.convidadoEvento && (Date.now() - s.convidadoEvento) < CONVIDADO_EVENTO_VALIDADE);
 }
@@ -6836,6 +6859,29 @@ async function handleIncomingMessage(message) {
   }
 
   // ======================================================
+  // 📸 FOTO PELO MENU 7: resposta a "deseja baixar sua foto da festa X?" (18/11/2026)
+  // ======================================================
+  if (session.step === "foto_menu7_confirmar") {
+    const resp = respostaFotoMenu7(corpoMensagem);
+    if (resp === "1" && fotoMenu7Valida(session)) {
+      await sendTyping(chatId);
+      await sendText(chatId, session.fotoMenu7.mensagem);   // a MESMA mensagem, com o mesmo link
+      session.step = "aguardando_opcao";
+      session.menuInicialEnviado = false;   // como na 1a entrega: sem lembrete de orcamento
+      return;
+    }
+    if (resp === "2") {
+      session.fotoMenu7 = null;
+      session.step = "aguardando_opcao";
+      await mostrarMenuInicial(chatId);
+      return;
+    }
+    // outra coisa = outro assunto: segue o fluxo normal com ESTA mensagem
+    session.fotoMenu7 = null;
+    session.step = "aguardando_opcao";
+  }
+
+  // ======================================================
   // 📸 CONVIDADO DE EVENTO: so entra no funil se pedir (ver marcarConvidadoEvento)
   // ======================================================
   if (session.step === "aguardando_opcao" && ehConvidadoEvento(session)) {
@@ -6945,6 +6991,24 @@ async function handleIncomingMessage(message) {
   const opcaoMenu = opcaoPorTitulo(texto, LABELS_MENU) || texto.replace(/\D+/g, "");
   await guardarDadosLivres(session, texto);   // data/bairro ditos em texto livre (13/11/2026)
   if (session.step === "aguardando_opcao" && await responderDisponibilidade(chatId, session, texto)) return;   // "tem vaga dia 27?"
+
+  /* 📸 FOTO PELO MENU 7 (18/11/2026): quem ja recebeu o link e manda algo SEM intencao clara
+     (emoji, "oi", "a foto nao abriu"...) recebe a pergunta das fotos, no lugar do menu de
+     boas-vindas e do carinho. Pedido claro segue o fluxo normal: opcao do menu, servico
+     citado, orcamento/menu/contratar/valor, ja contratou, veio do site. */
+  if (!session.menuInicialEnviado && fotoMenu7Valida(session) && opcaoMenu === ""
+      && !detectarServicosNoTexto(texto).length
+      && !CONVIDADO_PEDIU_FUNIL.test(normalizarParaBusca(texto))
+      && !/\b(contrat\w*|preco|precos|valor|valores|quanto custa)\b/.test(normalizarParaBusca(texto))
+      && !jaContratou(texto) && !VEIO_DO_SITE.test(normalizarParaBusca(texto))) {
+    const nomeFesta = session.fotoMenu7.nome ? `da festa *${session.fotoMenu7.nome}*` : "da festa";
+    session.step = "foto_menu7_confirmar";
+    await sendTyping(chatId);
+    await sendButtonList(chatId,
+      `Oi! 😊 Você deseja baixar novamente a sua foto ${nomeFesta}?`,
+      [{ id: "1", label: ROTULOS_FOTO_MENU7["1"] }, { id: "2", label: ROTULOS_FOTO_MENU7["2"] }]);
+    return;
+  }
 
   /* ❤️ AGRADECIMENTO NÃO ABRE MENU (Mario, 15/10/2026).
      A Patrícia respondeu ao "feliz aniversário" com "💖💖💖💖" e recebeu o menu
@@ -7145,7 +7209,10 @@ async function handleIncomingMessage(message) {
     }
 
     await sendTyping(chatId);
-    await sendText(chatId, await apresentarEvento(numero, chatId));
+    const mensagemFoto = await apresentarEvento(numero, chatId);
+    await sendText(chatId, mensagemFoto);
+    // 📸 18/11/2026 (Adriana): guarda a entrega para oferecer de novo se ele mandar algo depois
+    session.fotoMenu7 = { numero: String(numero), nome: evento.nome || "", mensagem: mensagemFoto, em: Date.now() };
 
     // ✅ “Encerra” o atendimento do convidado:
     // volta pro menu, mas força que a PRÓXIMA mensagem dispare boas-vindas novamente

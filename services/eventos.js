@@ -259,7 +259,10 @@ async function fluxoEventos(chatId, session) {
   // 1 único evento ativo → vai direto sem pedir número
   if (eventos.length === 1) {
     await sendTyping(chatId);
-    await sendText(chatId, await apresentarEvento(eventos[0].numero, chatId));
+    const mensagemFoto = await apresentarEvento(eventos[0].numero, chatId);
+    await sendText(chatId, mensagemFoto);
+    // 📸 18/11/2026 (Adriana): guarda a entrega para oferecer de novo se ele mandar algo depois
+    session.fotoMenu7 = { numero: String(eventos[0].numero), nome: eventos[0].nome || "", mensagem: mensagemFoto, em: Date.now() };
 
     // ⚠️ FIX 2026-07-16 (caso Sofia, convidada do evento da Rafaela 12/07):
     // o convidado baixou a foto e DEPOIS recebeu "Digite 1 e receba seu
