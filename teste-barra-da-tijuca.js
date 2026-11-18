@@ -83,6 +83,20 @@ function novaSessao(chat) {
     checar(`"${d.trim()}" vira Recreio dos Bandeirantes, cidade Rio de Janeiro, segue para o salão`, o.bairro.toLowerCase() === "recreio dos bandeirantes" && o.cidade === "Rio de Janeiro" && sessions[R].step === "orcamento_salao", JSON.stringify([o.bairro, o.cidade, sessions[R].step]));
   }
 
+  console.log("\n— Resposta atrasada da cidade no lugar do salão (cliente da Barra, 18/11) —");
+  const S = "5521900009940";
+  sessions[S] = { step: "orcamento_salao", menuInicialEnviado: true, orcamento: { nome: "Cliente", bairro: "Barra da Tijuca", cidade: "Rio de Janeiro", servicosEnviados: [] }, servicosEnviados: [] };
+  await cliente(S, "Rio de Janeiro");
+  checar("'Rio de Janeiro' no passo do salão NÃO vira nome do salão", !sessions[S].orcamento.salao && sessions[S].step === "orcamento_salao", JSON.stringify([sessions[S].orcamento.salao, sessions[S].step]));
+  checar("  o bot pede o salão de novo", enviados.some(e => /nome do salão/.test(e[1])), JSON.stringify(enviados.map(e => e[1].slice(0, 60))));
+  await cliente(S, "Ballroom Beach Club");
+  checar("o salão de verdade é gravado e o fluxo segue para 'Onde nos encontrou?'", /Ballroom/i.test(sessions[S].orcamento.salao || "") && sessions[S].step === "orcamento_onde_encontrou", JSON.stringify([sessions[S].orcamento.salao, sessions[S].step]));
+  checar("  'onde encontrou' continua vazio (não recebeu o salão)", !sessions[S].orcamento.ondeEncontrou, sessions[S].orcamento.ondeEncontrou);
+  const S2 = "5521900009941";
+  sessions[S2] = { step: "orcamento_salao", menuInicialEnviado: true, orcamento: { nome: "Cliente", bairro: "Barra da Tijuca", cidade: "Rio de Janeiro", servicosEnviados: [] }, servicosEnviados: [] };
+  await cliente(S2, "pular");
+  checar("'pular' continua valendo", sessions[S2].step === "orcamento_onde_encontrou", sessions[S2].step);
+
   devolver(ARQ_SESSOES, sessoesAntes); devolver(ARQ_RR, rrAntes);
   console.log(falhas ? `\n❌ ${falhas} falha(s)` : "\n✅ tudo certo");
   process.exit(falhas ? 1 : 0);

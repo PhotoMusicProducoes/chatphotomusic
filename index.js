@@ -8785,6 +8785,16 @@ const resumoEucaristia =
       return;
     }
 
+    /* 18/11/2026 (Mario, cliente da Barra): o operador respondeu a CIDADE na mão e o bot já foi para o salão; a cliente,
+       que ainda não tinha visto isso, respondeu a cidade ("Rio de Janeiro") e o bot a gravou como nome do salão
+       (e o salão de verdade virou "onde nos encontrou"). Resposta do salão que é só a cidade (ou o bairro) já
+       informada = resposta atrasada da pergunta anterior: não grava nada e pede o salão de novo. */
+    const _nz = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!pulou && _nz(txtSalao) && (_nz(txtSalao) === _nz(session.orcamento.cidade) || _nz(txtSalao) === _nz(session.orcamento.bairro))) {
+      await sendText(chatId, "Anotado! 😊 Agora me diga o *nome do salão/local* do evento. Se ainda não tiver definido, responda *pular*.");
+      return;
+    }
+
     session.orcamento.salao = pulou ? null : capitalizarPalavras(txtSalao);
 
     // Consulta o valor de deslocamento e corrige o bairro (fuzzy) ANTES
