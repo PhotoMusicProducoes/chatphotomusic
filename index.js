@@ -1682,9 +1682,36 @@ async function concluirQueroContratar(chatId, orc, mudar, textoCliente) {
   return true;
 }
 
+// Rótulos da pergunta que estava no ar em cada passo da conversa de contratar (para reconhecer a resposta pelo NOME)
+function rotulosDaPerguntaContratar(s, passo) {
+  const c = s._contratar || {}; const o = c.orc || {};
+  switch (passo) {
+    case "contratar_foto":      return Array.isArray(c._rotFoto) ? c._rotFoto : [];
+    case "contratar_servicos":  return (Array.isArray(c._rotServ) ? c._rotServ : []).slice(0, -1);   // sem "Todos": vários nomes ficam com o fluxo normal
+    case "contratar_pacote_srv": return (o.pacotes_servico || {})[c._pacAtual] || [];
+    case "contratar_opcao":     return (o.opcoes || []).map(x => x.servico);
+    case "contratar_pacote":    return o.pacotes || [];
+    default:                    return [];
+  }
+}
+
 async function tratarQueroContratar(chatId, texto, opc = {}) {
   const s = sessions[chatId];
   const t = String(texto || "").trim();
+
+  /* 18/11/2026 (Mario, orçamento 726 da Karla): o follow-up caiu NO MEIO da conversa de contratar e encerrou o fluxo
+     (passo vira "pausado_followup"). A cliente então digitou o NOME do serviço da pergunta ("Foto Cabine") e o bot
+     não retomou: ficou calado/repetiu a pergunta. Se a resposta bate com uma opção da pergunta que estava no ar,
+     volta para ela e segue. Só por NOME: número solto continua sendo do follow-up (os botões dele são 1/2/3). */
+  if (s && s.step === "pausado_followup" && /^contratar_/.test(s.stepAnterior || "") && s._contratar && s._contratar.orc
+      && t && !/^\d{1,2}$/.test(t) && !clientePediuParar(t)) {
+    const rot = rotulosDaPerguntaContratar(s, s.stepAnterior);
+    if (rot.length && lerEscolha(t, rot) >= 0) {
+      console.log(`↩️ ${chatId} respondeu a pergunta de contratar depois do follow-up ("${t}"): retomando em ${s.stepAnterior}.`);
+      s.step = s.stepAnterior;
+      s.avisouOperadorFollowup = false;
+    }
+  }
 
   // respostas às perguntas da conversa de contratação
   if (s && /^contratar_/.test(s.step || "")) {
