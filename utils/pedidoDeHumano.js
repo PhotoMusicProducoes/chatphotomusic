@@ -67,15 +67,32 @@ function faltantesParaOrcamento(session) {
   return falta;
 }
 
+// Mesma lista do menu de servicos do orcamento (numeracao de exibicao do bot).
+const LISTA_SERVICOS = [
+  "Escolha os serviços desejados:",
+  "📸 0 - Foto Cabine", "📸 1 - Totem Retrô", "📸 2 - Totem Fotográfico", "🎬 3 - Plataforma 360⁰",
+  "📸 4 - Foto Paparazzi Digital", "📸 5 - Foto Lembrança", "📸 6 - Cobertura fotográfica",
+  "🎼 7 - Som com DJ e iluminação", "🚨 8 - Iluminação de Pista",
+].join("\n");
+
+/** O cliente ja disse (ou o bot ja entendeu) algum servico? */
+function servicoJaEscolhido(session) {
+  const o = (session && session.orcamento) || {};
+  return (Array.isArray(o.servicosPrevios) && o.servicosPrevios.length > 0) || (Array.isArray(o.servicosEnviados) && o.servicosEnviados.length > 0);
+}
+
 /** Texto para o cliente. `pedirDados` = false quando ele ja recebeu orcamento (nao refaz perguntas). */
 function textoPedidoDeHumano(session, pedirDados) {
   const nome = String((session && (session.nome || (session.orcamento && session.orcamento.nome))) || "").split(" ")[0];
   let txt = `Claro${nome ? ", *" + nome + "*" : ""}! ❤️ Já avisei a nossa equipe, e alguém vai falar com você por aqui em instantes. 😊`;
   const falta = pedirDados ? faltantesParaOrcamento(session) : [];
-  if (falta.length) {
-    txt += "\n\n🔢  *Para agilizar seu atendimento, por gentileza responda ⬇️⬇️:*\n\n" + falta.join("\n");
+  const semServico = pedirDados && !servicoJaEscolhido(session);
+  if (falta.length || semServico) {
+    txt += "\n\n🔢  *Para agilizar seu atendimento, por gentileza responda ⬇️⬇️:*\n\n";
+    if (semServico) txt += LISTA_SERVICOS + (falta.length ? "\n\n" : "");
+    txt += falta.join("\n");
   }
   return txt;
 }
 
-module.exports = { pedeAtendente, faltantesParaOrcamento, textoPedidoDeHumano };
+module.exports = { servicoJaEscolhido, pedeAtendente, faltantesParaOrcamento, textoPedidoDeHumano };

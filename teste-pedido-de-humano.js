@@ -60,6 +60,7 @@ const paraOperador = () => enviados.filter(e => e[0].replace(/\D/g, "").endsWith
   checar("NÃO diz 'Opção inválida'", !/inválida/i.test(r), r);
   checar("diz que alguém vai falar", /alguém vai falar com você/.test(r), r);
   checar("pede os 7 itens (nada foi informado)", /bairro\/cidade/.test(r) && /Como nos encontrou/.test(r) && /nome/.test(r) && /celebrar/.test(r) && /convidados/.test(r) && /data do evento/.test(r) && /horário de início e término/.test(r), r);
+  checar("sem serviço escolhido: lista os 9 serviços ANTES das perguntas", /Escolha os serviços desejados/.test(r) && /0 - Foto Cabine/.test(r) && /8 - Iluminação de Pista/.test(r) && r.indexOf("Escolha os serviços") < r.indexOf("Qual o seu nome"), r);
   checar("usa o cabeçalho pedido pelo Mario", /Para agilizar seu atendimento, por gentileza responda/.test(r), r);
   checar("avisa o operador com o número e a frase", /pediu para falar com uma pessoa/.test(paraOperador()) && /Falsr com humano/.test(paraOperador()), paraOperador());
   checar("bot pausado neste número", sessions[A].step === "pausado_followup", sessions[A].step);
@@ -68,17 +69,18 @@ const paraOperador = () => enviados.filter(e => e[0].replace(/\D/g, "").endsWith
 
   console.log("\n— Já informou algumas coisas: só pergunta o que falta —");
   const B = "5521900001020";
-  sessions[B] = { step: "orcamento_data", menuInicialEnviado: true, orcamento: { nome: "Mey Silva", celebracao: "Aniversário Adulto", convidados: 80, servicosEnviados: [] }, servicosEnviados: [] };
+  sessions[B] = { step: "orcamento_data", menuInicialEnviado: true, orcamento: { servicosPrevios: [1], nome: "Mey Silva", celebracao: "Aniversário Adulto", convidados: 80, servicosEnviados: [] }, servicosEnviados: [] };
   await cliente(B, "quero falar com um atendente");
   r = paraCliente(B);
   checar("trata pelo primeiro nome", /Claro, \*Mey\*/.test(r), r);
+  checar("serviço já escolhido: NÃO repete a lista de serviços", !/Escolha os serviços/.test(r), r);
   checar("NÃO pergunta nome, celebração nem convidados (já informados)", !/Qual o seu nome/.test(r) && !/O que vai celebrar/.test(r) && !/Quantos convidados/.test(r), r);
   checar("pergunta data, horário, bairro/cidade e como encontrou", /data do evento/.test(r) && /horário de início e término/.test(r) && /bairro\/cidade/.test(r) && /Como nos encontrou/.test(r), r);
   checar("aviso ao operador lista o que já veio", /Nome: Mey Silva/.test(paraOperador()) && /Aniversário Adulto/.test(paraOperador()) && /Convidados: 80/.test(paraOperador()), paraOperador());
 
   console.log("\n— Tudo informado: só diz que alguém vai falar —");
   const C = "5521900001030";
-  sessions[C] = { step: "orcamento_bairro", menuInicialEnviado: true, orcamento: { nome: "Ana", celebracao: "Casamento", convidados: 100, data: "10/12/2026", horaInicio: "19:00", horaFim: "23:00", bairro: "Barra da Tijuca", cidade: "Rio de Janeiro", ondeEncontrou: "Instagram", servicosEnviados: [] }, servicosEnviados: [] };
+  sessions[C] = { step: "orcamento_bairro", menuInicialEnviado: true, orcamento: { servicosPrevios: [1, 3], nome: "Ana", celebracao: "Casamento", convidados: 100, data: "10/12/2026", horaInicio: "19:00", horaFim: "23:00", bairro: "Barra da Tijuca", cidade: "Rio de Janeiro", ondeEncontrou: "Instagram", servicosEnviados: [] }, servicosEnviados: [] };
   await cliente(C, "humano");
   r = paraCliente(C);
   checar("sem lista de perguntas", /alguém vai falar/.test(r) && !/Para enviar o orçamento personalizado/.test(r), r);
