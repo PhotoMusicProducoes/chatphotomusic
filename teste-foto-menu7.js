@@ -23,8 +23,10 @@ axios.get  = async () => ({ data: {} });
 // um evento ativo (o PhotoMusic Pro falso)
 const EVENTO = { numero: "1", id: 264, nome: "Inauguração Smart Fit Freguesia", titulo: "Smart Fit 17/11",
   links: [{ nome: "Galeria", link: "https://photomusic.com.br/galeria/abc123" }], token_evento: "tk" };
+let eventosNoAr = [EVENTO];
+const EVENTO2 = { numero: "2", id: 265, nome: "IPM 2026", titulo: "IPM", links: [], token_evento: "tk2" };
 async function fetchFalso(url) {
-  if (String(url).includes("eventos-chatbot")) return { ok: true, status: 200, statusText: "OK", text: async () => JSON.stringify([EVENTO]) };
+  if (String(url).includes("eventos-chatbot")) return { ok: true, status: 200, statusText: "OK", text: async () => JSON.stringify(eventosNoAr) };
   return { ok: true, status: 200, statusText: "OK", json: async () => ({}), text: async () => "{}" };
 }
 global.fetch = fetchFalso;
@@ -48,6 +50,12 @@ async function diz(texto, tel = TEL) {
   registro.length = 0;
   await bot.handleIncomingMessage({ phone: tel, text: { message: texto }, messageId: "m" + (++seq), fromMe: false, isGroup: false, momment: Date.now() });
   return registro.join("\n");
+}
+async function clica(titulo, id, tel) {
+  registro.length = 0;
+  await bot.handleIncomingMessage({ phone: tel, text: { message: id }, listResponseMessage: { title: titulo, selectedRowId: id },
+    messageId: "m" + (++seq), fromMe: false, isGroup: false, momment: Date.now() });
+  return registro.join(String.fromCharCode(10));
 }
 function confere(ok, nome, saida) {
   console.log((ok ? "ok    " : "FALHOU") + "  " + nome);
@@ -82,11 +90,14 @@ function confere(ok, nome, saida) {
     confere(!/baixar novamente/.test(s) && /Seja bem-vindo/.test(s) && !s.includes("t=tk"), "Nao = menu inicial (sem reenviar o link)", s);
     confere(!sessions[TEL].fotoMenu7, "depois do Nao a entrega e esquecida", "");
 
-    // pedido CLARO de outro assunto: orcamento de cabine -> fluxo normal, sem pergunta
+    // 18/11 (Mario): QUALQUER mensagem depois do link pergunta, ate pedido claro; o pedido claro
+    // e respeitado NA PERGUNTA (ele repete o pedido e segue o fluxo normal)
     const TEL2 = "5521999990002";
     await diz("oi", TEL2); await diz("7", TEL2); await diz("1", TEL2);
     s = await diz("quanto custa a cabine?", TEL2);
-    confere(!/baixar novamente/.test(s), "pedido claro (servico/valor) segue o fluxo normal", s);
+    confere(/baixar novamente/.test(s), "qualquer mensagem depois do link (ate pedido de valor) = pergunta", s);
+    s = await diz("quanto custa a cabine?", TEL2);
+    confere(!/baixar novamente/.test(s) && !sessions[TEL2].fotoMenu7, "na pergunta, o pedido de valor segue o fluxo normal", s);
 
     // responder outra coisa na pergunta = outro assunto
     const TEL3 = "5521999990003";
@@ -94,6 +105,25 @@ function confere(ok, nome, saida) {
     await diz("👋", TEL3);
     s = await diz("quero um orçamento", TEL3);
     confere(!/baixar novamente/.test(s) && !sessions[TEL3].fotoMenu7 && sessions[TEL3].step !== "foto_menu7_confirmar", "na pergunta, pedido de outro assunto e respeitado", s + " step=" + sessions[TEL3].step);
+
+    // 🐞 caso do Mario (18/11, 21:16): VARIOS eventos, link entregue, toca DE NOVO no evento da lista
+    eventosNoAr = [EVENTO, EVENTO2];
+    const TEL6 = "5521999990006";
+    await diz("oi", TEL6); await diz("7", TEL6); await diz("1", TEL6);
+    s = await diz("1", TEL6);                                   // escolhe o evento 1 na lista
+    confere(s.includes("t=tk&"), "varios eventos: escolher o evento entrega o link", s);
+    s = await clica(EVENTO.nome, "1", TEL6);                     // toca de novo no MESMO evento
+    confere(/baixar novamente/.test(s) && !/Solicitar um orçamento|Seja bem-vindo|Está certo/.test(s), "tocar de novo no evento da lista = PERGUNTA (nao vira 'Solicitar orcamento')", s);
+    s = await clica(EVENTO.nome, "1", TEL6);                     // toca no evento durante a pergunta = sim
+    confere(s.includes("t=tk&") && sessions[TEL6].step === "aguardando_opcao", "tocar no evento durante a pergunta = reenvia o link", s);
+    await diz("🙂", TEL6);                                        // pergunta de novo
+    s = await clica(EVENTO2.nome, "2", TEL6);                    // toca em OUTRO evento durante a pergunta
+    confere(s.includes("t=tk2&") && !/Seja bem-vindo|Está certo/.test(s), "tocar em outro evento durante a pergunta manda o link DELE", s);
+    s = await diz("1", TEL6);                                    // digitar 1 depois do link
+    confere(/baixar novamente/.test(s) && !/Solicitar um orçamento|Está certo/.test(s), "digitar 1 depois do link = pergunta (nao 'Solicitar orcamento')", s);
+    s = await diz("1", TEL6);                                    // 1 na pergunta = sim
+    confere(s.includes("t=tk2&"), "1 na pergunta = reenvia o link", s);
+    eventosNoAr = [EVENTO];
 
     // validade: entrega de 4 dias atras nao pergunta mais
     const TEL4 = "5521999990004";

@@ -220,6 +220,10 @@ async function processarWebhook(req, res) {
       senderName: payload.senderName || null,
 
       // ESSENCIAL: captura mensagens citadas (para pegar o cliente automaticamente)
+      // 📸 18/11/2026: o bloco do toque em lista/botao (o titulo do item separa "evento 1" de "opcao 1")
+      listResponseMessage: payload.listResponseMessage || null,
+      buttonsResponseMessage: payload.buttonsResponseMessage || null,
+
       quotedMsg: payload.quotedMsg || payload.quotedMessage || null,
       quotedMessage: payload.quotedMessage || payload.quotedMsg || null
     };

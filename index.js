@@ -3331,6 +3331,29 @@ const ROTULOS_FOTO_MENU7 = { "1": "Sim, quero minhas fotos", "2": "Não, ver o m
 function fotoMenu7Valida(s) {
   return !!(s && s.fotoMenu7 && s.fotoMenu7.mensagem && (Date.now() - (s.fotoMenu7.em || 0)) < FOTO_MENU7_VALIDADE);
 }
+/* 📸 TOQUE NA LISTA DE EVENTOS JA ENTREGUE (18/11/2026, teste do Mario): a lista continua na tela e o
+   convidado toca de novo no evento. O toque chega com o id "1" (posicao na lista), igual a opcao 1 do
+   menu, e o bot mandava boas-vindas + "Solicitar um orcamento". O que separa e o TITULO do item tocado
+   (o nome do evento); sem titulo, vale o id se ele for um dos eventos da lista entregue. */
+function eventoTocadoNaLista(message, s) {
+  const clique = message && message.listResponseMessage;
+  if (!clique || !fotoMenu7Valida(s)) return null;
+  const lista = s.fotoMenu7.eventos || [];
+  const titulo = normalizarParaBusca(String(clique.title || "")).trim();
+  if (titulo) return lista.find((e) => e.nome && titulo === normalizarParaBusca(e.nome).trim()) || null;
+  const id = String(clique.selectedRowId || "").trim();
+  return lista.find((e) => e.numero === id) || null;
+}
+async function reenviarFotoDoEvento(chatId, s, ev) {
+  const mesmo = ev.numero === s.fotoMenu7.numero;
+  const mensagemFoto = mesmo ? s.fotoMenu7.mensagem : await apresentarEvento(ev.numero, chatId);
+  await sendTyping(chatId);
+  await sendText(chatId, mensagemFoto);
+  if (!mesmo) Object.assign(s.fotoMenu7, { numero: ev.numero, nome: ev.nome, mensagem: mensagemFoto, em: Date.now() });
+  s.step = "aguardando_opcao";
+  s.menuInicialEnviado = false;   // como na 1a entrega: sem lembrete de orcamento
+}
+
 function respostaFotoMenu7(texto) {
   const porBotao = opcaoPorTitulo(texto, ROTULOS_FOTO_MENU7);
   if (porBotao) return porBotao;
@@ -6926,6 +6949,8 @@ async function handleIncomingMessage(message) {
   // 📸 FOTO PELO MENU 7: resposta a "deseja baixar sua foto da festa X?" (18/11/2026)
   // ======================================================
   if (session.step === "foto_menu7_confirmar") {
+    const evTocado = eventoTocadoNaLista(message, session);
+    if (evTocado) { await reenviarFotoDoEvento(chatId, session, evTocado); return; }
     const resp = respostaFotoMenu7(corpoMensagem);
     if (resp === "1" && fotoMenu7Valida(session)) {
       await sendTyping(chatId);
@@ -7060,11 +7085,7 @@ async function handleIncomingMessage(message) {
      (emoji, "oi", "a foto nao abriu"...) recebe a pergunta das fotos, no lugar do menu de
      boas-vindas e do carinho. Pedido claro segue o fluxo normal: opcao do menu, servico
      citado, orcamento/menu/contratar/valor, ja contratou, veio do site. */
-  if (!session.menuInicialEnviado && fotoMenu7Valida(session) && opcaoMenu === ""
-      && !detectarServicosNoTexto(texto).length
-      && !CONVIDADO_PEDIU_FUNIL.test(normalizarParaBusca(texto))
-      && !/\b(contrat\w*|preco|precos|valor|valores|quanto custa)\b/.test(normalizarParaBusca(texto))
-      && !jaContratou(texto) && !VEIO_DO_SITE.test(normalizarParaBusca(texto))) {
+  if (!session.menuInicialEnviado && fotoMenu7Valida(session)) {   // 18/11 (Mario): QUALQUER mensagem pergunta
     const nomeFesta = session.fotoMenu7.nome ? `da festa *${session.fotoMenu7.nome}*` : "da festa";
     session.step = "foto_menu7_confirmar";
     await sendTyping(chatId);
@@ -7276,7 +7297,8 @@ async function handleIncomingMessage(message) {
     const mensagemFoto = await apresentarEvento(numero, chatId);
     await sendText(chatId, mensagemFoto);
     // 📸 18/11/2026 (Adriana): guarda a entrega para oferecer de novo se ele mandar algo depois
-    session.fotoMenu7 = { numero: String(numero), nome: evento.nome || "", mensagem: mensagemFoto, em: Date.now() };
+    session.fotoMenu7 = { numero: String(numero), nome: evento.nome || "", mensagem: mensagemFoto, em: Date.now(),
+      eventos: (session.eventosLista || []).map((e) => ({ numero: String(e.numero), nome: e.nome || "" })) };
 
     // ✅ “Encerra” o atendimento do convidado:
     // volta pro menu, mas força que a PRÓXIMA mensagem dispare boas-vindas novamente
