@@ -68,6 +68,9 @@ function checar(nome, cond, det) {
   checar("com link do PhotoMusic Pro: SAIR + link", rv.rodapeComoParar(lk).includes("responda SAIR") && rv.rodapeComoParar(lk).endsWith(lk));
   checar("link de outro domínio é ignorado (fica só o SAIR)", rv.rodapeComoParar("https://golpe.com/?pm_parabens_sair=" + "a1".repeat(16)) === rv.RODAPE_COMO_PARAR);
   checar("sem link: fica o SAIR", rv.rodapeComoParar(undefined) === rv.RODAPE_COMO_PARAR);
+  checar("prova do Sim só nasce no botão Sim da pergunta", /if \(r === "1"\) \{[\s\S]{0,300}consentiuParabensEm = new Date\(\)\.toISOString\(\);/.test(idx0()));
+  checar("Não ou pular apagam a prova", (idx0().match(/consentiuParabensEm = null;/g) || []).length === 2);
+  checar("captura só manda a prova com Sim E data", /consentiu_parabens:\s+!!\(orc\.consentiuParabensEm && orc\.dataNascimento\)/.test(idx0()));
   checar("pergunta do orçamento avisa como cancelar", /data de nascimento\*\? É para te enviarmos[^"]*responder SAIR/.test(idx0()));
   const idx = fs.readFileSync(__dirname + "/index.js", "utf8");
   const iRev = idx.indexOf("const tipoRevog = pedidoDeRevogacao(corpoMensagem);");

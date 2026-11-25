@@ -492,6 +492,10 @@ async function capturarClienteOrcamento(chatId, session) {
 
     const payload = {
       telefone:       tel,
+      // 🔐 prova individual: so vai quando a pessoa tocou em "Sim" E digitou a data
+      consentiu_parabens:    !!(orc.consentiuParabensEm && orc.dataNascimento),
+      consentiu_parabens_em: (orc.consentiuParabensEm && orc.dataNascimento) ? orc.consentiuParabensEm : "",
+      pergunta_parabens:     (orc.consentiuParabensEm && orc.dataNascimento) ? (orc.perguntaParabens || "") : "",
       nome:           orc.nome       || "",
       // Corporativo: vai para a coluna `empresa` de pm_leads e de pm_orcamentos,
       // e é ela que nomeia o arquivo da proposta.
@@ -4673,11 +4677,14 @@ async function perguntarEmailOpcional(chatId, session) {
   session.ultimaPerguntaNaoRespondida = p + "\n*1* - Sim\n*2* - Não";
 }
 
+const PERGUNTA_PARABENS = "Deseja informar sua *data de nascimento*? É para te enviarmos uma mensagem no seu aniversário 🎂\n\n_É opcional. Se um dia não quiser mais, é só responder SAIR._";
+
 async function perguntarNascimentoOpcional(chatId, session) {
   session.step = "coletar_nascimento_opcional";
   // 🔐 25/11/2026: a pergunta e o consentimento dos parabens (opcional, com a
-  // finalidade e Sim/Nao); diz tambem como cancelar (lei).
-  const p = "Deseja informar sua *data de nascimento*? É para te enviarmos uma mensagem no seu aniversário 🎂\n\n_É opcional. Se um dia não quiser mais, é só responder SAIR._";
+  // finalidade e Sim/Nao); diz tambem como cancelar (lei). O texto vai junto
+  // com a prova do "Sim" para o PhotoMusic Pro (PERGUNTA_PARABENS).
+  const p = PERGUNTA_PARABENS;
   await sendTyping(chatId);
   await sendButtonList(chatId, p, [
     { id: "1", label: "Sim" },
@@ -9022,6 +9029,10 @@ const resumoEucaristia =
     const r = String(corpoMensagem || "").trim();
 
     if (r === "1") {
+      // 🔐 25/11/2026: PROVA INDIVIDUAL do consentimento (LGPD art. 8, § 2):
+      // a pessoa tocou em "Sim" nesta pergunta, com este texto, neste momento.
+      session.orcamento.consentiuParabensEm = new Date().toISOString();
+      session.orcamento.perguntaParabens = PERGUNTA_PARABENS;
       session.step = "coletar_nascimento_valor";
       const p = "Informe sua *data de nascimento* *(exemplo: 01/02/1985)*.";
       await sendTyping(chatId);
@@ -9032,6 +9043,7 @@ const resumoEucaristia =
 
     // "2" (Não) ou qualquer outra coisa: segue sem a data.
     session.orcamento.dataNascimento = null;
+    session.orcamento.consentiuParabensEm = null;
     await mostrarConfirmacaoOrcamento(chatId, session);
     return;
   }
@@ -9052,6 +9064,7 @@ const resumoEucaristia =
 
     if (isPular) {
       session.orcamento.dataNascimento = null;
+      session.orcamento.consentiuParabensEm = null;
       await sendTyping(chatId);
     } else if (regexData.test(texto)) {
       session.orcamento.dataNascimento = texto;
