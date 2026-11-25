@@ -16,6 +16,7 @@ const { PM_API_KEY } = require("../utils/config");
    pode receber (consentimento, idade, bloqueio). Qualquer falha = NAO envia. */
 const { estaPausado } = require("../utils/pauseControl.js");
 const { estaPausadoEspecial } = require("../utils/pausaEspecialControl.js");
+const { estaRevogadoLocal, rodapeComoParar } = require("../utils/revogacaoParabens.js");
 
 // ================= NORMALIZAÇÃO DE NÚMEROS (VERSÃO COMPLETA DO CHATBOT) =================
 function normalizarNumero(numero) {
@@ -152,11 +153,13 @@ async function carregarConfiguracao() {
 async function conferirAntesDeEnviar(registro, telefone, deps = {}) {
   const pausado   = deps.estaPausado || estaPausado;
   const especial  = deps.estaPausadoEspecial || estaPausadoEspecial;
+  const revogado  = deps.estaRevogadoLocal || estaRevogadoLocal;
   const get       = deps.get || ((url, opts) => axios.get(url, opts));
   try {
     const chatId = String(telefone).includes("@") ? String(telefone) : `${telefone}@c.us`;
     if (pausado(chatId)) return "pausado_no_bot";
     if (especial(chatId)) return "pausa_especial";
+    if (revogado(chatId)) return "revogou_no_whatsapp";   // 2C: vale mesmo se o PhotoMusic Pro nao recebeu
     const resp = await get(URL_ELEGIVEL, {
       timeout: 8000,
       headers: { "X-PM-Api-Key": PM_API_KEY || "" },
@@ -673,7 +676,7 @@ async function executarEnvioComemoracoes() {
 
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
-        await sendText(telefone, mensagem);
+        await sendText(telefone, mensagem + rodapeComoParar(registro.link_sair));   // 2C: sempre diz como parar (SAIR + link)
         marcarComemorativa(telefone, mensagem);   // a resposta dela é agradecimento, não pedido; a mensagem dá o nome
         console.log(`   ✅ Mensagem enviada com sucesso! (${tipoMensagem})`);
         
@@ -804,7 +807,7 @@ async function executarEnvioComemoracoes() {
 
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
-        await sendText(telefone, mensagem);
+        await sendText(telefone, mensagem + rodapeComoParar(registro.link_sair));   // 2C: sempre diz como parar (SAIR + link)
         marcarComemorativa(telefone, mensagem);   // a resposta dela é agradecimento, não pedido; a mensagem dá o nome
         console.log(`   ✅ Mensagem enviada com sucesso! (${tipoMensagem})`);
         

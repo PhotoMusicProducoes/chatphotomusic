@@ -39,6 +39,8 @@ const {
   ativarModoSilencioso, desativarModoSilencioso
 } = require("./utils/index.js");
 const { estaPausado, pausarCliente, retomarCliente, obterPausados } = require("./utils/pauseControl.js");
+// 🔐 25/11/2026 (privacidade 2C): "SAIR" e pedidos naturais revogam os PARABENS (nao o atendimento)
+const { pedidoDeRevogacao, revogarParabens, RESPOSTA_REVOGACAO } = require("./utils/revogacaoParabens.js");
 
 const { sessions } = require("./utils/sessions");
 const { clientePedeValor, clienteNaoSabe, convidadosNaMensagem } = require("./utils/pedidoDeValor.js");
@@ -4673,7 +4675,9 @@ async function perguntarEmailOpcional(chatId, session) {
 
 async function perguntarNascimentoOpcional(chatId, session) {
   session.step = "coletar_nascimento_opcional";
-  const p = "Deseja informar sua *data de nascimento*? É para te enviarmos uma mensagem no seu aniversário 🎂";
+  // 🔐 25/11/2026: a pergunta e o consentimento dos parabens (opcional, com a
+  // finalidade e Sim/Nao); diz tambem como cancelar (lei).
+  const p = "Deseja informar sua *data de nascimento*? É para te enviarmos uma mensagem no seu aniversário 🎂\n\n_É opcional. Se um dia não quiser mais, é só responder SAIR._";
   await sendTyping(chatId);
   await sendButtonList(chatId, p, [
     { id: "1", label: "Sim" },
@@ -6584,6 +6588,27 @@ async function handleIncomingMessage(message) {
       return;
     }
   }  
+
+  // ======================================================
+  // 🔐 REVOGAÇÃO DOS PARABÉNS (25/11/2026, privacidade 2C)
+  // Vale em QUALQUER estado, até para número pausado: registra sempre.
+  // Só revoga os parabéns, não bloqueia o atendimento. Responde quando o
+  // pedido é claro (fala de parabéns/aniversário) ou veio logo depois da
+  // nossa comemoração; o "sair" solto no meio do orçamento segue o fluxo
+  // normal (desistência) depois de registrado.
+  // ======================================================
+  if (!isOperador && message.isGroup !== true) {
+    const tipoRevog = pedidoDeRevogacao(corpoMensagem);
+    if (tipoRevog) {
+      const rv = await revogarParabens(chatId, corpoMensagem);
+      console.log(`🔐 ${chatId} revogou os parabéns (${tipoRevog}; PhotoMusic Pro: ${rv.remoto ? "registrado" : "só no bot"})`);
+      const calado = estaPausado(chatId) || estaPausadoEspecial(chatId);
+      if (tipoRevog === "natural" || recebeuComemorativa(chatId)) {
+        if (!calado) await sendText(chatId, RESPOSTA_REVOGACAO);
+        return;
+      }
+    }
+  }
 
   // ======================================================
   // ✅ VERIFICAR PAUSA ESPECIAL (BLOQUEIA FLUXO NORMAL)
