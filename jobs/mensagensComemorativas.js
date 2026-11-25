@@ -11,6 +11,11 @@ const { marcarComemorativa } = require("../utils/carinho.js");
 /* 🔐 A lista de contatos tem nome, telefone e aniversario: o PhotoMusic Pro
    passou a exigir a chave nessa leitura (16/11/2026, protecao de dados). */
 const { PM_API_KEY } = require("../utils/config");
+/* 🔐 25/11/2026 (privacidade, PRIVACIDADE-10/12): antes de CADA envio o bot
+   confere as proprias pausas e pergunta ao PhotoMusic Pro se a pessoa ainda
+   pode receber (consentimento, idade, bloqueio). Qualquer falha = NAO envia. */
+const { estaPausado } = require("../utils/pauseControl.js");
+const { estaPausadoEspecial } = require("../utils/pausaEspecialControl.js");
 
 // ================= NORMALIZAÇÃO DE NÚMEROS (VERSÃO COMPLETA DO CHATBOT) =================
 function normalizarNumero(numero) {
@@ -57,6 +62,7 @@ function normalizarNumero(numero) {
 // Endpoint unificado: DB + pm_eventos + pm_eucaristia_catequizandos
 const URL_ENDPOINT = "https://photomusic.com.br/wp-json/photomusic/v1/comemoracao-contatos";
 const URL_CONFIG   = "https://photomusic.com.br/wp-content/dados/comemoracoes-config.json";
+const URL_ELEGIVEL = "https://photomusic.com.br/wp-json/photomusic/v1/comemoracao-elegivel";
 
 // Timezone padrão para fallback
 const TIMEZONE_PADRAO = "America/Sao_Paulo";
@@ -113,24 +119,62 @@ function aplicarHoraMinima(expressao) {
 }
 
 // ================= CARREGAR CONFIGURAÇÃO =================
+/* 🔐 FALHA FECHADA (25/11/2026): antes, se a leitura falhasse, o bot assumia
+   "ativo" e RELIGAVA sozinho uma rotina suspensa. Agora so liga com
+   `ativo: true` de verdade (booleano) num objeto valido; arquivo ausente,
+   ilegivel, JSON quebrado ou ativo "true" em texto = DESLIGADO. */
+function interpretarConfig(dados) {
+  const ok = !!dados && typeof dados === "object" && !Array.isArray(dados);
+  const horario = ok && typeof dados.horario === "string" ? dados.horario : "0 10 * * *";
+  return {
+    horario: aplicarHoraMinima(horario),
+    timezone: ok && typeof dados.timezone === "string" ? dados.timezone : TIMEZONE_PADRAO,
+    ativo: ok && dados.ativo === true
+  };
+}
+
 async function carregarConfiguracao() {
   try {
     console.log(`\n📥 Carregando configuração de: ${URL_CONFIG}`);
-    const resposta = await axios.get(URL_CONFIG);
-    const novaConfig = resposta.data;
-
+    const resposta = await axios.get(URL_CONFIG, { timeout: 8000 });
+    const novaConfig = interpretarConfig(resposta.data);
     console.log(`✅ Configuração carregada:`, novaConfig);
-    // A hora mínima vale para o que vem do servidor também.
-    return { ...novaConfig, horario: aplicarHoraMinima(novaConfig.horario) };
+    return novaConfig;
   } catch (erro) {
-    console.error(`⚠️  Erro ao carregar configuração:`, erro.message);
-    // Fallback apenas se arquivo não existir
-    console.log(`⚠️  Usando fallback padrão`);
-    return {
-      horario: aplicarHoraMinima("0 10 * * *"),
-      timezone: TIMEZONE_PADRAO,
-      ativo: true
-    };
+    console.error(`⚠️  Erro ao carregar configuração (${erro.message}): rotina DESLIGADA até ler de novo`);
+    return interpretarConfig(null);
+  }
+}
+
+/* Conferencia individual, logo antes de mandar. Devolve "" se pode enviar,
+   ou o motivo de nao enviar. Nunca lanca: erro, tempo esgotado ou resposta
+   estranha = nao envia. `deps` existe so para o teste. */
+async function conferirAntesDeEnviar(registro, telefone, deps = {}) {
+  const pausado   = deps.estaPausado || estaPausado;
+  const especial  = deps.estaPausadoEspecial || estaPausadoEspecial;
+  const get       = deps.get || ((url, opts) => axios.get(url, opts));
+  try {
+    const chatId = String(telefone).includes("@") ? String(telefone) : `${telefone}@c.us`;
+    if (pausado(chatId)) return "pausado_no_bot";
+    if (especial(chatId)) return "pausa_especial";
+    const resp = await get(URL_ELEGIVEL, {
+      timeout: 8000,
+      headers: { "X-PM-Api-Key": PM_API_KEY || "" },
+      params: {
+        telefone,
+        tipo: registro.tipo || "",
+        destinatario: registro.destinatario || "",
+        nome: registro.nomeCelebrado || "",
+        dia: registro.dia, mes: registro.mes, ano: registro.ano == null ? "" : registro.ano
+      }
+    });
+    const d = resp && resp.data;
+    if (!d || typeof d !== "object" || d.elegivel !== true) {
+      return (d && typeof d.motivo === "string" && d.motivo) || "resposta_invalida";
+    }
+    return "";
+  } catch (e) {
+    return "falha_conferencia";
   }
 }
 
@@ -475,6 +519,7 @@ async function executarEnvioComemoracoes() {
     let duplicadas = 0;
     let idxEnvio = 0; // p/ o intervalo anti-bloqueio entre envios (vale p/ os 2 loops do ciclo)
     let bloqueadas_por_prioridade = 0; // NOVO: Contador de bloqueios por prioridade
+    let naoAutorizadas = 0; // 🔐 barradas na conferencia individual
 
     // ✅ NOVO: Separar registros em 2 grupos
     const TIPOS_COM_ANO = ["dia_casamento", "quinze_anos", "bodas", "dia_festa"];
@@ -619,6 +664,13 @@ async function executarEnvioComemoracoes() {
         continue;
       }
 
+      const motivoNao = await conferirAntesDeEnviar(registro, telefone);
+      if (motivoNao) {
+        console.log(`   🔐 Não enviado (${motivoNao})`);
+        naoAutorizadas++;
+        continue;
+      }
+
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
         await sendText(telefone, mensagem);
@@ -743,6 +795,13 @@ async function executarEnvioComemoracoes() {
         continue;
       }
 
+      const motivoNao = await conferirAntesDeEnviar(registro, telefone);
+      if (motivoNao) {
+        console.log(`   🔐 Não enviado (${motivoNao})`);
+        naoAutorizadas++;
+        continue;
+      }
+
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
         await sendText(telefone, mensagem);
@@ -765,6 +824,7 @@ async function executarEnvioComemoracoes() {
     console.log(`\n📊 ========== RESUMO FINAL ==========`);
     console.log(`✅ Mensagens enviadas: ${enviadas}`);
     console.log(`⛔ Bloqueadas por prioridade: ${bloqueadas_por_prioridade}`);
+    console.log(`🔐 Barradas na conferência (consentimento/bloqueio/falha): ${naoAutorizadas}`);
     console.log(`⚠️  Duplicatas bloqueadas: ${duplicadas}`);
     console.log(`❌ Erros: ${erros}`);
     console.log(`📋 Total processado: ${registros.length}`);
@@ -823,7 +883,10 @@ module.exports = {
   // para teste-hora-minima-comemoracoes.js
   aplicarHoraMinima,
   HORA_MINIMA_ENVIO,
-  executarEnvioComemoracoes
+  executarEnvioComemoracoes,
+  // para teste-privacidade-comemoracoes.js
+  interpretarConfig,
+  conferirAntesDeEnviar
 };
 
 // ================= RECARREGAR CONFIGURAÇÃO A CADA 5 MINUTOS =================
