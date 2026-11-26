@@ -4,6 +4,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const { handleIncomingMessage } = require("./index");
 const { inicializarScheduler } = require("./jobs/mensagensComemorativas");
+const { inicializarDiaFesta } = require("./jobs/mensagemDiaFesta");   // 26/11: "Chegou o grande dia"
 const { inicializarFollowupLeads } = require("./jobs/followupLeads");
 const { inicializarLembreteOrcamento } = require("./jobs/lembreteOrcamento");
 const { inicializarEnvioAgendado } = require("./jobs/envioAgendado");
@@ -82,6 +83,7 @@ function normalizarTextoRecebido(raw) {
 console.log("\n🚀 Iniciando sistema integrado (ChatBot + Comemorações + Pausa Especial)...\n");
 inicializarPausaEspecial();
 inicializarScheduler();
+inicializarDiaFesta();   // 26/11: so envia com a chave ligada no PhotoMusic Pro
 inicializarFollowupLeads();
 inicializarLembreteOrcamento();
 inicializarEnvioAgendado();

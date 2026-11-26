@@ -232,6 +232,19 @@ function inicializarLimpadorDiario() {
 
 // ================= MENSAGEM 1: ANIVERSÁRIO PESSOAL - RESPONSÁVEL =================
 function montarMensagemAniversarioPessoalParaResponsavel(registro) {
+  /* 👧 26/11/2026: crianca com autorizacao do responsavel (caixa do pre-cadastro).
+     Vai SO ao responsavel e SEM propaganda (sem link de Instagram ou site). */
+  if (registro.fonte === "consentimento_filho") {
+    const quem = String(registro.nomeResponsavel || "").trim().split(/\s+/)[0];
+    return (
+      `Bom dia${quem ? `, *${quem}*` : ""}! 🎂\n\n` +
+      `Hoje é o aniversário de *${registro.nomeCelebrado}*! 🥳🎉\n` +
+      `Agradecemos a Deus por essa vida e pedimos que Ele continue derramando bênçãos, saúde, paz, alegria e felicidade sobre toda a sua família. 🙏\n\n` +
+      `Com carinho,🥰🥰\n` +
+      `*Adriana e Mario*\n` +
+      `*PhotoMusic Produções*`
+    );
+  }
   const genero = registro.generoCelebrado;
   const pronome = genero === "feminino" ? "dela" : "dele";
 
@@ -505,7 +518,10 @@ async function executarEnvioComemoracoes() {
       console.warn(`⚠️ Endpoint indisponível (${errEndpoint.message}) — usando apenas JSON legado`);
     }
 
-    const registros = registrosEndpoint;
+    /* 🎉 26/11/2026: o DIA do evento (festa, 15 anos, casamento, bodas) saiu desta rotina:
+       e atendimento do evento e tem rotina propria (jobs/mensagemDiaFesta.js). */
+    const FONTES_DIA_DO_EVENTO = ["evento_festa", "evento_casamento", "evento_bodas"];
+    const registros = registrosEndpoint.filter(r => !FONTES_DIA_DO_EVENTO.includes(r && r.fonte));
 
     if (registros.length === 0) {
       console.warn("⚠️ Endpoint sem registros ou indisponível. Encerrando sem envios.");
