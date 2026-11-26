@@ -296,6 +296,7 @@ async function retomarEspecial(telefone) {
     const chaveSessao = normalizarTelefone(registroJSON.telefone);
     sessoesRetomadas[chaveSessao] = true;
     salvarSessoesRetomadas();
+    await espelharNoDB(registroJSON, 0);   // 26/11: o PhotoMusic Pro tambem fica sabendo
     console.log(`✅ ${registroJSON.nome} (${registroJSON.telefone}) RETOMADO (JSON${fuzzy ? ", match por últimos 8 dígitos" : ""})`);
     console.log(`   Sessão criada: sessoesRetomadas[${chaveSessao}] = true\n`);
     exibirEstadoPausas();
@@ -348,6 +349,7 @@ async function pausarEspecial(telefone) {
   if (achadoJSON) {
     const { registro: registroJSON, fuzzy } = achadoJSON;
     const chaveSessao = normalizarTelefone(registroJSON.telefone);
+    await espelharNoDB(registroJSON, 1);   // 26/11: o PhotoMusic Pro tambem fica sabendo
     if (sessoesRetomadas[chaveSessao]) {
       delete sessoesRetomadas[chaveSessao];
       salvarSessoesRetomadas();
@@ -434,6 +436,38 @@ function exibirEstadoPausas() {
   console.log(`└─ 📋 Total JSON: ${pausadosEspeciais.length}\n`);
 }
 
+/* 🔄 26/11/2026 (Mario): retomar/pausar pelo comando tem que valer no PhotoMusic Pro
+   tambem. Antes, numero da lista antiga (pausaEspecial.json) so ganhava a "sessao
+   retomada" AQUI: o bot atendia, mas o PhotoMusic Pro seguia "pausado" e barrava
+   os parabens. Grava no registro que ja existe no banco (mesmo pelos ultimos 8
+   digitos); se nao existir, cria. Falha so registra no log (o comando segue valendo). */
+async function espelharNoDB(registro, pausado) {
+  try {
+    const achado = encontrarNoDB(normalizarTelefone(registro.telefone));
+    const tel  = achado ? achado.registro.telefone : registro.telefone;
+    const nome = (achado && achado.registro.nome) || registro.nome || "";
+    const ok = await upsertNoDB(tel, nome, pausado);
+    if (ok && achado) achado.registro.pausado = pausado === 1;
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Uma vez no start: quem ja tem "sessao retomada" mas segue pausado no banco vira retomado la. */
+async function sincronizarRetomadasComDB() {
+  let n = 0;
+  for (const chave of Object.keys(sessoesRetomadas)) {
+    if (sessoesRetomadas[chave] !== true) continue;
+    const achado = encontrarNoDB(chave);
+    if (achado && achado.registro.pausado) {
+      if (await espelharNoDB(achado.registro, 0)) n++;
+    }
+  }
+  if (n) console.log(`🔄 ${n} sessão(ões) retomada(s) agora também retomada(s) no PhotoMusic Pro`);
+  return n;
+}
+
 // ================= INICIALIZAR =================
 async function inicializarPausaEspecial() {
   console.log(`\n🔒 Sistema de Pausa Especial inicializado`);
@@ -442,6 +476,7 @@ async function inicializarPausaEspecial() {
 
   await carregarPausadosEspeciais();
   await carregarPausadosDB();
+  try { await sincronizarRetomadasComDB(); } catch (e) {}
 
   // Recarga periódica: número pausado pelo PAINEL DO WORDPRESS (tabela
   // pm_pausa_especial) ou editado no pausaEspecial.json passa a valer sozinho,
@@ -467,4 +502,5 @@ module.exports = {
   carregarPausadosEspeciais,
   carregarPausadosDB,
   normalizarTelefone,
+  sincronizarRetomadasComDB,     // 26/11 (teste)
 };
