@@ -71,7 +71,10 @@ function checar(nome, cond, det) {
   checar("prova do Sim só nasce no botão Sim da pergunta", /if \(r === "1"\) \{[\s\S]{0,300}consentiuParabensEm = new Date\(\)\.toISOString\(\);/.test(idx0()));
   checar("Não ou pular apagam a prova", (idx0().match(/consentiuParabensEm = null;/g) || []).length === 2);
   checar("captura só manda a prova com Sim E data", /consentiu_parabens:\s+!!\(orc\.consentiuParabensEm && orc\.dataNascimento\)/.test(idx0()));
-  checar("pergunta do orçamento avisa como cancelar", /data de nascimento\*\? É para te enviarmos[^"]*responder SAIR/.test(idx0()));
+  // 26/11/2026: texto novo aprovado (nome da empresa, WhatsApp, opcional, SAIR); a data so vem depois do Sim
+  checar("pergunta do orçamento avisa como cancelar", /feliz aniversário da PhotoMusic Produções pelo WhatsApp\?[^"]*respondendo SAIR/.test(idx0()));
+  checar("pergunta não pede a data antes do Sim", !/const PERGUNTA_PARABENS = "[^"]*data de nascimento/.test(idx0()));
+  checar("prova leva texto + botões", /perguntaParabens = PERGUNTA_PARABENS_INTEGRAL/.test(idx0()) && /label: "Sim, quero receber! 🥰"/.test(idx0()));
   const idx = fs.readFileSync(__dirname + "/index.js", "utf8");
   const iRev = idx.indexOf("const tipoRevog = pedidoDeRevogacao(corpoMensagem);");
   const iPausa = idx.indexOf("if (!isOperador && estaPausadoEspecial(chatId)) {");

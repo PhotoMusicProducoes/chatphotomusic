@@ -4677,7 +4677,15 @@ async function perguntarEmailOpcional(chatId, session) {
   session.ultimaPerguntaNaoRespondida = p + "\n*1* - Sim\n*2* - Não";
 }
 
-const PERGUNTA_PARABENS = "Deseja informar sua *data de nascimento*? É para te enviarmos uma mensagem no seu aniversário 🎂\n\n_É opcional. Se um dia não quiser mais, é só responder SAIR._";
+// 🎂 26/11/2026: texto aprovado pelo ChatGPT. A data so e pedida DEPOIS do "Sim".
+// Mudar este texto (ou os botoes) gera versao nova sozinha no PhotoMusic Pro (SHA-256).
+const PERGUNTA_PARABENS = "🎂 Podemos lembrar de você em uma data especial?\n\nVocê gostaria de receber uma mensagem de feliz aniversário da PhotoMusic Produções pelo WhatsApp?\n\nÉ totalmente opcional e você pode cancelar a qualquer momento respondendo SAIR.";
+const BOTOES_PARABENS = [
+  { id: "1", label: "Sim, quero receber! 🥰" },
+  { id: "2", label: "Não, obrigado(a)" }
+];
+// O que a pessoa VIU por inteiro (texto + botoes): e isso que vai como prova.
+const PERGUNTA_PARABENS_INTEGRAL = PERGUNTA_PARABENS + "\n\n[" + BOTOES_PARABENS.map(b => b.label).join("] [") + "]";
 
 async function perguntarNascimentoOpcional(chatId, session) {
   session.step = "coletar_nascimento_opcional";
@@ -4686,11 +4694,8 @@ async function perguntarNascimentoOpcional(chatId, session) {
   // com a prova do "Sim" para o PhotoMusic Pro (PERGUNTA_PARABENS).
   const p = PERGUNTA_PARABENS;
   await sendTyping(chatId);
-  await sendButtonList(chatId, p, [
-    { id: "1", label: "Sim" },
-    { id: "2", label: "Não" }
-  ]);
-  session.ultimaPerguntaNaoRespondida = p + "\n*1* - Sim\n*2* - Não";
+  await sendButtonList(chatId, p, BOTOES_PARABENS);
+  session.ultimaPerguntaNaoRespondida = p + "\n*1* - " + BOTOES_PARABENS[0].label + "\n*2* - " + BOTOES_PARABENS[1].label;
 }
 
 // Envia os detalhes de uma LISTA de serviços, um de cada vez e com respiro
@@ -9032,7 +9037,7 @@ const resumoEucaristia =
       // 🔐 25/11/2026: PROVA INDIVIDUAL do consentimento (LGPD art. 8, § 2):
       // a pessoa tocou em "Sim" nesta pergunta, com este texto, neste momento.
       session.orcamento.consentiuParabensEm = new Date().toISOString();
-      session.orcamento.perguntaParabens = PERGUNTA_PARABENS;
+      session.orcamento.perguntaParabens = PERGUNTA_PARABENS_INTEGRAL;   // 26/11: texto + botoes
       session.step = "coletar_nascimento_valor";
       const p = "Informe sua *data de nascimento* *(exemplo: 01/02/1985)*.";
       await sendTyping(chatId);

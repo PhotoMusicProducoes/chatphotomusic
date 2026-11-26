@@ -184,7 +184,8 @@ const PERGUNTA_POR_PASSO = {
   "orcamento_detalhes_texto": "Pode me contar os detalhes do seu evento.",
   "coletar_email_opcional": "Falta pouco para finalizar seu orçamento! Deseja informar seu *e-mail* para receber o orçamento em PDF também?\n*1* - Sim\n*2* - Não",
   "coletar_email_valor": "Falta pouco para finalizar seu orçamento! Qual o seu *e-mail*?",
-  "coletar_nascimento_opcional": "Falta pouco para finalizar seu orçamento! Deseja informar sua *data de nascimento*?\n*1* - Sim\n*2* - Não",
+  // 26/11/2026: mesmo texto aprovado da pergunta dos parabens (a prova grava esse texto)
+  "coletar_nascimento_opcional": "Falta pouco para finalizar seu orçamento! 😊\n\n🎂 Podemos lembrar de você em uma data especial?\n\nVocê gostaria de receber uma mensagem de feliz aniversário da PhotoMusic Produções pelo WhatsApp?\n\nÉ totalmente opcional e você pode cancelar a qualquer momento respondendo SAIR.\n*1* - Sim, quero receber! 🥰\n*2* - Não, obrigado(a)",
   "coletar_nascimento_valor": "Falta pouco para finalizar seu orçamento! Sua data de nascimento (ex: 01/02/1985).",
   "orcamento_confirmar": "Faltou só revisar os dados e confirmar pra eu enviar o orçamento. Está tudo certo?\n*1* - Sim, quero o orçamento\n*2* - Corrigir algo",
   // Sai da função acima, nunca escrito à mão. Ver o caso Monique (13/09/2026).
