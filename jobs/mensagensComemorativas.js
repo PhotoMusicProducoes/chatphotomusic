@@ -745,7 +745,9 @@ async function executarEnvioComemoracoes() {
           mensagem = montarMensagemAniversarioPessoalParaCelebrado(registro);
           tipoMensagem = "Aniversário Pessoal (Celebrado)";
         } else {
-          if (!registro.nomeResponsavel || !registro.relacao || !registro.nomeCelebrado) {
+          // 26/11: filho autorizado pelo pre-cadastro nao tem "relacao" (a mensagem dele nao usa): so exige o nome
+          const filhoAutorizado = registro.fonte === "consentimento_filho";
+          if (!registro.nomeCelebrado || (!filhoAutorizado && (!registro.nomeResponsavel || !registro.relacao))) {
             console.log(`   ❌ Faltam campos obrigatórios`);
             erros++;
             continue;

@@ -57,6 +57,8 @@ function deps(extra = {}) {
   const fs = require("fs");
   const fonte = fs.readFileSync(__dirname + "/jobs/mensagemDiaFesta.js", "utf8");
   checar("rotina nao monta texto proprio (usa o aprovado do PhotoMusic Pro)", !/Chegou o grande dia/.test(fonte.replace(/^\/\*[\s\S]*?\*\//m, "")));
+  const mc = fs.readFileSync(__dirname + "/jobs/mensagensComemorativas.js", "utf8");
+  checar("filho autorizado nao e descartado por falta de 'relacao' (caso Joao Pedro 26/11)", /filhoAutorizado = registro\.fonte === "consentimento_filho"/.test(mc) && /!filhoAutorizado && \(!registro\.nomeResponsavel \|\| !registro\.relacao\)/.test(mc));
   const sv = fs.readFileSync(__dirname + "/server.js", "utf8");
   checar("rotina ligada no server.js", /inicializarDiaFesta\(\);/.test(sv));
 
