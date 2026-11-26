@@ -676,7 +676,8 @@ async function executarEnvioComemoracoes() {
       }
 
       // ✅ NOVO: Verificar duplicata em memória
-      const chaveUnica = gerarChaveUnica(telefone, registro.tipo, registro.destinatario);
+      // 26/11: filho autorizado entra com o NOME na chave (gemeos no mesmo telefone recebem os dois)
+      const chaveUnica = gerarChaveUnica(telefone, registro.tipo, registro.fonte === "consentimento_filho" ? `${registro.destinatario}|${String(registro.nomeCelebrado || "").toLowerCase()}` : registro.destinatario);
       if (jaFoiEnviada(chaveUnica)) {
         console.log(`   ⚠️  DUPLICADA! Já enviada hoje para ${telefone}`);
         duplicadas++;
@@ -807,7 +808,8 @@ async function executarEnvioComemoracoes() {
       }
 
       // Verificar duplicata em memória
-      const chaveUnica = gerarChaveUnica(telefone, registro.tipo, registro.destinatario);
+      // 26/11: filho autorizado entra com o NOME na chave (gemeos no mesmo telefone recebem os dois)
+      const chaveUnica = gerarChaveUnica(telefone, registro.tipo, registro.fonte === "consentimento_filho" ? `${registro.destinatario}|${String(registro.nomeCelebrado || "").toLowerCase()}` : registro.destinatario);
       if (jaFoiEnviada(chaveUnica)) {
         console.log(`   ⚠️  DUPLICADA! Já enviada hoje para ${telefone}`);
         duplicadas++;
