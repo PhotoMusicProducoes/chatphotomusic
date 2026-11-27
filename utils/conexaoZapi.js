@@ -70,7 +70,7 @@ async function avisarPhotoMusicPro(e, deps = {}) {
     }
     // axios, como o resto do bot fala com o PhotoMusic Pro (o fetch nativo e barrado pelo servidor do site)
     const axios = require("axios");
-    const r = await axios.post(`${PM_API_BASE}/whatsapp-conexao`, corpo, { timeout: 10000, headers: { "X-PM-Api-Key": PM_API_KEY } });
+    const r = await axios.post(`${PM_API_BASE}/whatsapp-conexao`, corpo, { timeout: 25000, headers: { "X-PM-Api-Key": PM_API_KEY } });
     return r.status >= 200 && r.status < 300;
   } catch (err) {
     console.error("🚨 [whatsapp-conexao] nao consegui avisar o PhotoMusic Pro:", err.message);
