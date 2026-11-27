@@ -103,6 +103,20 @@ const MENU = /Como posso te ajudar hoje/;   // 13/11: o 1o menu abre com a apres
   r = await cliente("6");
   checar("6: vai para o menu normal", MENU.test(r) && sess().step === "aguardando_opcao", sess().step + " | " + r);
 
+  console.log("--- 27/11: opcoes 7 (novo orcamento) e 8 (baixar foto) ---");
+  novo({ ativo: true, orcamentos: [LUCIANA] });
+  r = await cliente(SITE);
+  checar("menu mostra 7 e 8", /7\* - Quero um novo orçamento/.test(r) && /8\* - Baixar minha foto do evento/.test(r), r);
+  r = await cliente("7");
+  checar("7: começa orçamento NOVO (sai do retorno, sem a data/local antigos)", !sess().retorno && !(sess().dadosLivres || {}).data && /orcamento|reuso/.test(String(sess().step)), sess().step + " | " + r);
+  novo({ ativo: true, orcamentos: [LUCIANA] });
+  await cliente(SITE);
+  r = await cliente("8");
+  checar("8: vai para o fluxo de baixar a foto (sai do retorno)", !sess().retorno && sess().step !== "retorno_opcao", sess().step + " | " + r);
+  const { opcaoRetorno } = require("./utils/clienteRetorno.js");
+  checar("palavras: 'quero um novo orçamento' = 7, 'baixar minha foto' = 8, 'manda o pdf' = 1",
+    opcaoRetorno("quero um novo orçamento") === "7" && opcaoRetorno("quero baixar minha foto") === "8" && opcaoRetorno("manda o pdf") === "1" && opcaoRetorno("9") === null);
+
   console.log("--- dois orçamentos em aberto ---");
   const OUTRO = Object.assign({}, LUCIANA, { id: 520, celebracao: "Casamento", data_evento: "10/10/2027", servicos: ["Plataforma 360º"] });
   novo({ ativo: true, orcamentos: [OUTRO, LUCIANA] });

@@ -2620,6 +2620,17 @@ async function executarOpcaoRetorno(chatId, session, op, chatIdNormalizado, text
     return;
   }
 
+  if (op === "7") {   // 27/11/2026 (Mario): novo orcamento, aproveita so nome e tipo (outro evento)
+    await iniciarNovoOrcamentoRetorno(chatId, session, chatIdNormalizado);
+    return;
+  }
+
+  if (op === "8") {   // 27/11/2026 (Mario): baixar a foto do evento (mesmo fluxo da opcao 7 do menu principal)
+    session.retorno = null;
+    await executarOpcaoMenu(chatId, session, "7", chatIdNormalizado);
+    return;
+  }
+
   // "6" - outro evento ou outro assunto: segue o fluxo normal (menu de boas-vindas)
   session.retorno = null;
   await mostrarMenuInicial(chatId);

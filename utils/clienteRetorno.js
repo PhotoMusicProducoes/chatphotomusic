@@ -39,6 +39,8 @@ const OPCOES_RETORNO = [
   { id: "4", label: "Quero contratar" },
   { id: "5", label: "Falar com a equipe PhotoMusic" },
   { id: "6", label: "É outro evento ou outro assunto" },
+  { id: "7", label: "Quero um novo orçamento" },          // 27/11/2026 (Mario)
+  { id: "8", label: "Baixar minha foto do evento" },      // 27/11/2026 (Mario): convidado que ja pediu orcamento
 ];
 
 function linhasOpcoesRetorno() {
@@ -109,13 +111,15 @@ function escolhaItem(texto, itens) {
   return null;
 }
 
-/** Resposta ao menu de retorno: "1".."6", o titulo da opcao ou palavras-chave; null se nao entendeu. */
+/** Resposta ao menu de retorno: "1".."8", o titulo da opcao ou palavras-chave; null se nao entendeu. */
 function opcaoRetorno(texto) {
   const t = semAcento(texto).trim();
   if (!t) return null;
-  const d = t.match(/^\*?([1-6])\*?\b/);
+  const d = t.match(/^\*?([1-8])\*?\b/);
   if (d) return d[1];
   for (const o of OPCOES_RETORNO) if (t === semAcento(o.label)) return o.id;
+  if (/\b(novo|nova|outro|outra) (orcamento|proposta)\b/.test(t)) return "7";
+  if (/\b(foto|fotos|galeria|baixar)\b/.test(t) && !/\bpdf\b/.test(t)) return "8";
   if (/\b(contratar|fechar|quero fechar|vou fechar)\b/.test(t) && !/\bnao\b/.test(t)) return "4";
   if (/\b(disponib|vaga|data livre|tem data)/.test(t)) return "3";
   if (/\b(atualiz|novo valor|valor atual|refazer|mudar|alterar)/.test(t)) return "2";
