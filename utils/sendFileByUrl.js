@@ -90,6 +90,7 @@ async function sendFileByUrl(chatId, url, type = null, customFileName = null) {
     // ============================
     // ENVIO PARA A Z-API (AUTENTICAÇÃO CORRETA)
     // ============================
+    require("./conexaoZapi.js").garantirConectado();   // 27/11: desconectado = falha de proposito
     const response = await fetch(`${API_URL}${endpoint}`, {
       method: "POST",
       headers: {

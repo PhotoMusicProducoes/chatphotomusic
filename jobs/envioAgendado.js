@@ -28,6 +28,8 @@ function todosOsServicos() {
 }
 
 async function executarEnvioAgendado() {
+  // 27/11: WhatsApp desconectado = a rotina PAUSA sem marcar nada como enviado (roda no proximo ciclo)
+  if (require("../utils/conexaoZapi.js").pausarSeDesconectado("envio agendado")) return;
   for (const chatId of Object.keys(sessions)) {
     const s = sessions[chatId];
     if (!s || !s.envioFaltantesEm) continue;

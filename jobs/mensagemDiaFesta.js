@@ -57,6 +57,8 @@ async function conferir(item, deps = {}) {
 }
 
 async function executarDiaFesta(deps = {}) {
+  // 27/11: WhatsApp desconectado = a rotina PAUSA sem marcar nada como enviado (a do dia roda sozinha ao reconectar)
+  if (require("../utils/conexaoZapi.js").pausarSeDesconectado("dia da festa", () => executarDiaFesta())) return;
   const get   = deps.get   || ((url, opts) => axios.get(url, opts));
   const post  = deps.post  || ((url, body, opts) => axios.post(url, body, opts));
   const enviar = deps.sendText || sendText;
@@ -79,7 +81,9 @@ async function executarDiaFesta(deps = {}) {
     if (motivo) { res.barradas++; console.log(`   ⛔ evento ${item && item.id_evento}: ${motivo}`); continue; }
     try {
       const chatId = chatIdDe(item.telefone);
-      await enviar(chatId, item.mensagem);
+      const saiu = await enviar(chatId, item.mensagem);
+      // 27/11: nao saiu (desconectado/falha) = nao marca: sai na repescagem ou no proximo dia
+      if (saiu === false) throw new Error("a mensagem nao saiu");
       res.enviadas++;
       try { (deps.marcarComemorativa || marcarComemorativa)(chatId, item.mensagem); } catch (e) {}
       try {

@@ -122,6 +122,10 @@ async function sendText(chatId, text) {
        guarda uns 2 minutos, o rastro sumia antes de alguém perceber. Era esse
        o buraco por onde o caso de 01/09 escapou.
        Agora: uma nova tentativa e, se ainda falhar, o OPERADOR é avisado. */
+    if (require("./conexaoZapi.js").estaDesconectado()) {   // 27/11: nem tenta (nao cai na fila presa)
+      console.error(`📵 [sendText] WhatsApp DESCONECTADO: a mensagem para ${phone} NAO saiu.`);
+      return false;
+    }
     try {
       await _enviar(phone, text);
       return true;
@@ -133,7 +137,8 @@ async function sendText(chatId, text) {
         console.log(`✅ [sendText] Deu certo na 2ª tentativa para ${phone}`);
         return true;
       } catch (erro2) {
-        await avisarOperadorFalha(phone, text, erro2);
+        // 27/11: com o WhatsApp desconectado, avisar o operador pelo proprio WhatsApp nao adianta (a faixa e o e-mail avisam)
+        if (!require("./conexaoZapi.js").estaDesconectado()) await avisarOperadorFalha(phone, text, erro2);
         return false;
       }
     }
@@ -179,6 +184,7 @@ async function avisarOperadorFalha(phone, text, erro) {
 }
 
 async function _enviar(phone, text) {
+  require("./conexaoZapi.js").garantirConectado();   // 27/11: desconectado = falha de proposito (nao cai na fila da Z-API)
   const response = await fetch(
     `${API_URL}/send-text`,
     {

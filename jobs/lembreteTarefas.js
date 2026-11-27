@@ -31,6 +31,8 @@ const TIMEZONE = "America/Sao_Paulo";
 const HORA_LEMBRETE = 10;
 
 async function executarLembreteTarefas() {
+  // 27/11: WhatsApp desconectado = a rotina PAUSA sem marcar nada como enviado (a do dia roda sozinha ao reconectar)
+  if (require("../utils/conexaoZapi.js").pausarSeDesconectado("lembrete de tarefas", () => executarLembreteTarefas())) return;
   try {
     console.log("⏰ [Tarefas] Verificando tarefas abertas para o lembrete diário...");
     const grupoId = process.env.PM_TAREFAS_GRUPO_ID || "";

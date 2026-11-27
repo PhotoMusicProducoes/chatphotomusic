@@ -394,6 +394,8 @@ async function executarFollowupLeads() {
 }
 
 async function executarFollowupLeadsCiclo() {
+  // 27/11: WhatsApp desconectado = a rotina PAUSA sem marcar nada como enviado (roda no proximo ciclo)
+  if (require("../utils/conexaoZapi.js").pausarSeDesconectado("follow-up de leads")) return;
   console.log("\n📨 ========== FOLLOW-UP DE LEADS ==========");
   try {
     const resp = await axios.get(`${PM_API_BASE}/leads-followup`, {

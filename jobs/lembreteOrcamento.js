@@ -457,6 +457,8 @@ function montarMensagemOperador(chatId, s, dEvento) {
 // EXECUÇÃO
 // ======================================================
 async function executarLembreteOrcamento() {
+  // 27/11: WhatsApp desconectado = a rotina PAUSA sem marcar nada como enviado (roda no proximo ciclo)
+  if (require("../utils/conexaoZapi.js").pausarSeDesconectado("lembrete de orcamento")) return;
   if (!dentroDaJanela()) return; // proteção extra à janela (ver JANELA_FIM)
 
   console.log("\n⏰ ===== LEMBRETE DE ORÇAMENTO ABANDONADO =====");

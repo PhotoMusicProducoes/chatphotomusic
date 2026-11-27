@@ -83,6 +83,8 @@ async function marcarEnviado(idEvento, tipo) {
 }
 
 async function executarAvisosGaleria() {
+  // 27/11: WhatsApp desconectado = a rotina PAUSA sem marcar nada como enviado (roda no proximo ciclo)
+  if (require("../utils/conexaoZapi.js").pausarSeDesconectado("avisos da galeria")) return;
   try {
     const resp = await axios.get(`${PM_API_BASE}/eventos-avisos`, {
       headers: { "X-PM-Api-Key": PM_API_KEY },

@@ -84,6 +84,7 @@ console.log("\n🚀 Iniciando sistema integrado (ChatBot + Comemorações + Paus
 inicializarPausaEspecial();
 inicializarScheduler();
 inicializarDiaFesta();   // 26/11: so envia com a chave ligada no PhotoMusic Pro
+require("./utils/conexaoZapi.js").iniciar();   // 27/11: vigia do WhatsApp (a cada 3 min; avisa o PhotoMusic Pro quando cai/volta)
 inicializarFollowupLeads();
 inicializarLembreteOrcamento();
 inicializarEnvioAgendado();

@@ -95,6 +95,7 @@ async function sendOptionList(chatId, pergunta, opcoes, cfg = {}) {
       }
     };
 
+    require("./conexaoZapi.js").garantirConectado();   // 27/11: desconectado = falha de proposito
     const response = await fetch(`${API_URL}/send-option-list`, {
       method: "POST",
       headers: {

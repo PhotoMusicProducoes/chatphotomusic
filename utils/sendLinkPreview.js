@@ -20,6 +20,7 @@ async function sendLinkPreview(chatId, url) {
     // ============================================================
     console.log("⌨️ [sendLinkPreview] Simulando digitação...");
 
+    require("./conexaoZapi.js").garantirConectado();   // 27/11: desconectado = falha de proposito
     await fetch(`${API_URL}/send-typing`, {
       method: "POST",
       headers: {

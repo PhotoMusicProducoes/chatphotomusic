@@ -496,6 +496,8 @@ function montarMensagemDiaFestaResponsavel(registro) {
 
 // ================= EXECUÇÃO PRINCIPAL =================
 async function executarEnvioComemoracoes() {
+  // 27/11: WhatsApp desconectado = a rotina PAUSA sem marcar nada como enviado (a do dia roda sozinha ao reconectar)
+  if (require("../utils/conexaoZapi.js").pausarSeDesconectado("parabens do dia", () => executarEnvioComemoracoes())) return;
   console.log("\n🎉 ========== INICIANDO VERIFICAÇÃO DE COMEMORAÇÕES ==========");
   console.log(`⏰ Horário: ${new Date().toLocaleString("pt-BR", { timeZone: configAtual.timezone })}`);
 
@@ -693,7 +695,9 @@ async function executarEnvioComemoracoes() {
 
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
-        await sendText(telefone, mensagem + rodapeComoParar(registro.link_sair));   // 2C: sempre diz como parar (SAIR + link)
+        const saiu = await sendText(telefone, mensagem + rodapeComoParar(registro.link_sair));   // 2C: sempre diz como parar (SAIR + link)
+        // 27/11: envio que NAO saiu (WhatsApp desconectado ou falha) nao e marcado: sai na repescagem/proximo dia
+        if (saiu === false) throw new Error("a mensagem nao saiu (WhatsApp desconectado ou falha no envio)");
         marcarComemorativa(telefone, mensagem);   // a resposta dela é agradecimento, não pedido; a mensagem dá o nome
         console.log(`   ✅ Mensagem enviada com sucesso! (${tipoMensagem})`);
         
@@ -827,7 +831,9 @@ async function executarEnvioComemoracoes() {
 
       try {
         console.log(`   📱 Enviando para: ${telefone}`);
-        await sendText(telefone, mensagem + rodapeComoParar(registro.link_sair));   // 2C: sempre diz como parar (SAIR + link)
+        const saiu = await sendText(telefone, mensagem + rodapeComoParar(registro.link_sair));   // 2C: sempre diz como parar (SAIR + link)
+        // 27/11: envio que NAO saiu (WhatsApp desconectado ou falha) nao e marcado: sai na repescagem/proximo dia
+        if (saiu === false) throw new Error("a mensagem nao saiu (WhatsApp desconectado ou falha no envio)");
         marcarComemorativa(telefone, mensagem);   // a resposta dela é agradecimento, não pedido; a mensagem dá o nome
         console.log(`   ✅ Mensagem enviada com sucesso! (${tipoMensagem})`);
         

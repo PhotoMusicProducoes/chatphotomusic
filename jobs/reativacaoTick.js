@@ -26,6 +26,8 @@ let ultimaConsulta = 0;
 let ativo = true;        // começa conferindo (a máquina pode ter reiniciado no meio de um envio)
 
 async function executarReativacaoTick() {
+  // 27/11: WhatsApp desconectado = a rotina PAUSA sem marcar nada como enviado (roda no proximo ciclo)
+  if (require("../utils/conexaoZapi.js").pausarSeDesconectado("reativacao")) return;
   if (rodando || !PM_API_KEY) return;
   const agora = Date.now();
   if (!ativo && agora - ultimaConsulta < OCIOSO_MS) return;
