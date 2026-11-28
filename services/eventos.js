@@ -230,12 +230,14 @@ function montarMensagemEvento(evento, telefone = "", marca = "") {
     `*2º* Clique no link para baixar sua foto ou vídeo;\n` +
     `*3º* Leia os termos, digite seu nome, e-mail e clique no botão;\n` +
     `*4º* Procure sua foto ou seu vídeo;\n` +
-    `*5º* Clique na seta ⬇️ acima do vídeo ou da foto 🖼️ para baixar cada um, separadamente.\n\n` +
-    `*OBS:* Ao clicar na seta ⬇️ acima da foto 🖼️ ou do GIF Animado 🎞️, ` +
-    `no *Sistema Android* a foto 🖼️ e o GIF 🎞️ serão salvos direto na galeria, ` +
-    `já no *Iphone*, para salvar a foto clique em salvar imagem (a foto 🖼️ será salva na galeria) ` +
-    `ou em salvar arquivo (a foto 🖼️ será salva em Arquivo), ` +
-    `para salvar o GIF Animado 🎞️ clique em salvar vídeo.\n\n` +
+    /* 28/11/2026 (Mario): o passo 5 e a OBS eram da pagina do LumaBooth (seta acima da foto,
+       "salvar arquivo"). Agora descrevem a pagina do Lumen Capture: botao ⬇ Baixar em cada foto,
+       ⬇ Baixar todas, e no iPhone a janela com Salvar imagem / Salvar video.
+       🚨 O PhotoMusic Pro monta ESTA MESMA mensagem (link-pessoal.php, mensagem_evento):
+       mudou aqui, muda la. O teste-mensagem-evento-igual.php confere. */
+    `*5º* Toque em *⬇ Baixar* na foto 🖼️ ou no vídeo 🎞️ que quiser (ou em *⬇ Baixar todas* para levar tudo de uma vez).\n\n` +
+    `*OBS:* No *Android*, a foto 🖼️ e o vídeo 🎞️ vão direto para a galeria. ` +
+    `No *iPhone*, abre uma janela: toque em *Salvar imagem* (foto 🖼️) ou *Salvar vídeo* (vídeo 🎞️) e ele fica guardado no app Fotos.\n\n` +
     tom.fecho;
 
   return resposta;

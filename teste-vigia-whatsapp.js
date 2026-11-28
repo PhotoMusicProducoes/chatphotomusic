@@ -62,7 +62,8 @@ function checar(nome, cond) { if (cond) { ok++; console.log("✅ " + nome); } el
   const horaAgora = Number(new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date()));
   checar("repescagem: roda 1x ao reconectar (ate 21h) e nao fica na lista", (horaAgora < 21 ? rodou === 1 : rodou === 0) && V._repescagem.size === 0);
   V.pausarSeDesconectado("parabens do dia", () => { rodou += 10; });
-  await V.rodarRepescagem({ agora: new Date("2026-11-28T23:30:00Z") });
+  // 28/11: data fixa bem longe (outro dia e 22h em SP); "2026-11-28" virou "hoje" e o teste quebrou
+  await V.rodarRepescagem({ agora: new Date("2030-01-02T01:00:00Z") });
   checar("repescagem: dia seguinte ou depois das 21h NAO roda", rodou < 10);
 
   // ---- verificar + aviso ao PhotoMusic Pro (so quando muda)
