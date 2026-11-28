@@ -17,21 +17,31 @@ const axios = require("axios");
 const cron = require("node-cron");
 const { sendText } = require("../utils/index.js");
 const { PM_API_BASE, PM_API_KEY } = require("../utils/config.js");
-const { montarMensagemEvento, marcaDoTelefone } = require("../services/eventos.js");
+const { montarMensagemEvento, blocoRedes, marcaDoTelefone } = require("../services/eventos.js");
 // 🎭 as palavras mudam com a celebração - ver services/tomDoEvento.js
 const { tomDoEvento } = require("../services/tomDoEvento.js");
 
 const TIMEZONE = "America/Sao_Paulo";
 
-/* A mensagem carinhosa NÃO sai de madrugada. O aviso de início é preso ao
-   horário do serviço e sai a qualquer hora (festa que começa 22h precisa dele
-   na hora); o de encerramento é um agrado e pode esperar o dia clarear. */
-const HORA_MIN_AGRADO = 10; // era 8h (Mario, 05/09/2026: 10h, ver utils/intervaloEnvio.js)
-const HORA_MAX_AGRADO = 21;
+/* 28/11/2026 (Mario): o link do contratante NAO segue mais a janela 10h-21h das
+   mensagens comemorativas. O contratante esta NA FESTA: começou, recebe a mensagem
+   da festa; terminou, recebe o link dele, a qualquer hora (a IMF terminou 22h e o
+   link ficou preso ate as 10h do dia seguinte).
+   So o ATRASADO (mais de 3h depois do fim: bot fora do ar, WhatsApp caido, link
+   lancado tarde) espera 10h-21h, para nao acordar ninguem de madrugada.
+   Sem `fim_em` (PhotoMusic Pro antigo): na duvida, de 1h a 9h59 espera. */
+const ATRASO_MAX_MS = 3 * 60 * 60 * 1000;
 
-function horaDeBrasilia() {
-  const d = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE }));
-  return d.getHours();
+function horaDeBrasilia(agora = new Date()) {
+  return Number(new Intl.DateTimeFormat("pt-BR", { timeZone: TIMEZONE, hour: "2-digit", hour12: false }).format(agora));
+}
+
+/** Pode mandar o link do contratante agora? (funcao pura, testavel) */
+function podeMandarLinkContratante(fimEmSeg, agora = new Date()) {
+  const h = horaDeBrasilia(agora);
+  const diaClaro = h >= 10 && h <= 21;
+  if (fimEmSeg) return (agora.getTime() - fimEmSeg * 1000) <= ATRASO_MAX_MS || diaClaro;
+  return !(h >= 1 && h < 10);
 }
 
 /* ======================================================
@@ -69,6 +79,8 @@ function mensagemDeEncerramento(evento) {
     `que baixa *todas as fotos de uma vez só*, sem precisar salvar uma por uma.\n\n` +
     `📱 No celular também abre normalmente, mas aí o download é foto por foto.\n\n` +
     `Guarde este link com carinho, ele é o seu. Qualquer dúvida, é só me chamar por aqui.\n\n` +
+    // 28/11/2026 (Mario): Instagram e avaliacao, como os convidados recebem na festa (Me Conta = redes da empresa)
+    blocoRedes({ instagram: evento.instagram, instagramNome: evento.instagram_nome, googleReview: evento.google_review }) +
     `Com carinho,\n*PhotoMusic Produções* ❤️`
   );
 }
@@ -96,9 +108,6 @@ async function executarAvisosGaleria() {
 
     console.log(`🖼️ [avisosGaleria] ${eventos.length} evento(s) com aviso devido.`);
 
-    const hora = horaDeBrasilia();
-    const podeAgradecer = hora >= HORA_MIN_AGRADO && hora <= HORA_MAX_AGRADO;
-
     for (const ev of eventos) {
       /* INÍCIO: abertura + a mensagem dos convidados, na íntegra.
          Duas mensagens de propósito: a segunda é a mensagem real, do jeito
@@ -124,9 +133,9 @@ async function executarAvisosGaleria() {
         }
       }
 
-      if (ev.aviso_fim) {
-        if (!podeAgradecer) {
-          console.log(`   ⏸️ Evento #${ev.id}: agradecimento segura até as ${HORA_MIN_AGRADO}h (agora ${hora}h).`);
+      if (ev.aviso_fim) {   // 28/11: sai assim que a festa termina, a qualquer hora
+        if (!podeMandarLinkContratante(ev.fim_em)) {
+          console.log(`   ⏸️ Evento #${ev.id}: link do contratante ATRASADO, espera as 10h.`);
           continue;
         }
         try {
@@ -156,4 +165,4 @@ function inicializarAvisosGaleria() {
   console.log("🖼️ Avisos de galeria ao contratante agendados (a cada 5 min).");
 }
 
-module.exports = { inicializarAvisosGaleria, executarAvisosGaleria };
+module.exports = { inicializarAvisosGaleria, executarAvisosGaleria, mensagemDeEncerramento, podeMandarLinkContratante };

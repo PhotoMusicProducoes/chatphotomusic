@@ -174,6 +174,26 @@ async function apresentarEvento(numeroEvento, telefone = "") {
  * `evento` precisa de: titulo, preposicao, token (ou links), instagram,
  * instagramNome, googleReview.
  */
+/* Social + avaliação — com Me Conta no evento, usa as redes da empresa
+   contratante (seguidores + avaliações para ela); senão, as da PhotoMusic.
+   28/11/2026: separado para o link do CONTRATANTE (fim da festa) usar o mesmo bloco. */
+function blocoRedes(evento) {
+  const instaUser  = (evento.instagram || "").replace(/^@/, "");
+  const instaLabel = evento.instagramNome
+    ? `*Instagram ${evento.instagramNome}*`
+    : (instaUser ? `*Instagram*` : `*Instagram PhotoMusic*`);
+  const instaUrl   = instaUser
+    ? `https://instagram.com/${instaUser}`
+    : `https://instagram.com/photomusicproducoes`;
+  const reviewUrl  = evento.googleReview || `https://g.page/r/CVcwPOqAtId5EBM/review`;
+
+  return `Siga a nossa página✨ \n` +
+    `🚨 ${instaLabel} \n` +
+    `${instaUrl} \n\n` +
+    `[*Link para avaliação no Google*] \n` +
+    `${reviewUrl} \n\n`;
+}
+
 function montarMensagemEvento(evento, telefone = "", marca = "") {
   // Cabeçalho
   const prep = evento.preposicao || 'ao';
@@ -205,23 +225,7 @@ function montarMensagemEvento(evento, telefone = "", marca = "") {
     resposta += "Nenhum link disponível para este evento no momento.\n\n";
   }
 
-  // Social + avaliação — com Me Conta no evento, usa as redes da empresa
-  // contratante (seguidores + avaliações para ela); senão, as da PhotoMusic
-  const instaUser  = (evento.instagram || "").replace(/^@/, "");
-  const instaLabel = evento.instagramNome
-    ? `*Instagram ${evento.instagramNome}*`
-    : (instaUser ? `*Instagram*` : `*Instagram PhotoMusic*`);
-  const instaUrl   = instaUser
-    ? `https://instagram.com/${instaUser}`
-    : `https://instagram.com/photomusicproducoes`;
-  const reviewUrl  = evento.googleReview || `https://g.page/r/CVcwPOqAtId5EBM/review`;
-
-  resposta +=
-    `Siga a nossa página✨ \n` +
-    `🚨 ${instaLabel} \n` +
-    `${instaUrl} \n\n` +
-    `[*Link para avaliação no Google*] \n` +
-    `${reviewUrl} \n\n`;
+  resposta += blocoRedes(evento);
 
   // Passo a passo para baixar
   resposta +=
@@ -302,6 +306,7 @@ module.exports = {
   buscarEventos,
   apresentarEvento,
   montarMensagemEvento,
+  blocoRedes,
   marcaDoTelefone,
   fluxoEventos,
 };
